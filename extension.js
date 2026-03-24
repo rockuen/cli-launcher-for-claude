@@ -679,7 +679,7 @@ function createPanel(context, extensionPath, session) {
       const deltaMatch = stripped.match(/[±+]\s*(\d+(?:\.\d+)?)\s*(k)?\s*token/i);
       if (deltaMatch && entry._ctxTotal > 0) {
         const num = parseFloat(deltaMatch[1]);
-        const delta = deltaMatch[2] ? num : num / 1000; // k단위로 통일
+        const delta = (deltaMatch[2] ? num : num / 1000) * 2; // x2 보정 (누락 보상)
         entry._ctxUsed = (entry._ctxUsed || 0) + delta;
         const used = entry._ctxUsed >= 10 ? Math.round(entry._ctxUsed) + 'k' : entry._ctxUsed.toFixed(1) + 'k';
         const total = Math.round(entry._ctxTotal) + 'k';
@@ -1027,7 +1027,7 @@ function restartPty(entry, panel, context, extensionPath) {
         const deltaMatch = stripped.match(/[±+]\s*(\d+(?:\.\d+)?)\s*(k)?\s*token/i);
         if (deltaMatch && entry._ctxTotal > 0) {
           const num = parseFloat(deltaMatch[1]);
-          const delta = deltaMatch[2] ? num : num / 1000;
+          const delta = (deltaMatch[2] ? num : num / 1000) * 2; // x2 보정 (누락 보상)
           entry._ctxUsed = (entry._ctxUsed || 0) + delta;
           const used = entry._ctxUsed >= 10 ? Math.round(entry._ctxUsed) + 'k' : entry._ctxUsed.toFixed(1) + 'k';
           const total = Math.round(entry._ctxTotal) + 'k';
