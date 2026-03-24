@@ -600,7 +600,21 @@ function createPanel(context, extensionPath, session) {
     console.log('[Claude Launcher] PTY spawned OK, pid:', ptyProcess.pid);
   } catch (e) {
     console.error('[Claude Launcher] PTY spawn FAILED:', e.message, e.stack);
-    vscode.window.showErrorMessage(t('startFail') + e.message);
+    if (e.message && e.message.includes('posix_spawnp')) {
+      const fix = 'Run npm rebuild';
+      vscode.window.showErrorMessage(
+        t('startFail') + 'node-pty native module incompatible. Run: cd ' + extensionPath + ' && npm rebuild node-pty',
+        fix
+      ).then(choice => {
+        if (choice === fix) {
+          const terminal = vscode.window.createTerminal('Fix node-pty');
+          terminal.sendText('cd "' + extensionPath + '" && npm rebuild node-pty');
+          terminal.show();
+        }
+      });
+    } else {
+      vscode.window.showErrorMessage(t('startFail') + e.message);
+    }
     panel.dispose();
     return;
   }
@@ -622,6 +636,7 @@ function createPanel(context, extensionPath, session) {
   let runningDelayTimer = null;
   let dataCount = 0;
   let contextBuffer = '';
+  let contextParseTimer = null;
   let webviewReady = false;
   const outputBuffer = [];
 
@@ -636,28 +651,44 @@ function createPanel(context, extensionPath, session) {
       } catch (_) {}
     }
 
-    // Parse context/token usage from PTY output
+    // Parse context/token usage from PTY output (debounced)
     contextBuffer += data;
     if (contextBuffer.length > 8000) contextBuffer = contextBuffer.slice(-4000);
-    const stripped = contextBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
-    const tokenMatch = stripped.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
-    if (tokenMatch && stripped.includes('Context Usage')) {
-      const used = tokenMatch[1];
-      const total = tokenMatch[2];
-      const usedNum = parseFloat(used) * (used.endsWith('k') ? 1 : 0.001);
-      const totalNum = parseFloat(total) * (total.endsWith('k') ? 1 : 0.001);
-      const pct = totalNum > 0 ? Math.round(usedNum / totalNum * 100) : 0;
-      try {
-        panel.webview.postMessage({ type: 'context-usage', used, total, pct });
-      } catch (_) {}
-      contextBuffer = '';
-    }
-    // Detect autocompact
-    if (stripped.includes('Autocompact') || stripped.includes('autocompact')) {
-      try {
-        panel.webview.postMessage({ type: 'context-compacted' });
-      } catch (_) {}
-    }
+    if (contextParseTimer) clearTimeout(contextParseTimer);
+    contextParseTimer = setTimeout(() => {
+      const stripped = contextBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+
+      // 1. Full context from /context command: "300k/1000k"
+      const tokenMatch = stripped.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
+      if (tokenMatch && (stripped.includes('claude') || stripped.includes('opus') || stripped.includes('sonnet') || stripped.includes('haiku') || stripped.includes('token') || stripped.includes('oken') || stripped.includes('Context Usage'))) {
+        const used = tokenMatch[1];
+        const total = tokenMatch[2];
+        const usedNum = parseFloat(used) * (used.endsWith('k') ? 1 : 0.001);
+        const totalNum = parseFloat(total) * (total.endsWith('k') ? 1 : 0.001);
+        const pct = totalNum > 0 ? Math.round(usedNum / totalNum * 100) : 0;
+        entry._ctxUsed = usedNum;
+        entry._ctxTotal = totalNum;
+        try {
+          panel.webview.postMessage({ type: 'context-usage', used, total, pct });
+        } catch (_) {}
+        contextBuffer = '';
+        return;
+      }
+
+      // 2. Per-response delta: "± 1.6k tokens" or "1.6k tokens"
+      const deltaMatch = stripped.match(/[±+]\s*(\d+(?:\.\d+)?)\s*k?\s*token/i);
+      if (deltaMatch && entry._ctxTotal > 0) {
+        const delta = parseFloat(deltaMatch[1]);
+        entry._ctxUsed = (entry._ctxUsed || 0) + delta;
+        const used = Math.round(entry._ctxUsed) + 'k';
+        const total = Math.round(entry._ctxTotal) + 'k';
+        const pct = entry._ctxTotal > 0 ? Math.round(entry._ctxUsed / entry._ctxTotal * 100) : 0;
+        try {
+          panel.webview.postMessage({ type: 'context-usage', used, total, pct });
+        } catch (_) {}
+        contextBuffer = '';
+      }
+    }, 800);
 
     // Only transition to 'running' if output persists for 3s+
     if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
@@ -946,29 +977,44 @@ function restartPty(entry, panel, context, extensionPath) {
 
     // Re-attach PTY events
     let restartCtxBuffer = '';
+    let restartCtxParseTimer = null;
     ptyProcess.onData(data => {
       try {
         panel.webview.postMessage({ type: 'output', data: data });
       } catch (_) {}
 
-      // Parse context/token usage
+      // Parse context/token usage (debounced)
       restartCtxBuffer += data;
       if (restartCtxBuffer.length > 8000) restartCtxBuffer = restartCtxBuffer.slice(-4000);
-      const stripped = restartCtxBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
-      const tokenMatch = stripped.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
-      if (tokenMatch && stripped.includes('Context Usage')) {
-        const u = tokenMatch[1], tt = tokenMatch[2];
-        const uN = parseFloat(u) * (u.endsWith('k') ? 1 : 0.001);
-        const tN = parseFloat(tt) * (tt.endsWith('k') ? 1 : 0.001);
-        const pct = tN > 0 ? Math.round(uN / tN * 100) : 0;
-        try {
-          panel.webview.postMessage({ type: 'context-usage', used: u, total: tt, pct });
-        } catch (_) {}
-        restartCtxBuffer = '';
-      }
-      if (stripped.includes('Autocompact') || stripped.includes('autocompact')) {
-        try { panel.webview.postMessage({ type: 'context-compacted' }); } catch (_) {}
-      }
+      if (restartCtxParseTimer) clearTimeout(restartCtxParseTimer);
+      restartCtxParseTimer = setTimeout(() => {
+        const stripped = restartCtxBuffer.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+        const tokenMatch = stripped.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
+        if (tokenMatch && (stripped.includes('claude') || stripped.includes('opus') || stripped.includes('sonnet') || stripped.includes('haiku') || stripped.includes('token') || stripped.includes('oken') || stripped.includes('Context Usage'))) {
+          const u = tokenMatch[1], tt = tokenMatch[2];
+          const uN = parseFloat(u) * (u.endsWith('k') ? 1 : 0.001);
+          const tN = parseFloat(tt) * (tt.endsWith('k') ? 1 : 0.001);
+          const pct = tN > 0 ? Math.round(uN / tN * 100) : 0;
+          entry._ctxUsed = uN; entry._ctxTotal = tN;
+          try {
+            panel.webview.postMessage({ type: 'context-usage', used: u, total: tt, pct });
+          } catch (_) {}
+          restartCtxBuffer = '';
+          return;
+        }
+        const deltaMatch = stripped.match(/[±+]\s*(\d+(?:\.\d+)?)\s*k?\s*token/i);
+        if (deltaMatch && entry._ctxTotal > 0) {
+          const delta = parseFloat(deltaMatch[1]);
+          entry._ctxUsed = (entry._ctxUsed || 0) + delta;
+          const used = Math.round(entry._ctxUsed) + 'k';
+          const total = Math.round(entry._ctxTotal) + 'k';
+          const pct = entry._ctxTotal > 0 ? Math.round(entry._ctxUsed / entry._ctxTotal * 100) : 0;
+          try {
+            panel.webview.postMessage({ type: 'context-usage', used, total, pct });
+          } catch (_) {}
+          restartCtxBuffer = '';
+        }
+      }, 800);
 
       if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
         entry.state = 'running';
@@ -1072,6 +1118,24 @@ function handleOpenFile(filePath, line, entry) {
     absPath = path.join(entry.cwd, filePath);
   }
   absPath = absPath.replace(/\\/g, '/');
+
+  // If not found, try searching subdirectories for the filename
+  if (!fs.existsSync(absPath.replace(/\//g, path.sep))) {
+    const basename = path.basename(filePath);
+    const { execSync } = require('child_process');
+    try {
+      const found = execSync(
+        `find "${entry.cwd}" -name "${basename}" -type f -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null | head -5`,
+        { timeout: 3000, encoding: 'utf8' }
+      ).trim().split('\n').filter(Boolean);
+      // Try matching the relative path suffix
+      const suffix = filePath.replace(/\\/g, '/');
+      const match = found.find(f => f.replace(/\\/g, '/').endsWith(suffix)) || found[0];
+      if (match) {
+        absPath = match.replace(/\\/g, '/');
+      }
+    } catch (_) {}
+  }
 
   if (!fs.existsSync(absPath.replace(/\//g, path.sep))) {
     vscode.window.showWarningMessage(t('fileNotFound') + filePath);
@@ -2622,9 +2686,6 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       }
       if (msg.type === 'context-usage') {
         updateContextIndicator(msg.used, msg.total, msg.pct);
-      }
-      if (msg.type === 'context-compacted') {
-        showToast(T.ctxCompacted);
       }
       if (msg.type === 'process-exited') {
         const isError = msg.exitCode && msg.exitCode !== 0;
