@@ -837,22 +837,34 @@ function createPanel(context, extensionPath, session) {
         customSlashCommands: cfg.get('customSlashCommands'),
       };
       const json = JSON.stringify(exportData, null, 2);
-      vscode.env.clipboard.writeText(json).then(() => {
-        vscode.window.showInformationMessage('Settings copied to clipboard. Share this JSON to import on another machine.');
+      vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(path.join(os.homedir(), 'claude-launcher-settings.json')),
+        filters: { 'JSON': ['json'] }
+      }).then(uri => {
+        if (uri) {
+          fs.writeFileSync(uri.fsPath, json, 'utf8');
+          vscode.window.showInformationMessage('Settings exported: ' + path.basename(uri.fsPath));
+        }
       });
     }
     if (msg.type === 'import-settings') {
-      vscode.env.clipboard.readText().then(text => {
+      vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectMany: false,
+        filters: { 'JSON': ['json'] }
+      }).then(uris => {
+        if (!uris || uris.length === 0) return;
         try {
+          const text = fs.readFileSync(uris[0].fsPath, 'utf8');
           const data = JSON.parse(text);
           const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
           const keys = ['defaultTheme','defaultFontSize','defaultFontFamily','soundEnabled','particlesEnabled','customButtons','customSlashCommands'];
           for (const k of keys) {
             if (data[k] !== undefined) cfg.update(k, data[k], true);
           }
-          vscode.window.showInformationMessage('Settings imported. Reload window to apply.');
+          vscode.window.showInformationMessage('Settings imported from ' + path.basename(uris[0].fsPath) + '. Reload window to apply.');
         } catch (e) {
-          vscode.window.showErrorMessage('Invalid settings JSON in clipboard.');
+          vscode.window.showErrorMessage('Invalid settings file: ' + e.message);
         }
       });
     }
@@ -2487,11 +2499,9 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
 
     document.getElementById('settings-export').addEventListener('click', () => {
       vscode.postMessage({ type: 'export-settings' });
-      showToast('Settings exported to clipboard');
     });
     document.getElementById('settings-import').addEventListener('click', () => {
       vscode.postMessage({ type: 'import-settings' });
-      showToast('Importing settings from clipboard...');
     });
 
     setParticles.addEventListener('click', () => {
