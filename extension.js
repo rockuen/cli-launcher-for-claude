@@ -2190,7 +2190,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <span class="input-hint">${T.inputHint}</span>
         <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
           <button id="queue-add" style="height:26px;padding:0 10px;border:1px solid #D97757;border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:#D97757;">${T.queueAdd}</button>
-          <button id="queue-run" style="display:none">&#x25B6;</button>
+          <span id="queue-run" style="display:none"></span>
           ${(customButtons || []).map((b, i) => `<button class="custom-cmd-btn" data-cmd="${b.command.replace(/"/g, '&quot;')}" style="height:26px;padding:0 10px;border:1px solid ${isDark ? '#666' : '#bbb'};border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:${isDark ? '#aaa' : '#666'};" title="${b.command.replace(/"/g, '&quot;')}">${b.label.replace(/</g, '&lt;')}</button>`).join('\n          ')}
           <button id="editor-send">${T.send}</button>
         </div>
@@ -2824,15 +2824,22 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       } else {
         stopTimer();
       }
+      // Track state for queue auto-start
+      lastKnownState = state;
       // Queue: auto-send next item when idle
-      if (state === 'waiting' && queueRunning && queueCurrentIndex >= 0) {
-        queueCurrentIndex++;
-        if (queueCurrentIndex < taskQueue.length) {
-          queueStatus.textContent = T.queueRunning + (queueCurrentIndex + 1) + '/' + taskQueue.length;
-          renderQueue();
-          setTimeout(() => sendQueueItem(queueCurrentIndex), 500);
-        } else {
-          sendQueueItem(queueCurrentIndex); // triggers completion
+      if (state === 'waiting' || state === 'needs-attention') {
+        if (queueRunning && queueCurrentIndex >= 0) {
+          queueCurrentIndex++;
+          if (queueCurrentIndex < taskQueue.length) {
+            queueStatus.textContent = T.queueRunning + (queueCurrentIndex + 1) + '/' + taskQueue.length;
+            renderQueue();
+            setTimeout(() => sendQueueItem(queueCurrentIndex), 500);
+          } else {
+            sendQueueItem(queueCurrentIndex); // triggers completion
+          }
+        } else if (!queueRunning && taskQueue.length > 0) {
+          // Auto-start queue when idle and items are pending
+          setTimeout(() => startQueue(), 500);
         }
       }
     }
@@ -3128,7 +3135,9 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       } else {
         term.focus();
       }
+      const wasBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
       fitAddon.fit();
+      if (wasBottom) term.scrollToBottom();
       vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows });
     }
 
@@ -3196,18 +3205,19 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       }).join('');
     }
 
+    let lastKnownState = 'waiting';
+
     queueAddBtn.addEventListener('click', () => {
       const text = editorTextarea.value.trim();
-      if (text) {
-        // Add to queue
-        taskQueue.push(text);
-        editorTextarea.value = '';
-        autoResizeTextarea();
-        renderQueue();
-        editorTextarea.focus();
-      } else if (taskQueue.length > 0 && !queueRunning) {
-        // No text + queue has items → run queue
-        queueRunBtn.click();
+      if (!text) return;
+      taskQueue.push(text);
+      editorTextarea.value = '';
+      autoResizeTextarea();
+      renderQueue();
+      editorTextarea.focus();
+      // Auto-start if idle
+      if (!queueRunning && (lastKnownState === 'waiting' || lastKnownState === 'needs-attention')) {
+        startQueue();
       }
     });
 
@@ -3219,7 +3229,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       }
     });
 
-    queueRunBtn.addEventListener('click', () => {
+    function startQueue() {
       if (queueRunning || taskQueue.length === 0) return;
       queueRunning = true;
       queueCurrentIndex = 0;
@@ -3227,18 +3237,15 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       queueStatus.style.display = 'block';
       renderQueue();
       sendQueueItem(0);
-    });
+    }
 
     function sendQueueItem(index) {
       if (index >= taskQueue.length) {
         // Queue finished
         queueRunning = false;
         queueCurrentIndex = -1;
-        queueStatus.textContent = T.queueDone;
-        setTimeout(() => {
-          taskQueue.length = 0;
-          renderQueue();
-        }, 2000);
+        taskQueue.length = 0;
+        renderQueue();
         return;
       }
       const text = taskQueue[index];
@@ -3480,7 +3487,9 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       lastObsHeight = rect.height;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
+        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
         fitAddon.fit();
+        if (wasAtBottom) term.scrollToBottom();
         if (term.cols !== lastCols || term.rows !== lastRows) {
           lastCols = term.cols;
           lastRows = term.rows;
