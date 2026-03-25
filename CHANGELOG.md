@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.6] - 2026-03-24
+
+### Fixed
+- **CLI resolution for npm installs** — Fixed "Cannot create process, error code 2" on Windows when Claude CLI is installed via `npm install -g`. node-pty cannot execute `.cmd` shim files directly; now wraps with `cmd.exe /c` automatically.
+- Unified CLI path resolution into `resolveClaudeCli()` function (3-step: `~/.local/bin` → npm global → PATH fallback)
+
 ## [2.1.0] - 2026-03-24
 
 ### Added

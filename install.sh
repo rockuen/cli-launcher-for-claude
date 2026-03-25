@@ -10,6 +10,9 @@ NAME="claude-code-launcher"
 VERSION="2.0.0"
 EXT_ID="${PUBLISHER}.${NAME}-${VERSION}"
 
+# Antigravity IDE Electron 버전 (node-pty 네이티브 모듈 재컴파일에 사용)
+ANTIGRAVITY_ELECTRON_VERSION="39.2.3"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -62,9 +65,16 @@ echo -e "  [1/4] Node.js: ${GREEN}${NODE_VER}${NC}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo -e "  [2/4] Installing dependencies (node-pty build)..."
-npm install --production 2>&1 | tail -3
-echo -e "  [2/4] ${GREEN}Dependencies ready${NC}"
+if [ "$IDE_TYPE" = "antigravity" ]; then
+  echo -e "  [2/4] Installing dependencies + rebuilding node-pty for Electron ${ANTIGRAVITY_ELECTRON_VERSION}..."
+  npm install --production 2>&1 | tail -3
+  npx @electron/rebuild -v "${ANTIGRAVITY_ELECTRON_VERSION}" --only node-pty 2>&1 | tail -5
+  echo -e "  [2/4] ${GREEN}Dependencies ready (rebuilt for Electron ${ANTIGRAVITY_ELECTRON_VERSION})${NC}"
+else
+  echo -e "  [2/4] Installing dependencies (node-pty build)..."
+  npm install --production 2>&1 | tail -3
+  echo -e "  [2/4] ${GREEN}Dependencies ready${NC}"
+fi
 
 # Step 3: Copy to extensions directory
 echo -e "  [3/4] Copying to extensions directory..."

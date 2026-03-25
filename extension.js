@@ -306,15 +306,33 @@ class SessionTreeDataProvider {
   _getProjectDir() {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
     if (!cwd) return null;
-    const dirName = cwd.replace(/[\\//:]/g, '-');
-    const projDir = path.join(os.homedir(), '.claude', 'projects', dirName);
-    return fs.existsSync(projDir) ? projDir : null;
+    const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+    if (!fs.existsSync(projectsDir)) return null;
+    // Replace all non-alphanumeric chars with - (matches Claude CLI behavior)
+    const dirName = cwd.replace(/[^a-zA-Z0-9]/g, '-');
+    const projDir = path.join(projectsDir, dirName);
+    if (fs.existsSync(projDir)) return projDir;
+    // Fallback: find folder containing the workspace basename
+    try {
+      const wsName = path.basename(cwd).replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+      const dirs = fs.readdirSync(projectsDir);
+      // 1. Exact match (case-insensitive)
+      const exact = dirs.find(d => d.toLowerCase() === dirName.toLowerCase());
+      if (exact) return path.join(projectsDir, exact);
+      // 2. Basename match
+      const partial = dirs.find(d => d.toLowerCase().includes(wsName));
+      if (partial) return path.join(projectsDir, partial);
+    } catch (_) {}
+    return null;
   }
 
   _buildGroups() {
+    const projDir = this._getProjectDir();
+    console.log('[Session] _getProjectDir:', projDir);
     const savedSessions = this._context.workspaceState.get('claudeSavedSessions', []);
     const savedSet = new Set(savedSessions.map(s => s.sessionId));
     const allItems = this._loadSessions();
+    console.log('[Session] _loadSessions count:', allItems.length);
 
     const savedItems = [];
     const recentItems = [];
@@ -486,6 +504,31 @@ function restoreSessions(context, extensionPath) {
   });
 }
 
+// ── Claude CLI resolution ──
+
+function resolveClaudeCli() {
+  const isWin = process.platform === 'win32';
+  // 1) ~/.local/bin/claude(.exe) — official standalone install
+  const localBin = isWin
+    ? path.join(os.homedir(), '.local', 'bin', 'claude.exe')
+    : path.join(os.homedir(), '.local', 'bin', 'claude');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+
+  // 2) npm global install — Windows needs cmd.exe /c wrapper for .cmd shims
+  if (isWin) {
+    const npmCli = path.join(process.env.APPDATA || '', 'npm', 'claude.cmd');
+    if (fs.existsSync(npmCli)) return { shell: 'cmd.exe', args: ['/c', 'claude'] };
+  }
+
+  // 3) Fallback — hope it's on PATH (works on macOS/Linux where shell scripts are directly executable)
+  try {
+    require('child_process').execSync('claude --version', { timeout: 3000, stdio: 'ignore' });
+    return { shell: 'claude', args: [] };
+  } catch (_) {
+    return null;
+  }
+}
+
 // ── Panel creation ──
 
 function createPanel(context, extensionPath, session) {
@@ -555,38 +598,29 @@ function createPanel(context, extensionPath, session) {
   // Spawn claude CLI
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
   const sessionId = session?.sessionId || crypto.randomUUID();
-  const isWin = process.platform === 'win32';
-  const claudePath = isWin
-    ? path.join(os.homedir(), '.local', 'bin', 'claude.exe')
-    : path.join(os.homedir(), '.local', 'bin', 'claude');
-  const shell = fs.existsSync(claudePath) ? claudePath : 'claude';
-
-  // Check if Claude CLI is available
-  if (!fs.existsSync(claudePath)) {
-    try {
-      require('child_process').execSync('claude --version', { timeout: 3000 });
-    } catch (_) {
-      const install = 'Install Claude Code';
-      vscode.window.showErrorMessage(
-        'Claude Code CLI not found. Please install it first: npm install -g @anthropic-ai/claude-code',
-        install
-      ).then(choice => {
-        if (choice === install) {
-          vscode.env.openExternal(vscode.Uri.parse('https://docs.anthropic.com/en/docs/claude-code/overview'));
-        }
-      });
-      panel.dispose();
-      return;
-    }
+  const resolved = resolveClaudeCli();
+  if (!resolved) {
+    const install = 'Install Claude Code';
+    vscode.window.showErrorMessage(
+      'Claude Code CLI not found. Please install it first: npm install -g @anthropic-ai/claude-code',
+      install
+    ).then(choice => {
+      if (choice === install) {
+        vscode.env.openExternal(vscode.Uri.parse('https://docs.anthropic.com/en/docs/claude-code/overview'));
+      }
+    });
+    panel.dispose();
+    return;
   }
 
+  const shell = resolved.shell;
   const claudeArgs = session?.sessionId
     ? ['--resume', session.sessionId]
     : ['--session-id', sessionId];
-  const args = claudeArgs;
+  const args = [...resolved.args, ...claudeArgs];
 
   console.log('[Claude Launcher] Spawning:', shell, args.join(' '), '| cwd:', cwd);
-  console.log('[Claude Launcher] claudePath exists:', fs.existsSync(claudePath), '| shell:', shell);
+  console.log('[Claude Launcher] resolved shell:', shell, '| args prefix:', resolved.args);
 
   let ptyProcess;
   try {
@@ -735,6 +769,8 @@ function createPanel(context, extensionPath, session) {
         panel.webview.postMessage({ type: 'state', state: 'waiting' });
       }
       updateStatusBar();
+      // Refresh session list (picks up newly created .jsonl files)
+      if (sessionTreeProvider) sessionTreeProvider.refresh();
     }, IDLE_DELAY_MS);
   });
 
@@ -974,12 +1010,13 @@ function restartPty(entry, panel, context, extensionPath) {
     return;
   }
 
-  const isWin = process.platform === 'win32';
-  const claudePath = isWin
-    ? path.join(os.homedir(), '.local', 'bin', 'claude.exe')
-    : path.join(os.homedir(), '.local', 'bin', 'claude');
-  const shell = fs.existsSync(claudePath) ? claudePath : 'claude';
-  const args = entry.sessionId ? ['--resume', entry.sessionId] : [];
+  const resolved = resolveClaudeCli();
+  if (!resolved) {
+    vscode.window.showErrorMessage('Claude Code CLI not found.');
+    return;
+  }
+  const shell = resolved.shell;
+  const args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : [])];
 
   try {
     const ptyProcess = pty.spawn(shell, args, {
@@ -1058,6 +1095,7 @@ function restartPty(entry, panel, context, extensionPath) {
           panel.webview.postMessage({ type: 'notify' });
         }
         updateStatusBar();
+        if (sessionTreeProvider) sessionTreeProvider.refresh();
       }, IDLE_DELAY_MS);
     });
 
@@ -3375,7 +3413,8 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       }
 
       // Enter: send, Shift+Enter: newline
-      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      // e.isComposing: IME 조합 중(한글 등) Enter는 무시
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing) {
         e.preventDefault();
         sendEditorContent();
         return;
