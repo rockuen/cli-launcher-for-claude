@@ -314,13 +314,30 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.deleteGroup', async () => {
+    vscode.commands.registerCommand('claudeCodeLauncher.deleteGroup', async (item) => {
       const groups = context.workspaceState.get('claudeSessionGroups', {});
-      const groupNames = Object.keys(groups);
-      if (groupNames.length === 0) return;
-      const choice = await vscode.window.showQuickPick(groupNames, { placeHolder: 'Delete group (sessions return to Recent)' });
-      if (!choice) return;
+      const choice = item?._groupName;
+      if (!choice || !groups[choice]) return;
       delete groups[choice];
+      context.workspaceState.update('claudeSessionGroups', groups);
+      if (sessionTreeProvider) sessionTreeProvider.refresh();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.renameGroup', async (item) => {
+      const groups = context.workspaceState.get('claudeSessionGroups', {});
+      const choice = item?._groupName;
+      if (!choice || !groups[choice]) return;
+      const newName = await vscode.window.showInputBox({ prompt: 'New group name', value: choice });
+      if (!newName || newName === choice) return;
+      groups[newName] = groups[choice];
+      delete groups[choice];
+      // Update expanded state
+      if (sessionTreeProvider._expandedGroups.has(choice)) {
+        sessionTreeProvider._expandedGroups.delete(choice);
+        sessionTreeProvider._expandedGroups.add(newName);
+      }
       context.workspaceState.update('claudeSessionGroups', groups);
       if (sessionTreeProvider) sessionTreeProvider.refresh();
     })
@@ -486,6 +503,8 @@ class SessionTreeDataProvider {
       }
       const group = new vscode.TreeItem(`${name} (${items.length})`, state(name));
       group.iconPath = new vscode.ThemeIcon('folder');
+      group.contextValue = 'customGroup';
+      group._groupName = name;
       group._children = items;
       groups.push(group);
     }
@@ -530,6 +549,7 @@ class SessionTreeDataProvider {
           if (trashItems.length > 0) {
             const trashGroup = new vscode.TreeItem(`Trash (${trashItems.length})`, state('Trash'));
             trashGroup.iconPath = new vscode.ThemeIcon('trash');
+            trashGroup.contextValue = 'trashGroup';
             trashGroup._children = trashItems;
             groups.push(trashGroup);
           }
@@ -839,7 +859,8 @@ function createPanel(context, extensionPath, session) {
   // PTY → Webview + activity detection
   let runningDelayTimer = null;
   let dataCount = 0;
-  // context parsing uses immediate per-chunk check
+  // context parsing — rolling buffer for cross-chunk patterns
+  let ctxBuf = '';
   let webviewReady = false;
   const outputBuffer = [];
 
@@ -856,13 +877,18 @@ function createPanel(context, extensionPath, session) {
 
     // Parse context/token usage from PTY output
     // Immediate check on each PTY chunk
-    const strippedNow = data.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+    const strippedNow = data.replace(/\x1b\[[0-9;:?]*[A-Za-z~@`]/g, '').replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b./g, '').replace(/[\x00-\x1f\x7f]/g, '');
+    ctxBuf = (ctxBuf + strippedNow).slice(-300);
+    if (!entry._ctxSampled && /(?:컨텍스트|context)/i.test(strippedNow)) {
+      console.log('[Claude Launcher] ctxBuf:', JSON.stringify(ctxBuf.slice(-200)));
+      entry._ctxSampled = true;
+    }
     // 1. Prompt status line: "ctx:52%" (most reliable, appears after every response)
-    const ctxPctMatch = strippedNow.match(/ctx:(\d+)%/);
+    const ctxPctMatch = ctxBuf.match(/ctx:(\d+)%/);
     if (ctxPctMatch) {
       const pct = parseInt(ctxPctMatch[1]);
       // Extract total from context model info (e.g., "1M context")
-      const modelMatch = strippedNow.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+      const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
       let totalK = entry._ctxTotal || 1000;
       if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
       const usedK = Math.round(totalK * pct / 100);
@@ -872,9 +898,59 @@ function createPanel(context, extensionPath, session) {
         panel.webview.postMessage({ type: 'context-usage', used: usedK + 'k', total: totalK + 'k', pct });
       } catch (_) {}
     }
+    // 1.5. Progress bar: [████░░░░░░] 40% or 컨텍스트 [░░░░░░░░░░] 6%
+    if (!ctxPctMatch) {
+      const barMatch = ctxBuf.match(/\[[^\]\n]{2,}\]\s*(\d+)\s*%/);
+      if (barMatch) {
+        const pct = parseInt(barMatch[1]);
+        const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+        let totalK = entry._ctxTotal || 1000;
+        if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
+        const usedK = Math.round(totalK * pct / 100);
+        entry._ctxUsed = usedK;
+        entry._ctxTotal = totalK;
+        try {
+          panel.webview.postMessage({ type: 'context-usage', used: usedK + 'k', total: totalK + 'k', pct });
+        } catch (_) {}
+      }
+      // 1.6. Keyword fallback: "컨텍스트 ... N%" or "context ... N%" without bar
+      if (!barMatch) {
+        const kwMatch = ctxBuf.match(/(?:컨텍스트|context[eo]?|kontext|コンテキスト|上下文|kontekst|kontextu?|contexte):?\s+.*?(\d+)\s*%/i);
+        if (kwMatch) {
+          const pct = parseInt(kwMatch[1]);
+          if (pct <= 100) {
+            const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+            let totalK = entry._ctxTotal || 1000;
+            if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
+            const usedK = Math.round(totalK * pct / 100);
+            entry._ctxUsed = usedK;
+            entry._ctxTotal = totalK;
+            try {
+              panel.webview.postMessage({ type: 'context-usage', used: usedK + 'k', total: totalK + 'k', pct });
+            } catch (_) {}
+          }
+        }
+        // 1.7. Broad fallback: N% near context keywords (ignores formatting artifacts)
+        if (!kwMatch) {
+          const broad = ctxBuf.match(/(?:컨텍스트|context|ctx)\S*[\s\S]{0,50}?(\d{1,3})\s*%/i);
+          if (broad && parseInt(broad[1]) > 0 && parseInt(broad[1]) <= 100) {
+            const pct = parseInt(broad[1]);
+            const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+            let totalK = entry._ctxTotal || 1000;
+            if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
+            const usedK = Math.round(totalK * pct / 100);
+            entry._ctxUsed = usedK;
+            entry._ctxTotal = totalK;
+            try {
+              panel.webview.postMessage({ type: 'context-usage', used: usedK + 'k', total: totalK + 'k', pct });
+            } catch (_) {}
+          }
+        }
+      }
+    }
     // 2. Full context from /context command: "300k/1000k"
     if (!ctxPctMatch) {
-      const immediateMatch = strippedNow.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
+      const immediateMatch = ctxBuf.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
       if (immediateMatch) {
         const used = immediateMatch[1];
         const total = immediateMatch[2];
@@ -1215,28 +1291,73 @@ function restartPty(entry, panel, context, extensionPath) {
     updateStatusBar();
 
     // Re-attach PTY events
-    // context parsing uses immediate per-chunk check (no buffer needed)
+    // context parsing — rolling buffer for cross-chunk patterns
+    let ctxBuf = '';
     ptyProcess.onData(data => {
       try {
         panel.webview.postMessage({ type: 'output', data: data });
       } catch (_) {}
 
       // Parse context/token usage (immediate on each chunk)
-      const sNow = data.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\x1b\][^\x07]*\x07/g, '');
+      const sNow = data.replace(/\x1b\[[0-9;:?]*[A-Za-z~@`]/g, '').replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '').replace(/\x1b./g, '').replace(/[\x00-\x1f\x7f]/g, '');
+      ctxBuf = (ctxBuf + sNow).slice(-300);
+      if (!entry._ctxSampled && /(?:컨텍스트|context)/i.test(sNow)) {
+        console.log('[Claude Launcher] ctxBuf:', JSON.stringify(ctxBuf.slice(-200)));
+        entry._ctxSampled = true;
+      }
       // 1. Prompt status line: "ctx:52%"
-      const cp = sNow.match(/ctx:(\d+)%/);
+      const cp = ctxBuf.match(/ctx:(\d+)%/);
       if (cp) {
         const pct = parseInt(cp[1]);
-        const mm = sNow.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+        const mm = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
         let tK = entry._ctxTotal || 1000;
         if (mm) tK = mm[2].toUpperCase() === 'M' ? parseFloat(mm[1]) * 1000 : parseFloat(mm[1]);
         const uK = Math.round(tK * pct / 100);
         entry._ctxUsed = uK; entry._ctxTotal = tK;
         try { panel.webview.postMessage({ type: 'context-usage', used: uK + 'k', total: tK + 'k', pct }); } catch (_) {}
       }
+      // 1.5. Progress bar: [████░░░░░░] 40% or 컨텍스트 [░░░░░░░░░░] 6%
+      if (!cp) {
+        const bp = ctxBuf.match(/\[[^\]\n]{2,}\]\s*(\d+)\s*%/);
+        if (bp) {
+          const pct = parseInt(bp[1]);
+          const mm = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+          let tK = entry._ctxTotal || 1000;
+          if (mm) tK = mm[2].toUpperCase() === 'M' ? parseFloat(mm[1]) * 1000 : parseFloat(mm[1]);
+          const uK = Math.round(tK * pct / 100);
+          entry._ctxUsed = uK; entry._ctxTotal = tK;
+          try { panel.webview.postMessage({ type: 'context-usage', used: uK + 'k', total: tK + 'k', pct }); } catch (_) {}
+        }
+        // 1.6. Keyword fallback: "컨텍스트 ... N%" or "context ... N%"
+        if (!bp) {
+          const kw = ctxBuf.match(/(?:컨텍스트|context[eo]?|kontext|コンテキスト|上下文|kontekst|kontextu?|contexte):?\s+.*?(\d+)\s*%/i);
+          if (kw && parseInt(kw[1]) <= 100) {
+            const pct = parseInt(kw[1]);
+            const mm = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+            let tK = entry._ctxTotal || 1000;
+            if (mm) tK = mm[2].toUpperCase() === 'M' ? parseFloat(mm[1]) * 1000 : parseFloat(mm[1]);
+            const uK = Math.round(tK * pct / 100);
+            entry._ctxUsed = uK; entry._ctxTotal = tK;
+            try { panel.webview.postMessage({ type: 'context-usage', used: uK + 'k', total: tK + 'k', pct }); } catch (_) {}
+          }
+          // 1.7. Broad fallback
+          if (!kw) {
+            const bd = ctxBuf.match(/(?:컨텍스트|context|ctx)\S*[\s\S]{0,50}?(\d{1,3})\s*%/i);
+            if (bd && parseInt(bd[1]) > 0 && parseInt(bd[1]) <= 100) {
+              const pct = parseInt(bd[1]);
+              const mm = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+              let tK = entry._ctxTotal || 1000;
+              if (mm) tK = mm[2].toUpperCase() === 'M' ? parseFloat(mm[1]) * 1000 : parseFloat(mm[1]);
+              const uK = Math.round(tK * pct / 100);
+              entry._ctxUsed = uK; entry._ctxTotal = tK;
+              try { panel.webview.postMessage({ type: 'context-usage', used: uK + 'k', total: tK + 'k', pct }); } catch (_) {}
+            }
+          }
+        }
+      }
       // 2. Full context: "300k/1000k"
       if (!cp) {
-        const im = sNow.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
+        const im = ctxBuf.match(/(\d+(?:\.\d+)?k?)\/(\d+(?:\.\d+)?k)/);
         if (im) {
           const uN = parseFloat(im[1]) * (im[1].endsWith('k') ? 1 : 0.001);
           const tN = parseFloat(im[2]) * (im[2].endsWith('k') ? 1 : 0.001);

@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.3.1] - 2026-03-26
+
+### Fixed
+- **Context usage parsing overhaul** — Comprehensive ANSI strip (CSI, OSC, 2-byte ESC, all control chars including CR/DEL), rolling 300-char buffer for cross-chunk pattern capture, optional colon in keyword regex (`컨텍스트:` format), broad fallback regex for resilient % detection
+
+### Added
+- **Inline group management icons** — Rename/Delete icons on custom group headers, Empty Trash icon on trash group header
+- **Session group context values** — `customGroup` and `trashGroup` context values for precise menu targeting
+- **Group rename command** — Rename groups with expanded state preservation
+- **Debug logging** — One-time context buffer sample log for parsing diagnostics
+
+## [2.3.0] - 2026-03-26
+
+### Added
+- **Custom session groups** — Unlimited user-defined groups, QuickPick session move, "Remove from Group" to ungroup
+- **Trash / Restore** — Delete moves sessions to trash folder, Restore brings them back, Empty Trash with confirmation dialog
+- **Group collapse state persistence** — `onDidExpandElement`/`onDidCollapseElement` tracking, restored on refresh
+- **i18n nls files** — `package.nls.json` (English) + `package.nls.ko.json` (Korean) for sidebar labels
+
+### Fixed
+- **`const projDir` duplicate declaration** — Reused variable in `_buildGroups()` for Trash group
+
 ## [2.1.6] - 2026-03-24
 
 ### Fixed

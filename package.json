@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -54,8 +54,15 @@
         "category": "Claude"
       },
       {
+        "command": "claudeCodeLauncher.renameGroup",
+        "title": "Rename Group",
+        "icon": "$(edit)",
+        "category": "Claude"
+      },
+      {
         "command": "claudeCodeLauncher.deleteGroup",
         "title": "Delete Group",
+        "icon": "$(trash)",
         "category": "Claude"
       },
       {
@@ -110,17 +117,32 @@
       "view/item/context": [
         {
           "command": "claudeCodeLauncher.moveToGroup",
-          "when": "view == claudeCodeLauncher.sessionList && viewItem != trashed",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem != trashed && viewItem != customGroup && viewItem != trashGroup",
           "group": "inline@1"
         },
         {
           "command": "claudeCodeLauncher.trashSession",
-          "when": "view == claudeCodeLauncher.sessionList && viewItem != trashed",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem != trashed && viewItem != customGroup && viewItem != trashGroup",
           "group": "inline@2"
         },
         {
           "command": "claudeCodeLauncher.restoreSession",
           "when": "view == claudeCodeLauncher.sessionList && viewItem == trashed",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.renameGroup",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.deleteGroup",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeLauncher.emptyTrash",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == trashGroup",
           "group": "inline@1"
         }
       ],
