@@ -405,25 +405,6 @@ function activate(context) {
     })
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.renameGroup', async (item) => {
-      const groups = context.workspaceState.get('claudeSessionGroups', {});
-      const choice = item?._groupName;
-      if (!choice || !groups[choice]) return;
-      const newName = await vscode.window.showInputBox({ prompt: 'New group name', value: choice });
-      if (!newName || newName === choice) return;
-      groups[newName] = groups[choice];
-      delete groups[choice];
-      // Update expanded state
-      if (sessionTreeProvider._expandedGroups.has(choice)) {
-        sessionTreeProvider._expandedGroups.delete(choice);
-        sessionTreeProvider._expandedGroups.add(newName);
-      }
-      context.workspaceState.update('claudeSessionGroups', groups);
-      if (sessionTreeProvider) sessionTreeProvider.refresh();
-    })
-  );
-
   // Trash: delete session (move .jsonl to trash/)
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.trashSession', async (item) => {
@@ -761,6 +742,7 @@ function saveSessions(context) {
 
 function restoreSessions(context, extensionPath) {
   const sessions = sessionStoreGet('claudeSessions', []);
+  console.log('[Claude Launcher] restoreSessions called, found:', sessions.length, 'sessions');
   if (sessions.length === 0) return;
 
   // Clear saved sessions immediately to avoid double-restore
@@ -770,6 +752,7 @@ function restoreSessions(context, extensionPath) {
   const sorted = [...sessions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   sorted.forEach((session, i) => {
     setTimeout(() => {
+      console.log('[Claude Launcher] Restoring session:', session.title, session.sessionId);
       createPanel(context, extensionPath, session);
     }, i * 500);
   });
@@ -3167,7 +3150,10 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
     window.addEventListener('message', event => {
       const msg = event.data;
       if (msg.type === 'output') {
-        term.write(msg.data);
+        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+        term.write(msg.data, () => {
+          if (wasAtBottom) term.scrollToBottom();
+        });
       }
       if (msg.type === 'state') {
         // Hide restart bar when active
@@ -4067,7 +4053,7 @@ function deactivate() {
         viewColumn: entry.panel.viewColumn || 1
       });
     }
-    _sessionStoreUpdate('claudeSessions', sessions);
+    sessionStoreUpdate('claudeSessions', sessions);
   }
 
   for (const [, entry] of panels) {
