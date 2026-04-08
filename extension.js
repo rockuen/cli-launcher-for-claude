@@ -672,11 +672,15 @@ class SessionTreeDataProvider {
 
   _extractFirstUserMessage(filePath) {
     try {
-      const fd = fs.openSync(filePath, 'r');
-      const buf = Buffer.alloc(32768);
-      const bytesRead = fs.readSync(fd, buf, 0, 32768, 0);
-      fs.closeSync(fd);
-      const chunk = buf.toString('utf-8', 0, bytesRead);
+      let fd, chunk;
+      try {
+        fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(32768);
+        const bytesRead = fs.readSync(fd, buf, 0, 32768, 0);
+        chunk = buf.toString('utf-8', 0, bytesRead);
+      } finally {
+        if (fd !== undefined) fs.closeSync(fd);
+      }
       const lines = chunk.split('\n');
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -776,7 +780,7 @@ function resolveClaudeCli() {
 
   // 3) Fallback — hope it's on PATH (works on macOS/Linux where shell scripts are directly executable)
   try {
-    require('child_process').execSync('claude --version', { timeout: 3000, stdio: 'ignore' });
+    require('child_process').execFileSync('claude', ['--version'], { timeout: 1500, stdio: 'ignore' });
     return { shell: 'claude', args: [] };
   } catch (_) {
     return null;
@@ -928,8 +932,10 @@ function createPanel(context, extensionPath, session) {
   let ctxBuf = '';
   let webviewReady = false;
   const outputBuffer = [];
+  const initialPty = ptyProcess;
 
   ptyProcess.onData(data => {
+    if (entry.pty !== initialPty) return; // stale handler guard
     dataCount++;
     if (dataCount <= 3) console.log('[Claude Launcher] PTY data #' + dataCount + ' (' + data.length + ' bytes):', data.substring(0, 100));
     if (!webviewReady) {
@@ -1115,6 +1121,7 @@ function createPanel(context, extensionPath, session) {
 
   // PTY exit
   ptyProcess.onExit(({ exitCode }) => {
+    if (entry.pty !== initialPty) return; // stale handler guard
     console.log('[Claude Launcher] PTY exited, code:', exitCode, '| dataCount:', dataCount);
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     const isSuccess = exitCode === 0 || exitCode === null || exitCode === undefined;
@@ -1155,10 +1162,12 @@ function createPanel(context, extensionPath, session) {
       return;
     }
     if (msg.type === 'input' && entry.pty) {
-      writePtyChunked(entry.pty, msg.data);
+      writePtyChunked(entry, msg.data);
     }
-    if (msg.type === 'resize' && entry.pty) {
-      try { entry.pty.resize(msg.cols, msg.rows); } catch (_) {}
+    if (msg.type === 'resize') {
+      entry._lastCols = msg.cols;
+      entry._lastRows = msg.rows;
+      if (entry.pty) try { entry.pty.resize(msg.cols, msg.rows); } catch (_) {}
     }
     if (msg.type === 'toolbar') {
       handleToolbar(msg.action, entry, context, extensionPath);
@@ -1173,7 +1182,9 @@ function createPanel(context, extensionPath, session) {
       handleDropFiles(msg.paths, entry);
     }
     if (msg.type === 'open-link') {
-      vscode.env.openExternal(vscode.Uri.parse(msg.url));
+      if (/^https?:\/\//i.test(msg.url)) {
+        vscode.env.openExternal(vscode.Uri.parse(msg.url));
+      }
     }
     if (msg.type === 'rename-tab') {
       vscode.window.showInputBox({ prompt: t('enterTabName'), value: entry.title }).then(newName => {
@@ -1301,17 +1312,17 @@ function createPanel(context, extensionPath, session) {
 const PTY_CHUNK_SIZE = 1024;
 const PTY_CHUNK_DELAY = 10;
 
-function writePtyChunked(pty, data) {
-  if (!pty) return;
+function writePtyChunked(entry, data) {
+  if (!entry.pty) return;
   if (data.length <= PTY_CHUNK_SIZE) {
-    pty.write(data);
+    try { entry.pty.write(data); } catch (_) {}
     return;
   }
   let offset = 0;
   function writeNext() {
-    if (!pty || offset >= data.length) return;
+    if (!entry.pty || entry._disposed || offset >= data.length) return;
     const chunk = data.slice(offset, offset + PTY_CHUNK_SIZE);
-    pty.write(chunk);
+    try { entry.pty.write(chunk); } catch (_) { return; }
     offset += PTY_CHUNK_SIZE;
     if (offset < data.length) {
       setTimeout(writeNext, PTY_CHUNK_DELAY);
@@ -1328,7 +1339,7 @@ function killPtyProcess(ptyProcess) {
     const pid = ptyProcess.pid;
     if (process.platform === 'win32' && pid) {
       // taskkill /T kills entire process tree, /F forces
-      require('child_process').exec(`taskkill /F /T /PID ${pid}`, { timeout: 5000 }, () => {});
+      require('child_process').execFile('taskkill', ['/F', '/T', '/PID', String(pid)], { timeout: 5000 }, () => {});
     }
     ptyProcess.kill();
   } catch (_) {}
@@ -1337,49 +1348,63 @@ function killPtyProcess(ptyProcess) {
 // ── Desktop notification (cross-platform) ──
 
 function showDesktopNotification(tabTitle) {
-  const { exec } = require('child_process');
-  const msg = (tabTitle || 'Claude Code').replace(/[^a-zA-Z0-9가-힣ㄱ-ㅎㅏ-ㅣ\s\-_().]/g, '');
+  const { execFile } = require('child_process');
+  const msg = (tabTitle || 'Claude Code').replace(/[^a-zA-Z0-9가-힣ㄱ-ㅎㅏ-ㅣ\s\-_]/g, '');
   if (process.platform === 'win32') {
-    const psCmd = `
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null;
-$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);
-$n = $t.GetElementsByTagName('text');
-$n.Item(0).AppendChild($t.CreateTextNode('Claude Code')) | Out-Null;
-$n.Item(1).AppendChild($t.CreateTextNode('${msg}')) | Out-Null;
-$toast = [Windows.UI.Notifications.ToastNotification]::new($t);
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Claude Code').Show($toast)
-`.replace(/\n/g, ' ');
-    exec(`powershell -NoProfile -ExecutionPolicy Bypass -Command "${psCmd}"`, { timeout: 5000 }, () => {});
+    const psCmd = [
+      '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null;',
+      '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null;',
+      '$t = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02);',
+      '$n = $t.GetElementsByTagName("text");',
+      "$n.Item(0).AppendChild($t.CreateTextNode('Claude Code')) | Out-Null;",
+      "$n.Item(1).AppendChild($t.CreateTextNode('" + msg.replace(/'/g, "''") + "')) | Out-Null;",
+      '$toast = [Windows.UI.Notifications.ToastNotification]::new($t);',
+      '[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Claude Code").Show($toast)'
+    ].join(' ');
+    execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', psCmd], { timeout: 5000 }, () => {});
   } else if (process.platform === 'darwin') {
-    exec(`osascript -e 'display notification "${msg}" with title "Claude Code"'`, { timeout: 5000 }, () => {});
+    const escaped = msg.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    execFile('osascript', ['-e', `display notification "${escaped}" with title "Claude Code"`], { timeout: 5000 }, () => {});
   }
 }
 
 // ── Restart PTY ──
 
 function restartPty(entry, panel, context, extensionPath) {
+  if (entry._restarting) return;
+  entry._restarting = true;
+
   let pty;
   try {
     pty = require('node-pty');
   } catch (e) {
+    entry._restarting = false;
     vscode.window.showErrorMessage(t('nodePtyFail') + e.message);
     return;
   }
 
   const resolved = resolveClaudeCli();
   if (!resolved) {
+    entry._restarting = false;
     vscode.window.showErrorMessage('Claude Code CLI not found.');
     return;
   }
   const shell = resolved.shell;
   const args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : [])];
 
+  // Kill old PTY before spawning new one to prevent orphaned processes
+  if (entry.pty) {
+    killPtyProcess(entry.pty);
+    entry.pty = null;
+  }
+  if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
+  entry._disposed = false;
+
   try {
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',
-      cols: 120,
-      rows: 30,
+      cols: entry._lastCols || 120,
+      rows: entry._lastRows || 30,
       cwd: entry.cwd,
       env: { ...process.env, FORCE_COLOR: '1' }
     });
@@ -1391,11 +1416,14 @@ function restartPty(entry, panel, context, extensionPath) {
     try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
     saveSessions(context);
     updateStatusBar();
+    entry._restarting = false;
 
     // Re-attach PTY events
     // context parsing — rolling buffer for cross-chunk patterns
+    const thisPty = ptyProcess;
     let ctxBuf = '';
     ptyProcess.onData(data => {
+      if (entry.pty !== thisPty) return; // stale handler guard
       try {
         panel.webview.postMessage({ type: 'output', data: data });
       } catch (_) {}
@@ -1498,6 +1526,7 @@ function restartPty(entry, panel, context, extensionPath) {
     });
 
     ptyProcess.onExit(({ exitCode }) => {
+      if (entry.pty !== thisPty) return; // stale handler guard
       if (entry.idleTimer) clearTimeout(entry.idleTimer);
       const isSuccess = exitCode === 0 || exitCode === null || exitCode === undefined;
       entry.state = isSuccess ? 'done' : 'error';
@@ -1520,6 +1549,7 @@ function restartPty(entry, panel, context, extensionPath) {
     });
 
   } catch (e) {
+    entry._restarting = false;
     vscode.window.showErrorMessage(t('restartFail') + e.message);
   }
 }
@@ -1554,15 +1584,16 @@ function handlePasteImage(base64Data, entry, panel) {
     fs.writeFileSync(filepath, buffer);
 
     const normalized = filepath.replace(/\\/g, '/');
-    entry.pty.write(normalized + ' ');
-    panel.webview.postMessage({ type: 'image-paste-result', success: true, filename });
+    if (entry.pty) entry.pty.write(normalized + ' ');
+    try { panel.webview.postMessage({ type: 'image-paste-result', success: true, filename }); } catch (_) {}
   } catch (e) {
     vscode.window.showErrorMessage(t('imageSaveFail') + e.message);
-    panel.webview.postMessage({ type: 'image-paste-result', success: false, reason: e.message });
+    try { panel.webview.postMessage({ type: 'image-paste-result', success: false, reason: e.message }); } catch (_) {}
   }
 }
 
 function handleDropFiles(paths, entry) {
+  if (!entry.pty) return;
   for (const p of paths) {
     const normalized = p.replace(/\\/g, '/');
     entry.pty.write(normalized + ' ');
@@ -1605,12 +1636,26 @@ function handleOpenFile(filePath, line, entry) {
     return;
   }
 
-  const { exec } = require('child_process');
+  const { spawn } = require('child_process');
   const config = vscode.workspace.getConfiguration('claudeCodeLauncher');
   const fileAssoc = config.get('fileAssociations', {});
   const ext = path.extname(absPath).toLowerCase();
   const method = fileAssoc[ext] || 'auto';
   const nativePath = absPath.replace(/\//g, path.sep);
+
+  const openNative = (app) => {
+    if (process.platform === 'darwin') {
+      spawn('open', app ? ['-a', app, nativePath] : [nativePath], { detached: true, stdio: 'ignore' }).unref();
+    } else if (process.platform === 'win32') {
+      if (app) {
+        spawn(app, [nativePath], { detached: true, stdio: 'ignore' }).unref();
+      } else {
+        vscode.env.openExternal(vscode.Uri.file(nativePath));
+      }
+    } else {
+      spawn(app || 'xdg-open', [nativePath], { detached: true, stdio: 'ignore' }).unref();
+    }
+  };
 
   if (method === 'obsidian' || (method === 'auto' && ext === '.md')) {
     const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath?.replace(/\\/g, '/');
@@ -1624,38 +1669,23 @@ function handleOpenFile(filePath, line, entry) {
     vscode.env.openExternal(vscode.Uri.parse(obsidianUri));
   } else if (method === 'excel') {
     if (process.platform === 'darwin') {
-      exec(`open -a "Microsoft Excel" "${nativePath}"`);
+      openNative('Microsoft Excel');
     } else if (process.platform === 'win32') {
-      exec(`start "" "excel" "${nativePath}"`, { shell: 'cmd.exe' });
+      openNative('excel');
     } else {
-      exec(`libreoffice --calc "${nativePath}"`);
+      spawn('libreoffice', ['--calc', nativePath], { detached: true, stdio: 'ignore' }).unref();
     }
-  } else if (method === 'browser') {
-    if (process.platform === 'darwin') {
-      exec(`open -a "Safari" "${nativePath}" || open "${nativePath}"`);
-    } else if (process.platform === 'win32') {
-      exec(`start "" "${nativePath}"`, { shell: 'cmd.exe' });
-    } else {
-      exec(`xdg-open "${nativePath}"`);
-    }
-  } else if (method === 'system') {
-    if (process.platform === 'darwin') {
-      exec(`open "${nativePath}"`);
-    } else if (process.platform === 'win32') {
-      exec(`start "" "${nativePath}"`, { shell: 'cmd.exe' });
-    } else {
-      exec(`xdg-open "${nativePath}"`);
-    }
+  } else if (method === 'browser' || method === 'system') {
+    openNative(null);
   } else if (method === 'editor') {
     const fileUri = vscode.Uri.file(nativePath);
     const options = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : {};
     vscode.window.showTextDocument(fileUri, options);
   } else if (method !== 'auto') {
-    // Custom app path (e.g. "/Applications/Numbers.app" or "notepad.exe")
     if (process.platform === 'darwin') {
-      exec(`open -a "${method}" "${nativePath}"`);
+      openNative(method);
     } else {
-      exec(`"${method}" "${nativePath}"`);
+      spawn(method, [nativePath], { detached: true, stdio: 'ignore' }).unref();
     }
   } else {
     // auto: OS default for known types, IDE editor for others
@@ -1672,7 +1702,6 @@ function handleOpenFile(filePath, line, entry) {
 
 // Open containing folder in OS file explorer (Finder / Explorer)
 function handleOpenFolder(filePath, entry) {
-  const { exec } = require('child_process');
   let absPath = filePath;
   if (!path.isAbsolute(filePath)) {
     absPath = path.join(entry.cwd, filePath);
@@ -1702,12 +1731,13 @@ function handleOpenFolder(filePath, entry) {
   }
 
   // Open in OS file explorer
+  const { spawn } = require('child_process');
   if (process.platform === 'darwin') {
-    exec(`open "${folderPath}"`);
+    spawn('open', [folderPath], { detached: true, stdio: 'ignore' }).unref();
   } else if (process.platform === 'win32') {
-    exec(`explorer "${folderPath.replace(/\//g, '\\\\')}"`);
+    spawn('explorer', [folderPath.replace(/\//g, '\\')], { detached: true, stdio: 'ignore' }).unref();
   } else {
-    exec(`xdg-open "${folderPath}"`);
+    spawn('xdg-open', [folderPath], { detached: true, stdio: 'ignore' }).unref();
   }
 }
 
@@ -1747,20 +1777,23 @@ function readClipboardImageFromSystem(entry, panel) {
 
   const filename = `clipboard-${Date.now()}.png`;
   const filepath = path.join(tmpDir, filename);
-  const { exec } = require('child_process');
+  const { execFile } = require('child_process');
 
-  let command;
+  let program, args;
   if (process.platform === 'win32') {
     const escapedPath = filepath.replace(/'/g, "''");
-    command = `powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if($img){ $img.Save('${escapedPath}', [System.Drawing.Imaging.ImageFormat]::Png); 'OK' } else { 'NO' }"`;
+    const psScript = `Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if($img){ $img.Save('${escapedPath}', [System.Drawing.Imaging.ImageFormat]::Png); 'OK' } else { 'NO' }`;
+    program = 'powershell';
+    args = ['-NoProfile', '-Command', psScript];
   } else if (process.platform === 'darwin') {
-    command = `osascript -e 'try' -e 'set imgData to the clipboard as «class PNGf»' -e 'set f to open for access POSIX file "${filepath}" with write permission' -e 'write imgData to f' -e 'close access f' -e 'return "OK"' -e 'on error' -e 'return "NO"' -e 'end try'`;
+    program = 'osascript';
+    args = ['-e', 'try', '-e', 'set imgData to the clipboard as «class PNGf»', '-e', `set f to open for access POSIX file "${filepath}" with write permission`, '-e', 'write imgData to f', '-e', 'close access f', '-e', 'return "OK"', '-e', 'on error', '-e', 'return "NO"', '-e', 'end try'];
   } else {
     panel.webview.postMessage({ type: 'image-paste-result', success: false, reason: 'unsupported-platform' });
     return;
   }
 
-  exec(command, { timeout: 5000 }, (err, stdout) => {
+  execFile(program, args, { timeout: 5000 }, (err, stdout) => {
     if (entry._disposed) return;
     if (err) {
       try { panel.webview.postMessage({ type: 'image-paste-result', success: false, reason: 'clipboard-no-image' }); } catch (_) {}
@@ -4127,6 +4160,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
     for (let i = 0; i < PARTICLE_COUNT; i++) particles.push(createParticle());
 
     function animateParticles() {
+      if (!particlesEnabled) { requestAnimationFrame(animateParticles); return; }
       pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
       const isRunning = particleState === 'running';
       const speed = isRunning ? 3 : 1;
@@ -4181,6 +4215,7 @@ function deactivate() {
     const sessions = [];
     let order = 0;
     for (const [, entry] of panels) {
+      if (!entry.pty) continue; // don't restore dead sessions
       sessions.push({
         title: entry.title,
         memo: entry.memo || '',

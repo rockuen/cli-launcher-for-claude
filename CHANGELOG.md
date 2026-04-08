@@ -1,9 +1,21 @@
 # Changelog
 
-## [2.3.8] - 2026-04-08
+## [2.4.0] - 2026-04-08
+
+### Security
+- **Command injection hardening** — Replaced all `exec()` with `execFile`/`spawn` + argument arrays (`killPtyProcess`, `showDesktopNotification`, `handleOpenFile`, `handleOpenFolder`, `readClipboardImageFromSystem`)
+- **URL scheme validation** — `open-link` handler now rejects non-http(s) URLs (prevents `javascript:`, `vscode:` execution)
+- **Windows path injection fix** — `openNative` uses `vscode.env.openExternal` instead of `cmd /c start` for untrusted paths
 
 ### Fixed
-- **Long text paste truncation** — Added `writePtyChunked()` to split large inputs into 1024-byte chunks with 10ms intervals, preventing ConPTY buffer overflow on Windows.
+- **Long text paste truncation** — `writePtyChunked()` splits large inputs into 1024-byte chunks with 10ms intervals (ConPTY buffer overflow fix)
+- **Stale PTY handler race** — Added `entry.pty !== thisPty` guard on all `onData`/`onExit` handlers to prevent old PTY exit events from corrupting new PTY state
+- **Restart PTY robustness** — Kill old PTY before spawn, reset `_disposed` flag, debounce with `_restarting` guard, use stored `cols/rows` instead of hardcoded 120x30
+- **Deactivate saves dead sessions** — Filter `!entry.pty` entries to prevent restoring finished conversations on reload
+- **Null PTY guards** — `handlePasteImage`, `handleDropFiles` now check `entry.pty` before write
+- **File descriptor leak** — `_extractFirstUserMessage` uses `try/finally` for `fs.closeSync`
+- **Particle animation** — Skip render loop when particles are disabled (CPU savings)
+- **CLI resolve timeout** — `execFileSync` with 1.5s timeout (was `execSync` 3s blocking)
 
 ## [2.3.7] - 2026-04-07
 
