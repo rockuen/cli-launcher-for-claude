@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.4.1] - 2026-04-12
+
+### Fixed
+- **Open Folder — partial/mid-drag selection** — Context menu "Open Folder" now correctly resolves partial paths (e.g., mid-drag of an absolute path selecting `rockuen/obsidian/...`). Introduced `resolvePathFragment` which tries cwd → ancestors (walk-up) → home dir → platform roots (`/Users` on Mac, `/home` on Linux), accepting only paths that actually exist. Previously walked up to any existing parent and silently opened the wrong folder (often cwd).
+- **Open Folder — lost selection on right-click** — Some environments (notably Mac Electron + xterm canvas) cleared the selection during `mousedown`/`contextmenu`, causing "Select text first" toasts even with visible selection. Now caches the selection at `contextmenu` time and falls back to it when live selection is empty.
+- **`~` expansion** — `~`, `~/foo` now expand to home directory on Mac/Linux.
+
+### Added
+- **Open Folder — success toast** — Shows "Open folder: <path>" on success (parity with Open File).
+- **Invalid path warning** — Shows "Cannot open folder (invalid or partial path)" instead of silently opening an unrelated ancestor directory.
+
 ## [2.4.0] - 2026-04-08
 
 ### Security

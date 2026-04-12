@@ -138,6 +138,8 @@ const LOCALES = {
     ctxCloseResume: 'Close (Resume Later)',
     selectTextFirst: 'Select text first',
     openFileToast: 'Open file: ',
+    openFolderToast: 'Open folder: ',
+    invalidFolderPath: 'Cannot open folder (invalid or partial path): ',
     ctxQuerying: 'Querying context usage...',
     soundOnToast: 'Sound on', soundOffToast: 'Sound off',
     addMemo: '+ Memo', themeApplied: 'Theme: ',
@@ -226,6 +228,8 @@ const LOCALES = {
     ctxCloseResume: '닫기 (나중에 이어서)',
     selectTextFirst: '텍스트를 먼저 선택하세요',
     openFileToast: '파일 열기: ',
+    openFolderToast: '폴더 열기: ',
+    invalidFolderPath: '폴더를 열 수 없습니다 (유효하지 않거나 부분 경로): ',
     ctxQuerying: '컨텍스트 사용량 조회 중...',
     soundOnToast: '알림음 켜짐', soundOffToast: '알림음 꺼짐',
     addMemo: '+ 메모', themeApplied: '테마 적용: ',
@@ -1700,33 +1704,79 @@ function handleOpenFile(filePath, line, entry) {
   }
 }
 
+// Resolve a possibly-partial path to an existing absolute path.
+// Tries (in order): absolute, cwd+frag, walk up cwd ancestors joining frag,
+// homedir+frag, and platform roots (/Users on Mac, /home on Linux).
+// Returns the first existing candidate, or null. Safe because every candidate
+// is verified with fs.existsSync before returning.
+function resolvePathFragment(frag, cwd) {
+  if (!frag) return null;
+
+  const normalize = (p) => p.replace(/\\/g, '/').replace(/\//g, path.sep);
+
+  // Absolute as-is
+  if (path.isAbsolute(frag)) {
+    const abs = normalize(frag);
+    if (fs.existsSync(abs)) return abs;
+    // Fall through: treat the leading slash as noise and try as fragment
+    frag = frag.replace(/^[\\/]+/, '');
+  }
+
+  const candidates = [];
+  if (cwd) candidates.push(path.join(cwd, frag));
+
+  // Walk up cwd ancestors joining the fragment at each level.
+  let current = cwd;
+  while (current) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    candidates.push(path.join(parent, frag));
+    current = parent;
+  }
+
+  // Common roots
+  candidates.push(path.join(os.homedir(), frag));
+  if (process.platform === 'darwin') candidates.push(path.join('/Users', frag));
+  else if (process.platform === 'linux') candidates.push(path.join('/home', frag));
+
+  for (const c of candidates) {
+    const n = normalize(c);
+    if (fs.existsSync(n)) return n;
+  }
+  return null;
+}
+
 // Open containing folder in OS file explorer (Finder / Explorer)
 function handleOpenFolder(filePath, entry) {
-  let absPath = filePath;
-  if (!path.isAbsolute(filePath)) {
-    absPath = path.join(entry.cwd, filePath);
+  let raw = (filePath || '').trim();
+  if (!raw) {
+    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
+    return;
   }
-  absPath = absPath.replace(/\\/g, '/');
 
-  const nativePath = absPath.replace(/\//g, path.sep);
-  // If it's a file, use parent directory; if directory, use it directly
+  // Expand ~ (home directory) on Mac/Linux style paths
+  if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) {
+    raw = path.join(os.homedir(), raw.slice(1));
+  }
+
+  const resolved = resolvePathFragment(raw, entry.cwd);
+  if (!resolved) {
+    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
+    return;
+  }
+
+  // If resolved path is a file, open its parent directory.
   let folderPath;
   try {
-    const stat = fs.statSync(nativePath);
-    folderPath = stat.isDirectory() ? nativePath : path.dirname(nativePath);
+    const stat = fs.statSync(resolved);
+    folderPath = stat.isDirectory() ? resolved : path.dirname(resolved);
   } catch (_) {
-    folderPath = path.dirname(nativePath);
-  }
-
-  // Walk up until we find an existing directory
-  while (folderPath && !fs.existsSync(folderPath)) {
-    const parent = path.dirname(folderPath);
-    if (parent === folderPath) break;
-    folderPath = parent;
+    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
+    return;
   }
 
   if (!fs.existsSync(folderPath)) {
-    vscode.window.showWarningMessage(t('fileNotFound') + filePath);
+    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
     return;
   }
 
@@ -2832,9 +2882,19 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       return sel.split('\\n').map(line => line.replace(/\\s+$/, '')).join('\\n');
     }
 
+    // Cache of selection captured at contextmenu time — some environments
+    // (Mac Electron / xterm canvas mousedown) can clear selection before
+    // the menu-item click handler fires, causing "Select text first" toasts.
+    let ctxSelectionCache = '';
+    function readSelection() {
+      const live = getCleanSelection().trim();
+      if (live) return live;
+      return (ctxSelectionCache || '').trim();
+    }
+
     // Open selected text as file path
     function openSelectedAsFile() {
-      const sel = getCleanSelection().trim();
+      const sel = readSelection();
       if (!sel) {
         showToast(T.selectTextFirst);
         return;
@@ -2849,13 +2909,19 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
     }
 
     function openSelectedAsFolder() {
-      const sel = getCleanSelection().trim();
+      const sel = readSelection();
       if (!sel) {
         showToast(T.selectTextFirst);
         return;
       }
-      const cleaned = sel.replace(/^['"\\\`]+|['"\\\`]+$/g, '').replace(/[,;)]+$/, '');
+      // Collapse newlines from multi-line drags; strip quotes/backticks and trailing punctuation
+      const cleaned = sel.replace(/[\\r\\n]+/g, '').replace(/^['"\\\`]+|['"\\\`]+$/g, '').replace(/[,;)]+$/, '');
+      if (!cleaned) {
+        showToast(T.selectTextFirst);
+        return;
+      }
       vscode.postMessage({ type: 'open-folder', filePath: cleaned });
+      showToast(T.openFolderToast + cleaned);
     }
 
     // Context usage indicator
@@ -3600,6 +3666,8 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
 
     document.addEventListener('contextmenu', (e) => {
       e.preventDefault();
+      // Snapshot selection before the menu click (mousedown/click may clear xterm selection)
+      ctxSelectionCache = getCleanSelection().trim();
       showContextMenu(e.clientX, e.clientY);
     });
 
@@ -3621,7 +3689,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
 
       switch (action) {
         case 'copy':
-          const sel = getCleanSelection();
+          const sel = getCleanSelection() || ctxSelectionCache;
           if (sel) navigator.clipboard.writeText(sel);
           break;
         case 'open-file':
