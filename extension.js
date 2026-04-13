@@ -1606,17 +1606,24 @@ function handleDropFiles(paths, entry) {
 
 // Open file: .md → Obsidian, others → IDE editor
 function handleOpenFile(filePath, line, entry) {
-  // Resolve relative paths against cwd
-  let absPath = filePath;
-  if (!path.isAbsolute(filePath)) {
-    absPath = path.join(entry.cwd, filePath);
+  let raw = (filePath || '').trim();
+  if (!raw) {
+    vscode.window.showWarningMessage(t('fileNotFound') + filePath);
+    return;
   }
-  absPath = absPath.replace(/\\/g, '/');
 
-  // If not found, try searching subdirectories
-  if (!fs.existsSync(absPath.replace(/\//g, path.sep))) {
-    const suffix = filePath.replace(/\\/g, '/');
-    const basename = path.basename(filePath);
+  // Expand ~ (home directory)
+  if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) {
+    raw = path.join(os.homedir(), raw.slice(1));
+  }
+
+  // Primary: fragment-aware resolver (handles absolute, cwd, walk-up, homedir, platform roots)
+  let absPath = resolvePathFragment(raw, entry.cwd);
+
+  // Fallback: basename search within cwd (legacy behavior for deeply nested project files)
+  if (!absPath) {
+    const suffix = raw.replace(/\\/g, '/');
+    const basename = path.basename(raw);
     const found = [];
     function searchDir(dir, depth) {
       if (depth > 6 || found.length >= 5) return;
@@ -1630,15 +1637,25 @@ function handleOpenFile(filePath, line, entry) {
         }
       } catch (_) {}
     }
-    searchDir(entry.cwd, 0);
+    if (entry.cwd) searchDir(entry.cwd, 0);
     const match = found.find(f => f.replace(/\\/g, '/').endsWith(suffix)) || found[0];
-    if (match) absPath = match.replace(/\\/g, '/');
+    if (match) absPath = match;
   }
 
-  if (!fs.existsSync(absPath.replace(/\//g, path.sep))) {
+  if (!absPath || !fs.existsSync(absPath)) {
     vscode.window.showWarningMessage(t('fileNotFound') + filePath);
     return;
   }
+
+  // If resolved to a directory, reject (caller should use Open Folder)
+  try {
+    if (fs.statSync(absPath).isDirectory()) {
+      vscode.window.showWarningMessage(t('fileNotFound') + filePath);
+      return;
+    }
+  } catch (_) {}
+
+  absPath = absPath.replace(/\\/g, '/');
 
   const { spawn } = require('child_process');
   const config = vscode.workspace.getConfiguration('claudeCodeLauncher');
@@ -1647,15 +1664,41 @@ function handleOpenFile(filePath, line, entry) {
   const method = fileAssoc[ext] || 'auto';
   const nativePath = absPath.replace(/\//g, path.sep);
 
+  // Open a local file with the OS default app.
+  // On Windows, vscode.env.openExternal silently fails for file:// URIs in some
+  // Electron hosts (e.g. Antigravity). We use `cmd /c start` with verbatim
+  // arguments so cmd sees the quoted path intact. windowsVerbatimArguments
+  // bypasses Node's auto-quoting; we control the quoting ourselves.
+  const shellOpen = () => {
+    try {
+      let child;
+      if (process.platform === 'win32') {
+        child = spawn('cmd.exe', ['/c', 'start', '""', `"${nativePath}"`], {
+          detached: true,
+          stdio: 'ignore',
+          windowsVerbatimArguments: true
+        });
+      } else if (process.platform === 'darwin') {
+        child = spawn('open', [nativePath], { detached: true, stdio: 'ignore' });
+      } else {
+        child = spawn('xdg-open', [nativePath], { detached: true, stdio: 'ignore' });
+      }
+      child.on('error', (err) => {
+        vscode.window.showWarningMessage('Open file failed: ' + (err && err.message ? err.message : String(err)));
+      });
+      child.unref();
+    } catch (e) {
+      vscode.window.showWarningMessage('Open file failed: ' + (e && e.message ? e.message : String(e)));
+    }
+  };
+
   const openNative = (app) => {
     if (process.platform === 'darwin') {
       spawn('open', app ? ['-a', app, nativePath] : [nativePath], { detached: true, stdio: 'ignore' }).unref();
     } else if (process.platform === 'win32') {
-      if (app) {
-        spawn(app, [nativePath], { detached: true, stdio: 'ignore' }).unref();
-      } else {
-        vscode.env.openExternal(vscode.Uri.file(nativePath));
-      }
+      // On Windows, app names like 'excel' are rarely in PATH. Defer to the
+      // OS file association via ShellExecute (cmd /c start) for reliability.
+      shellOpen();
     } else {
       spawn(app || 'xdg-open', [nativePath], { detached: true, stdio: 'ignore' }).unref();
     }
@@ -1675,7 +1718,7 @@ function handleOpenFile(filePath, line, entry) {
     if (process.platform === 'darwin') {
       openNative('Microsoft Excel');
     } else if (process.platform === 'win32') {
-      openNative('excel');
+      shellOpen();
     } else {
       spawn('libreoffice', ['--calc', nativePath], { detached: true, stdio: 'ignore' }).unref();
     }
@@ -1688,14 +1731,15 @@ function handleOpenFile(filePath, line, entry) {
   } else if (method !== 'auto') {
     if (process.platform === 'darwin') {
       openNative(method);
+    } else if (process.platform === 'win32') {
+      shellOpen();
     } else {
       spawn(method, [nativePath], { detached: true, stdio: 'ignore' }).unref();
     }
   } else {
     // auto: OS default for known types, IDE editor for others
     if (/\.(html?|xlsx?|csv|pptx?|docx?|pdf|png|jpe?g|gif|svg|zip|tar|gz)$/i.test(ext)) {
-      const fileUri = vscode.Uri.file(nativePath);
-      vscode.env.openExternal(fileUri);
+      shellOpen();
     } else {
       const fileUri = vscode.Uri.file(nativePath);
       const options = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : {};
