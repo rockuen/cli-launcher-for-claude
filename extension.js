@@ -1312,26 +1312,62 @@ function createPanel(context, extensionPath, session) {
 }
 
 // ── Chunked PTY write (prevents ConPTY buffer overflow on large pastes) ──
+// Per-entry write queue serializes concurrent writes so chunks never interleave.
+// Shrinking chunk size + bumping delay dropped truncation on Windows ConPTY
+// where the OS input buffer overflows under sustained writes.
 
-const PTY_CHUNK_SIZE = 1024;
-const PTY_CHUNK_DELAY = 10;
+const PTY_CHUNK_SIZE = 256;
+const PTY_CHUNK_DELAY = 20;
 
 function writePtyChunked(entry, data) {
-  if (!entry.pty) return;
+  if (!entry.pty || !data) return;
+  if (!entry._writeQueue) entry._writeQueue = [];
+  entry._writeQueue.push(data);
+  if (!entry._writing) drainWriteQueue(entry);
+}
+
+function drainWriteQueue(entry) {
+  if (!entry.pty || entry._disposed) {
+    entry._writing = false;
+    if (entry._writeQueue) entry._writeQueue.length = 0;
+    return;
+  }
+  const data = entry._writeQueue && entry._writeQueue.shift();
+  if (!data) {
+    entry._writing = false;
+    return;
+  }
+  entry._writing = true;
   if (data.length <= PTY_CHUNK_SIZE) {
     try { entry.pty.write(data); } catch (_) {}
+    setTimeout(() => drainWriteQueue(entry), PTY_CHUNK_DELAY);
     return;
   }
   let offset = 0;
-  function writeNext() {
-    if (!entry.pty || entry._disposed || offset >= data.length) return;
-    const chunk = data.slice(offset, offset + PTY_CHUNK_SIZE);
-    try { entry.pty.write(chunk); } catch (_) { return; }
-    offset += PTY_CHUNK_SIZE;
+  const writeNext = () => {
+    if (!entry.pty || entry._disposed) {
+      entry._writing = false;
+      if (entry._writeQueue) entry._writeQueue.length = 0;
+      return;
+    }
+    let end = Math.min(offset + PTY_CHUNK_SIZE, data.length);
+    // Avoid splitting a UTF-16 surrogate pair across chunks.
+    if (end < data.length) {
+      const code = data.charCodeAt(end - 1);
+      if (code >= 0xD800 && code <= 0xDBFF) end += 1;
+    }
+    const chunk = data.slice(offset, end);
+    try { entry.pty.write(chunk); } catch (_) {
+      entry._writing = false;
+      return;
+    }
+    offset = end;
     if (offset < data.length) {
       setTimeout(writeNext, PTY_CHUNK_DELAY);
+    } else {
+      setTimeout(() => drainWriteQueue(entry), PTY_CHUNK_DELAY);
     }
-  }
+  };
   writeNext();
 }
 
