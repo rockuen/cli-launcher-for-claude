@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "2.5.2",
+  "version": "2.5.4",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -198,6 +198,12 @@
           "type": "boolean",
           "default": true,
           "description": "Enable background particle effects."
+        },
+        "claudeCodeLauncher.pasteToFileThreshold": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 0,
+          "description": "Characters above which pasted text is saved to a temp file and referenced via @path to avoid PTY write truncation on Ink/ConPTY line-editors. Set to 0 to disable."
         },
         "claudeCodeLauncher.customSlashCommands": {
           "type": "array",

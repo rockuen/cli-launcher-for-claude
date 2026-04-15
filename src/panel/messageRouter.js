@@ -23,6 +23,7 @@ const { handleDropFiles } = require('../handlers/dropFiles');
 const { handleOpenFile } = require('../handlers/openFile');
 const { handleOpenFolder } = require('../handlers/openFolder');
 const { handleExportConversation } = require('../handlers/exportConversation');
+const { handlePasteLargeText } = require('../handlers/pasteLargeText');
 const { restartPty } = require('./restartPty');
 
 function routeWebviewMessage(msg, ctx) {
@@ -155,7 +156,11 @@ function routeWebviewMessage(msg, ctx) {
       return;
 
     case 'export-conversation':
-      handleExportConversation(entry, panel);
+      handleExportConversation(msg.text, entry, panel);
+      return;
+
+    case 'paste-large-text':
+      handlePasteLargeText(msg, entry, panel);
       return;
 
     case 'restart-session':

@@ -448,10 +448,17 @@ function getClientScript(ctx) {
     });
 
     function exportConversation() {
-      // v2.5.2+: extension uses entry.rawOutput (captured from pty.onData)
-      // instead of scraping xterm's render buffer. This sidesteps soft-wrap
-      // splits + ConPTY reflow merges that previously corrupted transcripts.
-      vscode.postMessage({ type: 'export-conversation' });
+      // v2.5.3: TUI apps (Claude CLI = Ink-based) emit cursor-move + partial
+      // writes that look like gibberish once you strip ANSI blindly (which
+      // v2.5.2 did). xterm.js already runs a full virtual-terminal state
+      // machine — let it do the work, then export the resulting text.
+      // term.getSelection() merges isWrapped logical lines correctly.
+      term.selectAll();
+      const all = term.getSelection();
+      term.clearSelection();
+      let text = all.split('\\n').map(l => l.replace(/\\s+$/, '')).join('\\n');
+      text = text.replace(/\\n+$/, '');
+      vscode.postMessage({ type: 'export-conversation', text: text });
       showToast(T.exportingToast);
     }
 
@@ -578,6 +585,18 @@ function getClientScript(ctx) {
       if (msg.type === 'export-result') {
         showToast(msg.success ? T.exportDone : T.exportFailToast);
       }
+      if (msg.type === 'paste-file-ready') {
+        if (msg.error) {
+          showToast('\\u274C \\uD30C\\uC77C \\uC800\\uC7A5 \\uC2E4\\uD328');
+        } else {
+          // Inject "@<path> " into the PTY input. Trailing space lets user
+          // type a prompt right after without worrying about path boundary.
+          const injection = '@' + msg.cliPath + ' ';
+          vscode.postMessage({ type: 'input', data: injection });
+          const kb = Math.round(msg.size / 1024 * 10) / 10;
+          showToast('\\uD83D\\uDCCE ' + msg.fileName + ' (' + kb + 'KB) \\uCCA8\\uBD80\\uB428');
+        }
+      }
       if (msg.type === 'image-paste-result') {
         if (msg.success) {
           showToast(T.imageDone + msg.filename);
@@ -701,7 +720,24 @@ function getClientScript(ctx) {
           return;
         }
       }
-      // No image found — let xterm handle normal text paste
+
+      // Large text paste → temp file + @path (v2.5.4).
+      // ConPTY/Ink line-editor drops bytes on sustained large writes, so we
+      // avoid bulk PTY writes entirely: save to temp file and inject a short
+      // @path reference the CLI can load.
+      const pasteText = e.clipboardData?.getData('text') || '';
+      const thresholdRaw = SETTINGS.pasteToFileThreshold;
+      const threshold = (thresholdRaw === undefined || thresholdRaw === null) ? 2000 : thresholdRaw;
+      if (threshold > 0 && pasteText.length > threshold) {
+        e.preventDefault();
+        e.stopPropagation();
+        lastWebviewPasteTime = Date.now();
+        const kb = Math.round(pasteText.length / 1024 * 10) / 10;
+        showToast('\\uD83D\\uDCCE ' + kb + 'KB \\u2192 \\uD30C\\uC77C \\uC800\\uC7A5 \\uC911...');
+        vscode.postMessage({ type: 'paste-large-text', text: pasteText });
+        return;
+      }
+      // Small text paste: let xterm handle it normally.
     }, true); // <-- capture phase
 
     // Fallback: on Ctrl+V, ask extension to check system clipboard via PowerShell

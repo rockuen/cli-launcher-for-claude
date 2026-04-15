@@ -1,14 +1,16 @@
 // @module handlers/exportConversation — saves PTY transcript as Markdown.
-// v2.5.2+: reads entry.rawOutput (captured bytes from pty.onData) instead of
-// xterm's render buffer. See pty/rawBuffer.js for the capture/sanitize pair.
+// v2.5.3: webview uses xterm's selectAll()+getSelection() (which merges
+// isWrapped rows + reflects current terminal render state) and sends the
+// already-cleaned text. Capturing raw PTY bytes is insufficient for TUI
+// apps like Claude CLI (Ink) because cursor-move sequences carry the
+// layout meaning that a blind ANSI strip destroys.
 
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
 const { t } = require('../i18n');
-const { sanitizeForExport } = require('../pty/rawBuffer');
 
-async function handleExportConversation(entry, panel) {
+async function handleExportConversation(text, entry, panel) {
   try {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
@@ -24,9 +26,8 @@ async function handleExportConversation(entry, panel) {
 
     if (!uri) return;
 
-    const text = sanitizeForExport(entry.rawOutput || '');
     const header = `# ${entry.title}\n\n- ${t('exportLabel')}: ${dateStr} ${pad(now.getHours())}:${pad(now.getMinutes())}\n- ${t('sessionLabel')}: ${entry.sessionId || 'N/A'}\n\n---\n\n`;
-    const content = header + '```\n' + text + '\n```\n';
+    const content = header + '```\n' + (text || '') + '\n```\n';
 
     fs.writeFileSync(uri.fsPath, content, 'utf8');
     panel.webview.postMessage({ type: 'export-result', success: true });
