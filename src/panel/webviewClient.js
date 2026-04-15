@@ -13,6 +13,24 @@ function getClientScript(ctx) {
     function escapeHtml(s) {
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
+
+    // v2.5.5: Detect a tab-separated table (Excel selection) and render as
+    // Markdown. Strict detector: ≥2 rows, every row has the same number of
+    // tab-separated columns (≥2). Returns original text when not a table.
+    function tryConvertTsvToMarkdown(text) {
+      const stripped = text.replace(/\\r?\\n+$/, '');
+      const lines = stripped.split(/\\r?\\n/);
+      if (lines.length < 2) return text;
+      const cols = lines[0].split('\\t').length;
+      if (cols < 2) return text;
+      for (const l of lines) {
+        if (l.split('\\t').length !== cols) return text;
+      }
+      const rows = lines.map(l => l.split('\\t').map(c => c.replace(/\\|/g, '\\\\|').trim()));
+      const fmt = r => '| ' + r.join(' | ') + ' |';
+      const sep = fmt(rows[0].map(() => '---'));
+      return [fmt(rows[0]), sep, ...rows.slice(1).map(fmt)].join('\\n');
+    }
     const fitAddon = new FitAddon.FitAddon();
     const dot = document.getElementById('status-dot');
     const statusText = document.getElementById('toolbar-status');
@@ -694,13 +712,55 @@ function getClientScript(ctx) {
       }
     }
 
-    // ── Clipboard image paste ──
-    // Capture phase: intercept BEFORE xterm.js processes the paste event
+    // ── Clipboard paste (v2.5.5: text priority) ──
+    // Capture phase: intercept BEFORE xterm.js processes the paste event.
+    //
+    // Excel etc. put BOTH tab-separated text AND a rendered PNG on the
+    // clipboard. Before v2.5.5 we iterated items[] and caught image first,
+    // so table selections became PNG uploads. Now: if text exists, treat as
+    // text (optionally converting TSV→Markdown). Image path only kicks in
+    // when there is no text (pure screenshot paste).
     let lastWebviewPasteTime = 0;
     document.addEventListener('paste', (e) => {
+      const rawText = e.clipboardData?.getData('text') || '';
+
+      if (rawText) {
+        const tableOn = SETTINGS.pasteTableAsMarkdown !== false;
+        const text = tableOn ? tryConvertTsvToMarkdown(rawText) : rawText;
+        const converted = text !== rawText;
+
+        const thresholdRaw = SETTINGS.pasteToFileThreshold;
+        const threshold = (thresholdRaw === undefined || thresholdRaw === null) ? 2000 : thresholdRaw;
+
+        // Over threshold → paste-to-file (sidesteps PTY write truncation).
+        if (threshold > 0 && text.length > threshold) {
+          e.preventDefault();
+          e.stopPropagation();
+          lastWebviewPasteTime = Date.now();
+          const kb = Math.round(text.length / 1024 * 10) / 10;
+          showToast('\\uD83D\\uDCCE ' + kb + 'KB \\u2192 \\uD30C\\uC77C \\uC800\\uC7A5 \\uC911...');
+          vscode.postMessage({ type: 'paste-large-text', text: text });
+          return;
+        }
+
+        // Converted TSV → inject the Markdown form via term.paste so xterm
+        // handles bracketed-paste wrapping if the app requests it.
+        if (converted) {
+          e.preventDefault();
+          e.stopPropagation();
+          lastWebviewPasteTime = Date.now();
+          term.paste(text);
+          showToast('\\uD83D\\uDCCA TSV \\u2192 Markdown \\uD45C \\uBCC0\\uD658');
+          return;
+        }
+
+        // Plain small text: let xterm handle it normally (default browser paste).
+        return;
+      }
+
+      // No text on clipboard → fall through to image handling (screenshots).
       const items = e.clipboardData?.items;
       if (!items) return;
-
       for (const item of items) {
         if (item.type.startsWith('image/')) {
           e.preventDefault();
@@ -720,24 +780,6 @@ function getClientScript(ctx) {
           return;
         }
       }
-
-      // Large text paste → temp file + @path (v2.5.4).
-      // ConPTY/Ink line-editor drops bytes on sustained large writes, so we
-      // avoid bulk PTY writes entirely: save to temp file and inject a short
-      // @path reference the CLI can load.
-      const pasteText = e.clipboardData?.getData('text') || '';
-      const thresholdRaw = SETTINGS.pasteToFileThreshold;
-      const threshold = (thresholdRaw === undefined || thresholdRaw === null) ? 2000 : thresholdRaw;
-      if (threshold > 0 && pasteText.length > threshold) {
-        e.preventDefault();
-        e.stopPropagation();
-        lastWebviewPasteTime = Date.now();
-        const kb = Math.round(pasteText.length / 1024 * 10) / 10;
-        showToast('\\uD83D\\uDCCE ' + kb + 'KB \\u2192 \\uD30C\\uC77C \\uC800\\uC7A5 \\uC911...');
-        vscode.postMessage({ type: 'paste-large-text', text: pasteText });
-        return;
-      }
-      // Small text paste: let xterm handle it normally.
     }, true); // <-- capture phase
 
     // Fallback: on Ctrl+V, ask extension to check system clipboard via PowerShell

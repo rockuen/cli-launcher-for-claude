@@ -63,6 +63,7 @@ function createPanel(context, extensionPath, session) {
   const soundEnabled = config.get('soundEnabled', true);
   const particlesEnabled = config.get('particlesEnabled', true);
   const pasteToFileThreshold = config.get('pasteToFileThreshold', 2000);
+  const pasteTableAsMarkdown = config.get('pasteTableAsMarkdown', true);
 
   const xtermCssUri = panel.webview.asWebviewUri(
     vscode.Uri.file(path.join(extensionPath, 'node_modules', 'xterm', 'css', 'xterm.css'))
@@ -88,7 +89,7 @@ function createPanel(context, extensionPath, session) {
   const customSlashCommands = config.get('customSlashCommands', []);
   const fileAssociations = config.get('fileAssociations', {});
   const T = getTranslations();
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, fileAssociations, pasteToFileThreshold };
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown };
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands);
 
   // Spawn claude CLI

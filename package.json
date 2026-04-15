@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -204,6 +204,11 @@
           "default": 2000,
           "minimum": 0,
           "description": "Characters above which pasted text is saved to a temp file and referenced via @path to avoid PTY write truncation on Ink/ConPTY line-editors. Set to 0 to disable."
+        },
+        "claudeCodeLauncher.pasteTableAsMarkdown": {
+          "type": "boolean",
+          "default": true,
+          "description": "When clipboard text is a tab-separated table (e.g. Excel selection), auto-convert it to a Markdown table on paste. Text takes priority over image data, so Excel selections no longer paste as PNG."
         },
         "claudeCodeLauncher.customSlashCommands": {
           "type": "array",
