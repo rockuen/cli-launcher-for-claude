@@ -85,9 +85,12 @@ module.exports = {
   clipboardChecking: 'Checking clipboard for image...',
   particlesOnToast: 'Particles on', particlesOffToast: 'Particles off',
   // fullscreen mode
-  fsTip: 'Fullscreen mode — drag/copy/right-click work normally',
+  fsTip: 'Fullscreen mode — drag/copy/right-click work normally · click to force normal mode',
   fsExportWarn: '⚠ Fullscreen mode: only current screen will be exported',
   fsHintToast: 'Fullscreen mode detected — mouse capture disabled',
+  fsOverrideTip: 'Normal mode forced — click again to return to auto-detect',
+  fsOverrideOn: 'Normal mode forced — wheel scroll restored',
+  fsOverrideOff: 'Back to auto-detect mode',
   // session nesting (v2.6.0)
   nestPickPlaceholder: 'Nest under which session? (max 2 levels)',
   nestNoCandidates: 'No sessions available to nest under',

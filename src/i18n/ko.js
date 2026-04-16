@@ -84,9 +84,12 @@ module.exports = {
   clipboardChecking: '클립보드에서 이미지 확인 중...',
   particlesOnToast: '입자 효과 켜짐', particlesOffToast: '입자 효과 꺼짐',
   // fullscreen mode
-  fsTip: 'Fullscreen 모드 — 드래그/복사/우클릭 정상 동작',
+  fsTip: 'Fullscreen 모드 — 드래그/복사/우클릭 정상 동작 · 클릭하면 일반 모드로 강제 전환',
   fsExportWarn: '⚠ Fullscreen 모드: 현재 화면만 내보냅니다 (전체 대화 아님)',
   fsHintToast: 'Fullscreen 모드 감지 — 마우스 캡처 비활성화됨',
+  fsOverrideTip: '일반 모드 강제 중 — 다시 클릭하면 자동 감지로 복귀',
+  fsOverrideOn: '일반 모드로 강제 전환 — 마우스 휠 스크롤 복구됨',
+  fsOverrideOff: '자동 감지 모드로 복귀',
   // session nesting (v2.6.0)
   nestPickPlaceholder: '어느 세션 아래로 둘까요? (2단계 중첩)',
   nestNoCandidates: '중첩할 수 있는 세션이 없습니다',

@@ -76,6 +76,7 @@ function getClientScript(ctx) {
     // the TUI needs it for rendering.
     let isAlternateScreen = false;
     let isMouseMode = false;
+    let forceNormalMode = false; // v2.6.3: user override — force normal mode
     let fsHintShown = false;
     const fsIndicator = document.getElementById('fs-indicator');
 
@@ -97,25 +98,68 @@ function getClientScript(ctx) {
     }
 
     // Alternate screen buffer detection via xterm.js API.
+    // v2.6.3: when returning to normal buffer, force-clear any stuck mouse-mode
+    // flag. Claude CLI sometimes fails to emit the disable sequence on exit,
+    // or chunks split the sequence across writes so our regex misses it. The
+    // alternate-screen flag is authoritative via xterm's buffer API, so use it
+    // to gate mouse-mode as well.
     term.buffer.onBufferChange((buf) => {
       const alt = buf.type === 'alternate';
       if (alt !== isAlternateScreen) {
         isAlternateScreen = alt;
+        if (!alt) {
+          isMouseMode = false;
+          forceNormalMode = false;
+        }
         updateFullscreenUI();
       }
     });
 
+    // v2.6.3: single source of truth for "is the TUI actively capturing mouse?"
+    // Requires BOTH alt-screen AND mouse-mode, and user can override via click.
+    function isTuiMouseActive() {
+      if (forceNormalMode) return false;
+      return isAlternateScreen && isMouseMode;
+    }
+
     function updateFullscreenUI() {
-      const active = isAlternateScreen || isMouseMode;
-      fsIndicator.style.display = active ? 'inline-flex' : 'none';
-      if (active && !fsHintShown) {
+      const detected = isAlternateScreen || isMouseMode;
+      if (detected) {
+        fsIndicator.style.display = 'inline-flex';
+        if (forceNormalMode) {
+          fsIndicator.textContent = 'FS\u00d7';
+          fsIndicator.title = T.fsOverrideTip;
+          fsIndicator.classList.add('fs-overridden');
+        } else {
+          fsIndicator.textContent = 'FS';
+          fsIndicator.title = T.fsTip;
+          fsIndicator.classList.remove('fs-overridden');
+        }
+      } else {
+        fsIndicator.style.display = 'none';
+        fsIndicator.classList.remove('fs-overridden');
+      }
+      if (isTuiMouseActive() && !fsHintShown) {
         fsHintShown = true;
         showToast(T.fsHintToast);
       }
-      if (isAlternateScreen) {
+      if (isAlternateScreen && !forceNormalMode) {
         scrollFab.style.display = 'none';
       }
     }
+
+    // v2.6.3: clicking the FS indicator toggles a user override that forces
+    // normal-mode behavior even when detection says fullscreen. Escape hatch
+    // for cases where Claude leaves the flag stuck or the user simply wants
+    // local wheel scroll instead of forwarding to the TUI.
+    fsIndicator.addEventListener('click', () => {
+      const detected = isAlternateScreen || isMouseMode;
+      if (!detected) return;
+      forceNormalMode = !forceNormalMode;
+      updateFullscreenUI();
+      showToast(forceNormalMode ? T.fsOverrideOn : T.fsOverrideOff);
+      term.focus();
+    });
 
     // Forward mouse wheel to PTY as SGR mouse reports when fullscreen.
     // Without mouse-mode sequences xterm.js converts wheel→arrow keys in
@@ -126,15 +170,16 @@ function getClientScript(ctx) {
     // v2.6.0: removed the 1-5x magnitude multiplier. Browsers and trackpads
     // already fire many wheel events per physical gesture (10-20+). The old
     // multiplier could produce 50-100 SGR reports per second, overwhelming
-    // the TUI's partial-redraw pipeline and leaving ghost-text artifacts
-    // from incomplete frame clears. One report per wheel event matches how
-    // xterm.js natively behaves with mouse reporting, and scrolling still
-    // feels responsive because the browser supplies plenty of events.
+    // the TUI's partial-redraw pipeline and leaving ghost-text artifacts.
+    //
+    // v2.6.3: require alt-screen + mouse-mode + !forceNormalMode. A stuck
+    // mouse-mode flag alone (e.g. leftover from a prior fullscreen session)
+    // no longer hijacks wheel scroll.
     (function attachWheelForward() {
       const screen = document.querySelector('.xterm-screen');
       if (!screen) { setTimeout(attachWheelForward, 200); return; }
       screen.addEventListener('wheel', (e) => {
-        if (!isMouseMode) return; // normal mode: let xterm.js handle
+        if (!isTuiMouseActive()) return; // normal mode: let xterm.js handle
         e.preventDefault();
         e.stopPropagation();
         const rect = screen.getBoundingClientRect();
