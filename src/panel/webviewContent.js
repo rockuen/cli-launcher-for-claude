@@ -45,6 +45,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <span id="ctx-label" style="vertical-align:middle;color:${isDark ? '#bbb' : '#666'};">ctx</span>
       </span>
       <span id="fs-indicator" title="${T.fsTip}">FS</span>
+      <button class="toolbar-btn" id="btn-redraw" title="${T.redrawTip}" style="display:none">&#x21BB;</button>
       <button class="toolbar-btn" id="btn-paste-img" title="${T.pasteImageTip}" style="display:none">&#x1F4CE;</button>
       <button class="toolbar-btn" id="btn-zoom-out" title="${T.zoomOutTip}" style="display:none">-</button>
       <span id="font-size-label" style="display:none">${fontSize}px</span>

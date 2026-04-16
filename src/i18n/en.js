@@ -91,6 +91,8 @@ module.exports = {
   fsOverrideTip: 'Normal mode forced — click again to return to auto-detect',
   fsOverrideOn: 'Normal mode forced — wheel scroll restored',
   fsOverrideOff: 'Back to auto-detect mode',
+  redrawTip: 'Redraw screen (Ctrl+Shift+R) — session/history preserved, visual refresh only',
+  redrawToast: 'Redraw requested — repainting TUI...',
   // session nesting (v2.6.0)
   nestPickPlaceholder: 'Nest under which session? (max 2 levels)',
   nestNoCandidates: 'No sessions available to nest under',

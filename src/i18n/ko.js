@@ -90,6 +90,8 @@ module.exports = {
   fsOverrideTip: '일반 모드 강제 중 — 다시 클릭하면 자동 감지로 복귀',
   fsOverrideOn: '일반 모드로 강제 전환 — 마우스 휠 스크롤 복구됨',
   fsOverrideOff: '자동 감지 모드로 복귀',
+  redrawTip: '화면 새로고침 (Ctrl+Shift+R) — 세션·대화는 유지, 표시만 재그림',
+  redrawToast: '화면 재그림 요청 — TUI 다시 그리는 중...',
   // session nesting (v2.6.0)
   nestPickPlaceholder: '어느 세션 아래로 둘까요? (2단계 중첩)',
   nestNoCandidates: '중첩할 수 있는 세션이 없습니다',

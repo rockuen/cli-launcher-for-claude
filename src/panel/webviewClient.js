@@ -122,6 +122,9 @@ function getClientScript(ctx) {
       return isAlternateScreen && isMouseMode;
     }
 
+    // v2.6.4: redraw button is only meaningful while a TUI owns the screen.
+    const btnRedraw = document.getElementById('btn-redraw');
+
     function updateFullscreenUI() {
       const detected = isAlternateScreen || isMouseMode;
       if (detected) {
@@ -139,6 +142,7 @@ function getClientScript(ctx) {
         fsIndicator.style.display = 'none';
         fsIndicator.classList.remove('fs-overridden');
       }
+      if (btnRedraw) btnRedraw.style.display = isAlternateScreen ? 'inline-flex' : 'none';
       if (isTuiMouseActive() && !fsHintShown) {
         fsHintShown = true;
         showToast(T.fsHintToast);
@@ -160,6 +164,33 @@ function getClientScript(ctx) {
       showToast(forceNormalMode ? T.fsOverrideOn : T.fsOverrideOff);
       term.focus();
     });
+
+    // v2.6.4: force a full TUI redraw without touching session, scrollback,
+    // or conversation history. Useful when fullscreen rendering gets
+    // corrupted (overlapping text, ghost lines) after wheel scrolling.
+    // Client side repaints xterm; extension side toggles the PTY size so
+    // Claude CLI receives two SIGWINCH signals and redraws from scratch.
+    function redrawScreen() {
+      try { term.refresh(0, term.rows - 1); } catch (_) {}
+      vscode.postMessage({ type: 'redraw-screen' });
+      showToast(T.redrawToast);
+    }
+    if (btnRedraw) {
+      btnRedraw.addEventListener('click', () => {
+        redrawScreen();
+        term.focus();
+      });
+    }
+    // Ctrl+Shift+R — browser-style "hard reload" semantics, applied here to
+    // the TUI only. Capture-phase listener so it beats xterm's own handler.
+    document.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
+      if (e.key !== 'R' && e.key !== 'r') return;
+      if (!isAlternateScreen) return; // no TUI, let xterm/browser default win
+      e.preventDefault();
+      e.stopPropagation();
+      redrawScreen();
+    }, true);
 
     // Forward mouse wheel to PTY as SGR mouse reports when fullscreen.
     // Without mouse-mode sequences xterm.js converts wheel→arrow keys in
