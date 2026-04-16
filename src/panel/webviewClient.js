@@ -46,7 +46,10 @@ function getClientScript(ctx) {
       theme: {
         background: '${bg}',
         foreground: '${fg}',
-        cursor: '${cursor}'
+        cursor: '${cursor}',
+        // v2.6.0: explicit selection color. Light theme was previously using
+        // '#ddd' (border color) which is invisible on a white background.
+        selectionBackground: '${isDark ? "rgba(100, 150, 220, 0.4)" : "rgba(30, 100, 200, 0.25)"}'
       },
       allowProposedApi: true
     });
@@ -119,6 +122,14 @@ function getClientScript(ctx) {
     // alternate screen, causing input-history cycling instead of scrolling.
     // We intercept wheel in capture phase, construct the SGR report, and
     // send it to the PTY directly. Button 64=up, 65=down per SGR spec.
+    //
+    // v2.6.0: removed the 1-5x magnitude multiplier. Browsers and trackpads
+    // already fire many wheel events per physical gesture (10-20+). The old
+    // multiplier could produce 50-100 SGR reports per second, overwhelming
+    // the TUI's partial-redraw pipeline and leaving ghost-text artifacts
+    // from incomplete frame clears. One report per wheel event matches how
+    // xterm.js natively behaves with mouse reporting, and scrolling still
+    // feels responsive because the browser supplies plenty of events.
     (function attachWheelForward() {
       const screen = document.querySelector('.xterm-screen');
       if (!screen) { setTimeout(attachWheelForward, 200); return; }
@@ -132,11 +143,8 @@ function getClientScript(ctx) {
         const x = Math.max(1, Math.min(term.cols, Math.floor((e.clientX - rect.left) / cellW) + 1));
         const y = Math.max(1, Math.min(term.rows, Math.floor((e.clientY - rect.top) / cellH) + 1));
         const btn = e.deltaY < 0 ? 64 : 65;
-        const lines = Math.max(1, Math.min(5, Math.ceil(Math.abs(e.deltaY) / 50)));
         const seq = '\\x1b[<' + btn + ';' + x + ';' + y + 'M';
-        for (let i = 0; i < lines; i++) {
-          vscode.postMessage({ type: 'input', data: seq });
-        }
+        vscode.postMessage({ type: 'input', data: seq });
       }, { passive: false, capture: true });
     })();
 
@@ -511,15 +519,19 @@ function getClientScript(ctx) {
     });
 
     // Theme picker
+    // v2.6.0: each theme now carries an explicit 'selection' color. The
+    // previous code fed the 'border' color to xterm.js selectionBackground,
+    // which worked for dark themes but collapsed to near-invisible on the
+    // light default (#ddd on #fff).
     const themePicker = document.getElementById('theme-picker');
     const themes = {
-      'default':  { outer: '${outerBg}', terminal: '${bg}', fg: '${fg}', cursor: '${cursor}', border: '${border}', shadow: '${isDark ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.08)"}' },
-      'midnight': { outer: '#15112e', terminal: '#1c1740', fg: '#c8c0f0', cursor: '#9080e0', border: '#3a2d6b', shadow: 'rgba(80,50,180,0.3)' },
-      'ocean':    { outer: '#0a1828', terminal: '#0c2240', fg: '#a0d0f0', cursor: '#60a0e0', border: '#1a4070', shadow: 'rgba(30,80,160,0.3)' },
-      'forest':   { outer: '#0a1a0a', terminal: '#0e2810', fg: '#a0e0a0', cursor: '#60c060', border: '#1a5020', shadow: 'rgba(30,120,40,0.3)' },
-      'sunset':   { outer: '#1e0e08', terminal: '#2a1510', fg: '#f0c8a0', cursor: '#e09060', border: '#5a3020', shadow: 'rgba(180,80,30,0.3)' },
-      'aurora':   { outer: '#0e0818', terminal: '#160e2e', fg: '#d0b0f0', cursor: '#b070e0', border: '#3a2060', shadow: 'rgba(120,40,180,0.3)' },
-      'warm':     { outer: '#1a1408', terminal: '#241c10', fg: '#e8d8b0', cursor: '#d0a860', border: '#4a3818', shadow: 'rgba(160,120,40,0.3)' }
+      'default':  { outer: '${outerBg}', terminal: '${bg}', fg: '${fg}', cursor: '${cursor}', border: '${border}', shadow: '${isDark ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.08)"}', selection: '${isDark ? "rgba(100, 150, 220, 0.4)" : "rgba(30, 100, 200, 0.25)"}' },
+      'midnight': { outer: '#15112e', terminal: '#1c1740', fg: '#c8c0f0', cursor: '#9080e0', border: '#3a2d6b', shadow: 'rgba(80,50,180,0.3)',  selection: 'rgba(144, 128, 224, 0.45)' },
+      'ocean':    { outer: '#0a1828', terminal: '#0c2240', fg: '#a0d0f0', cursor: '#60a0e0', border: '#1a4070', shadow: 'rgba(30,80,160,0.3)',  selection: 'rgba(96, 160, 224, 0.45)' },
+      'forest':   { outer: '#0a1a0a', terminal: '#0e2810', fg: '#a0e0a0', cursor: '#60c060', border: '#1a5020', shadow: 'rgba(30,120,40,0.3)',  selection: 'rgba(96, 192, 96, 0.4)' },
+      'sunset':   { outer: '#1e0e08', terminal: '#2a1510', fg: '#f0c8a0', cursor: '#e09060', border: '#5a3020', shadow: 'rgba(180,80,30,0.3)',  selection: 'rgba(224, 144, 96, 0.4)' },
+      'aurora':   { outer: '#0e0818', terminal: '#160e2e', fg: '#d0b0f0', cursor: '#b070e0', border: '#3a2060', shadow: 'rgba(120,40,180,0.3)', selection: 'rgba(176, 112, 224, 0.4)' },
+      'warm':     { outer: '#1a1408', terminal: '#241c10', fg: '#e8d8b0', cursor: '#d0a860', border: '#4a3818', shadow: 'rgba(160,120,40,0.3)', selection: 'rgba(208, 168, 96, 0.4)' }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
 
@@ -537,7 +549,7 @@ function getClientScript(ctx) {
       termWrapper.style.background = t.terminal;
       termWrapper.style.borderColor = t.border;
       termWrapper.style.boxShadow = '0 4px 24px ' + t.shadow;
-      term.options.theme = { background: t.terminal, foreground: t.fg, cursor: t.cursor, selectionBackground: t.border };
+      term.options.theme = { background: t.terminal, foreground: t.fg, cursor: t.cursor, selectionBackground: t.selection };
     }
 
     themePicker.addEventListener('click', (e) => {

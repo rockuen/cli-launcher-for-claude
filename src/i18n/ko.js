@@ -86,6 +86,12 @@ module.exports = {
   fsTip: 'Fullscreen 모드 — 드래그/복사/우클릭 정상 동작',
   fsExportWarn: '⚠ Fullscreen 모드: 현재 화면만 내보냅니다 (전체 대화 아님)',
   fsHintToast: 'Fullscreen 모드 감지 — 마우스 캡처 비활성화됨',
+  // session nesting (v2.6.0)
+  nestPickPlaceholder: '어느 세션 아래로 둘까요? (2단계 중첩)',
+  nestNoCandidates: '중첩할 수 있는 세션이 없습니다',
+  nestSelfErr: '자기 자신 아래로 둘 수 없습니다',
+  nestDepthErr: '2단계까지만 중첩됩니다 (이미 하위 세션인 곳에는 또 중첩 불가)',
+  nestHasChildrenErr: '이 세션은 이미 하위 세션을 가지고 있어 다른 곳에 중첩할 수 없습니다',
   // slash commands
   slashCompact: '대화 컨텍스트 압축', slashClear: '대화 초기화',
   slashModel: '모델 변경', slashCost: '비용 확인', slashHelp: '도움말 보기',

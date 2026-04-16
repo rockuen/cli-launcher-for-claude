@@ -87,6 +87,12 @@ module.exports = {
   fsTip: 'Fullscreen mode — drag/copy/right-click work normally',
   fsExportWarn: '⚠ Fullscreen mode: only current screen will be exported',
   fsHintToast: 'Fullscreen mode detected — mouse capture disabled',
+  // session nesting (v2.6.0)
+  nestPickPlaceholder: 'Nest under which session? (max 2 levels)',
+  nestNoCandidates: 'No sessions available to nest under',
+  nestSelfErr: 'Cannot nest a session under itself',
+  nestDepthErr: 'Only 2 levels of nesting allowed',
+  nestHasChildrenErr: 'This session already has sub-sessions and cannot be nested',
   // slash commands
   slashCompact: 'Compress conversation context', slashClear: 'Clear conversation',
   slashModel: 'Change model', slashCost: 'Check cost', slashHelp: 'Show help',

@@ -65,10 +65,12 @@ function activate(context) {
     })
   );
 
-  // Session tree view
+  // Session tree view — v2.6.0: register TreeDragAndDropController via provider
   state.sessionTreeProvider = new SessionTreeDataProvider(context);
   const treeView = vscode.window.createTreeView('claudeCodeLauncher.sessionList', {
-    treeDataProvider: state.sessionTreeProvider
+    treeDataProvider: state.sessionTreeProvider,
+    dragAndDropController: state.sessionTreeProvider,
+    canSelectMany: true
   });
   context.subscriptions.push(treeView);
 
@@ -203,6 +205,77 @@ function activate(context) {
       if (!fs.existsSync(src)) return;
       fs.renameSync(src, path.join(projDir, sessionId + '.jsonl'));
       if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+    })
+  );
+
+  // v2.6.0: sort + nesting commands
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.moveSessionUp', (item) => {
+      const sid = item?._sessionId;
+      if (sid) state.sessionTreeProvider.moveSessionUp(sid);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.moveSessionDown', (item) => {
+      const sid = item?._sessionId;
+      if (sid) state.sessionTreeProvider.moveSessionDown(sid);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.moveUnderSession', async (item) => {
+      const sid = item?._sessionId;
+      if (!sid) return;
+      // Build candidate list: top-level sessions only (parent empty), not self
+      const parents = sessionStoreGet('claudeSessionParent', {});
+      const titleMap = sessionStoreGet('claudeSessionTitles', {});
+      const projDir = state.sessionTreeProvider._getProjectDir();
+      if (!projDir) return;
+      const files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl'));
+      const hasChildrenOfMe = Object.values(parents).some(p => p === sid);
+      if (hasChildrenOfMe) {
+        vscode.window.showWarningMessage(t('nestDepthErr'));
+        return;
+      }
+      const candidates = [];
+      for (const f of files) {
+        const cid = f.replace('.jsonl', '');
+        if (cid === sid) continue;
+        if (parents[cid]) continue; // can't nest under a sub-session
+        const label = titleMap[cid] || cid.substring(0, 8);
+        candidates.push({ label, detail: cid, sessionId: cid });
+      }
+      if (candidates.length === 0) {
+        vscode.window.showInformationMessage(t('nestNoCandidates'));
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(candidates, {
+        placeHolder: t('nestPickPlaceholder'),
+        matchOnDetail: true
+      });
+      if (!pick) return;
+      const result = state.sessionTreeProvider.setSessionParent(sid, pick.sessionId);
+      if (!result.ok) {
+        const reasons = { self: t('nestSelfErr'), depth: t('nestDepthErr'), hasChildren: t('nestHasChildrenErr') };
+        vscode.window.showWarningMessage(reasons[result.reason] || 'Failed to nest');
+      }
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.removeSessionParent', (item) => {
+      const sid = item?._sessionId;
+      if (sid) state.sessionTreeProvider.removeSessionParent(sid);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.moveGroupUp', (item) => {
+      const name = item?._groupName;
+      if (name) state.sessionTreeProvider.moveGroupUp(name);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.moveGroupDown', (item) => {
+      const name = item?._groupName;
+      if (name) state.sessionTreeProvider.moveGroupDown(name);
     })
   );
 

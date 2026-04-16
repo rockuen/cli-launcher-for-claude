@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "2.5.7",
+  "version": "2.6.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -82,6 +82,42 @@
         "title": "Empty Trash",
         "icon": "$(close-all)",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.moveSessionUp",
+        "title": "Move Up",
+        "icon": "$(arrow-up)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.moveSessionDown",
+        "title": "Move Down",
+        "icon": "$(arrow-down)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.moveUnderSession",
+        "title": "Nest Under Session...",
+        "icon": "$(list-tree)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.removeSessionParent",
+        "title": "Unnest (Move to Top Level)",
+        "icon": "$(arrow-left)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.moveGroupUp",
+        "title": "Move Group Up",
+        "icon": "$(arrow-up)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.moveGroupDown",
+        "title": "Move Group Down",
+        "icon": "$(arrow-down)",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -117,12 +153,12 @@
       "view/item/context": [
         {
           "command": "claudeCodeLauncher.moveToGroup",
-          "when": "view == claudeCodeLauncher.sessionList && viewItem != trashed && viewItem != customGroup && viewItem != trashGroup",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
           "group": "inline@1"
         },
         {
           "command": "claudeCodeLauncher.trashSession",
-          "when": "view == claudeCodeLauncher.sessionList && viewItem != trashed && viewItem != customGroup && viewItem != trashGroup",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
           "group": "inline@2"
         },
         {
@@ -144,6 +180,36 @@
           "command": "claudeCodeLauncher.emptyTrash",
           "when": "view == claudeCodeLauncher.sessionList && viewItem == trashGroup",
           "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionUp",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionDown",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
+          "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.moveUnderSession",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == session",
+          "group": "2_nest@1"
+        },
+        {
+          "command": "claudeCodeLauncher.removeSessionParent",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == subSession",
+          "group": "2_nest@2"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupUp",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupDown",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
+          "group": "1_order@2"
         }
       ],
       "view/title": [
