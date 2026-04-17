@@ -92,6 +92,11 @@ module.exports = {
   fsOverrideOff: '자동 감지 모드로 복귀',
   redrawTip: '화면 새로고침 (Ctrl+Shift+R) — 세션·대화는 유지, 표시만 재그림',
   redrawToast: '화면 재그림 요청 — TUI 다시 그리는 중...',
+  autoEffortMaxLabel: '자동 /effort max',
+  autoEffortMaxTip: '세션이 처음 idle 상태가 되면 /effort max 를 자동으로 한 번 전송합니다. Reload Window 로 세션 복구 후 effort 재설정에 유용.',
+  autoEffortMaxOn: '자동 /effort max 켜짐 — 다음 세션 시작 시 자동 전송',
+  autoEffortMaxOff: '자동 /effort max 꺼짐',
+  autoEffortMaxToast: '자동 /effort max 전송됨',
   // session nesting (v2.6.0)
   nestPickPlaceholder: '어느 세션 아래로 둘까요? (2단계 중첩)',
   nestNoCandidates: '중첩할 수 있는 세션이 없습니다',

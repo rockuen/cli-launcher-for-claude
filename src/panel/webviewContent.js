@@ -112,6 +112,10 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <label>${T.ctxParticlesOff.replace(/끄기|Off/i, '')}</label>
         <div class="settings-toggle ${settings.particlesEnabled !== false ? 'on' : ''}" id="set-particles"></div>
       </div>
+      <div class="settings-row">
+        <label title="${T.autoEffortMaxTip}">${T.autoEffortMaxLabel}</label>
+        <div class="settings-toggle ${settings.autoEffortMax === true ? 'on' : ''}" id="set-autoeffortmax"></div>
+      </div>
       <div style="border-top:1px solid ${border};margin:12px 0 8px;"></div>
       <details>
         <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">Custom Buttons</summary>

@@ -93,6 +93,11 @@ module.exports = {
   fsOverrideOff: 'Back to auto-detect mode',
   redrawTip: 'Redraw screen (Ctrl+Shift+R) — session/history preserved, visual refresh only',
   redrawToast: 'Redraw requested — repainting TUI...',
+  autoEffortMaxLabel: 'Auto /effort max',
+  autoEffortMaxTip: 'Automatically send /effort max once the session first becomes idle. Useful after reload window restores sessions.',
+  autoEffortMaxOn: 'Auto /effort max on — will fire on next session start',
+  autoEffortMaxOff: 'Auto /effort max off',
+  autoEffortMaxToast: 'Auto /effort max sent',
   // session nesting (v2.6.0)
   nestPickPlaceholder: 'Nest under which session? (max 2 levels)',
   nestNoCandidates: 'No sessions available to nest under',
