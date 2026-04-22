@@ -1,5 +1,7 @@
 # CLI Launcher for Claude
 
+> **⚠️ This project has moved to [rockuen/podium](https://github.com/rockuen/podium) as "Podium CLI Launcher for Claude" (v0.0.1+). This repository is frozen at v2.7.33 — please install the new extension for future updates.**
+
 Run [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) inside a rich Webview terminal tab — with status icons, session management, and productivity features.
 
 ## Features
