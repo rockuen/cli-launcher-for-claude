@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.7.25] - 2026-04-22
+
+### Final Deprecation Release
+
+This release marks the **end of `rockuen.cli-launcher-for-claude`**. The extension has been rebranded and continues as **Podium CLI Launcher for Claude** — please install the new extension for future updates:
+
+- **New GitHub repo**: https://github.com/rockuen/podium
+- **New Open VSX listing**: `rockuen.podium`
+- **Migration**: VSCode/Antigravity has no automatic upgrade path between different extension IDs. Uninstall `rockuen.cli-launcher-for-claude` and install `rockuen.podium` manually.
+
+### Content
+
+The functional content of v2.7.25 is **identical to v2.6.6** (stable launcher, no Podium orchestration). Intermediate versions v2.6.7 through v2.7.24 were WIP integration builds now superseded by the Podium rebrand and no longer distributed here.
+
 ## [2.6.6] - 2026-04-17
 
 ### Added
