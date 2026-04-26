@@ -94,6 +94,13 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         </select>
       </div>
       <div class="settings-row">
+        <label title="Backend used by the default 'Open Claude Code' action (keybinding + title icon). Webview keeps the rich xterm.js terminal; tmux/psmux runs Claude inside an external multiplexer session.">Default Terminal</label>
+        <select class="settings-select" id="set-default-backend">
+          <option value="webview">Webview (default)</option>
+          <option value="multiplexer">tmux / psmux</option>
+        </select>
+      </div>
+      <div class="settings-row">
         <label>Font Size</label>
         <div style="display:flex;align-items:center;gap:6px;">
           <input type="range" id="set-fontsize" min="8" max="22" step="1" value="${fontSize}" style="width:80px;">

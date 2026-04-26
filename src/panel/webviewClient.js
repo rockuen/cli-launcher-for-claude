@@ -413,6 +413,7 @@ function getClientScript(ctx) {
     const setSound = document.getElementById('set-sound');
     const setParticles = document.getElementById('set-particles');
     const setAutoEffortMax = document.getElementById('set-autoeffortmax');
+    const setDefaultBackend = document.getElementById('set-default-backend');
 
     function toggleSettings() {
       const visible = settingsModal.style.display === 'block';
@@ -421,6 +422,7 @@ function getClientScript(ctx) {
         setTheme.value = SETTINGS.defaultTheme || 'default';
         setFontsize.value = currentFontSize;
         setFontsizeLabel.textContent = currentFontSize + 'px';
+        if (setDefaultBackend) setDefaultBackend.value = SETTINGS.defaultBackend || 'webview';
       }
     }
 
@@ -440,6 +442,14 @@ function getClientScript(ctx) {
       const item = document.querySelector('.theme-item[data-theme="' + v + '"]');
       if (item) item.click();
     });
+
+    if (setDefaultBackend) {
+      setDefaultBackend.addEventListener('change', () => {
+        const v = setDefaultBackend.value;
+        SETTINGS.defaultBackend = v;
+        vscode.postMessage({ type: 'save-setting', key: 'terminal.defaultBackend', value: v });
+      });
+    }
 
     setFontsize.addEventListener('input', () => {
       const v = parseInt(setFontsize.value);
