@@ -165,6 +165,10 @@
       {
         "command": "claudeCodeLauncher.openTerminal",
         "title": "Open Claude Code (use default backend)",
+        "icon": {
+          "light": "./icons/claude-robot.svg",
+          "dark": "./icons/claude-robot.svg"
+        },
         "category": "Claude"
       }
     ],
