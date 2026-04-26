@@ -1,3 +1,10 @@
 node_modules/
 *.vsix
 .DS_Store
+
+# Phase 0 — TS / esbuild build outputs
+out/
+.test-out/
+
+# Phase 0 — local agent state (plans, runtime state, drafts)
+.omc/
