@@ -168,7 +168,12 @@ class SessionTreeDataProvider {
       const allGroupKeys = Object.keys(customGroups);
       childGroupNames.sort((a, b) => allGroupKeys.indexOf(a) - allGroupKeys.indexOf(b));
 
-      const subGroupNodes = childGroupNames.map(makeGroupNode);
+      // Phase 13 hotfix: makeGroupNode returns null for empty sub-groups
+      // (depth-3 leaf with no sessions, etc.). filter(Boolean) is required
+      // before the reduce — otherwise null._totalCount throws and the
+      // whole tree fails to render, surfacing as 'No session history'
+      // and a 'Cannot read properties of null' toast on every refresh.
+      const subGroupNodes = childGroupNames.map(makeGroupNode).filter(Boolean);
 
       const totalCount = directItems.length + subGroupNodes.reduce((s, n) => s + (n._totalCount || 0), 0);
       if (totalCount === 0 && subGroupNodes.length === 0) return null;
