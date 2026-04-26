@@ -1,5 +1,78 @@
 # Changelog
 
+## [3.0.0] - 2026-04-26
+
+### OMC integration arc — major chapter restart
+
+After the brief Podium fork was archived, active development returned to this repo
+and shipped the OMC integration as additive features on top of the v2.6.6 launcher.
+None of the v2.6.x behavior was removed. The v3.0 number reflects the surface area
+added (TS toolchain, multi-backend terminal, OMC-gated UI), not breaking changes.
+
+#### Added — toolchain (Phase 0)
+- TypeScript + esbuild + `node:test` build pipeline.
+- `vscode` engine bumped to `^1.85.0`.
+
+#### Added — multiplexer abstraction (Phase 1, 6, 9, 12)
+- `IMultiplexerBackend` + `TmuxBackend` (Mac/Linux) + `PsmuxBackend` (Windows).
+- New settings: `terminal.defaultBackend`, `terminal.multiplexerLifecycle`,
+  `multiplexer.preferred`.
+- Smart `Open Claude Code (use default backend)` wrapper drives keybinding +
+  editor title icon. Explicit *Open Claude Code* (Webview) and *Open Claude Code
+  in tmux/psmux* commands stay in the palette for per-action overrides.
+- In-place multiplexer mode: same Webview tab, multiplexer client inside.
+- `kill-on-close` lifecycle (default) avoids zombie sessions; `detached` for
+  external attach workflows; *Clean Up Detached Multiplexer Sessions* command.
+- Silent Webview fallback when no multiplexer binary is on PATH.
+
+#### Added — OMC mode (Phase 3, 4)
+- `OMCRuntime.detectOMC()` two-of-three majority detection.
+- `claudeCodeLauncher.omcModeActive` context key + *Enter / Exit OMC Mode*.
+- One-time onboarding info message when OMC is detected.
+
+#### Added — CCG tri-model viewer (Phase 5)
+- Sidebar tree of every `/ccg` artifact pair (`.omc/artifacts/ask/`).
+- Per-pair Webview comparison panel (~10 KB esbuild bundle).
+- Commands: *Show CCG*, *Refresh CCG*, *Open CCG Pair*, *Rerun CCG* (OMC-gated).
+
+#### Added — HUD status bar (Phase 7)
+- `<workspace>/.omc/state/hud-stdin-cache.json` watcher.
+- Status bar pill: model / context % / total cost / 5-hour rate-limit %.
+- *Show HUD Snapshot* dumps the live JSON to the orchestration output channel.
+
+#### Added — file-path UX (Phase 11)
+- Brace expansion in *Open File* / *Open Folder* handlers — patterns like
+  `worker-{1,2,3}/answer.md` open every alternative in one click.
+
+#### Added — nested session groups (Phase 13 + hotfixes)
+- Sub-folder support up to depth 3 (e.g. `Work/Backend/API`).
+- *Add Sub-Group* + *New Sub-Group…* in *Move to Group…* picker.
+- *Rename Group* migrates every descendant path prefix automatically.
+- *Delete Group* removes self + descendants behind a confirm dialog.
+- Single-segment groups continue to work identically (zero regression).
+
+#### Added — per-session backend override (Phase 10)
+- *Resume in Webview* / *Resume in tmux/psmux* on the right-click menu of any
+  saved session.
+- IDE-startup auto-restore respects `terminal.defaultBackend`.
+
+#### Added — in-app settings (Phase 8b, 12)
+- *Default Terminal* and *Multiplexer Lifecycle* dropdowns in the launcher's
+  gear modal — same dotted keys as the host Settings UI.
+
+#### Fixed
+- `colors.ts`/`HUD` modules split so unit tests don't need a vscode mock.
+- Editor title button regained its Claude robot icon after Phase 8 hand-off.
+- Empty sub-group `null` dereference in the tree builder (Phase 13 hotfix).
+- Sub-group disappear-on-move where moving the last session out of a root
+  group emptied the path key and lost both root and sub-group from the
+  tree — preserve key + render-time ancestor synthesis (Phase 13 hotfix-2).
+
+#### Background
+This release closes the cli-launcher → Podium → cli-launcher round-trip.
+The Podium fork is archived at v0.16.0; OMC features now live here as
+opt-in extensions of the launcher rather than a separate product.
+
 ## [2.7.25] - 2026-04-22
 
 ### Final Deprecation Release

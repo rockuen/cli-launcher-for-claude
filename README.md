@@ -1,124 +1,213 @@
-# CLI Launcher for Claude
+<p align="center">
+  <img src="icons/icon-128.png" alt="CLI Launcher for Claude" width="96" height="96"/>
+</p>
 
-> **🔄 Development resumed here as of 2026-04-26.**
->
-> This project briefly forked to [rockuen/podium](https://github.com/rockuen/podium) between 2026-04-22 and 2026-04-25, but that experiment is now [archived at v0.16.0](https://github.com/rockuen/podium/releases/tag/v0.16.0). Active development has returned to this repository — OMC (Oh-My-Claudecode) integration will land here as an extension feature rather than a separate product.
->
-> 🇰🇷 본 프로젝트의 개발이 2026-04-26부터 다시 이 리포에서 진행됩니다. 2026-04-22~25 동안 별도 제품 [rockuen/podium](https://github.com/rockuen/podium)으로 분기했으나 그 실험은 [v0.16.0에서 동결](https://github.com/rockuen/podium/releases/tag/v0.16.0)되었고, 개발은 다시 본 리포로 돌아왔습니다. OMC 통합은 별도 제품이 아니라 본 launcher의 확장 기능으로 추가될 예정입니다.
+<h1 align="center">CLI Launcher for Claude</h1>
 
-Run [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) inside a rich Webview terminal tab — with status icons, session management, and productivity features.
+<p align="center">
+  <strong>Run Claude Code inside a rich Webview tab — with status icons, session management,
+  themes, optional tmux/psmux backend, and OMC integration.</strong>
+</p>
+
+<p align="center">
+  <em>VSCode / Antigravity extension for the
+  <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code CLI</a>.</em>
+</p>
+
+---
+
+## Why this exists
+
+Claude Code is great in a plain terminal, but a terminal is a thin host: no per-session
+status, no save/restore, no themes, no quick way to switch backends, no place to surface
+OMC artifacts. **CLI Launcher** wraps the CLI in a Webview tab so each session has its
+own icon-aware lifecycle, lives in a sidebar tree you can group and re-attach to, and can
+optionally run inside a tmux/psmux session for power-user workflows. OMC integration is
+gated behind a single mode toggle so non-OMC users never see the extra surface.
+
+## Install
+
+Three ways to install:
+
+1. **Open VSX**: search for *CLI Launcher for Claude* in the Extensions view (Antigravity)
+   or VSCode (with the [Open VSX gallery](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude)).
+2. **VSIX**: download the latest `cli-launcher-for-claude-<platform>-<version>.vsix` from
+   [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases) and
+   install via `Extensions: Install from VSIX...`.
+3. **Build from source**:
+   ```bash
+   git clone https://github.com/rockuen/cli-launcher-for-claude.git
+   cd cli-launcher-for-claude
+   npm install && npm run build && npm run package
+   ```
+
+Requires `claude` on `PATH` (`npm install -g @anthropic-ai/claude-code` or the
+official standalone install).
+
+## Quick start
+
+- **Open a session**: `Cmd/Ctrl+Shift+;` or click the Claude icon in the editor title bar.
+- **Resume a session**: click any entry in the **Sessions** sidebar (sidebar → Claude Code activity).
+- **Settings**: gear icon (⚙) at the top of the launcher panel.
 
 ## Features
 
-### Terminal with Status Icons
-- **Tab icon changes** based on CLI state: idle (gray), running (yellow), done (green), error (red)
-- **Ambient glow** border effect matches the current state
-- **Response timer** shows elapsed time while Claude is processing
+### Terminal with status awareness
+- Tab icon flips through **idle / running / done / error / needs-attention** based on the PTY stream.
+- Ambient glow border + response timer mirror the same state.
+- **Interactive prompt fast-path**: `[Y/n]`, `Press Enter to continue…`, etc. trigger
+  `needs-attention` immediately instead of waiting out the 7-second running threshold.
+- Title blinks while a tab needs attention but isn't focused.
 
-### Session Management
-- **Session save/restore** — sessions persist across IDE restarts
-- **Resume Later** — close a session and resume it from the sidebar
-- **Session grouping** — "Resume Later" and "Recent Sessions" groups in sidebar
-- **Split view** — restore multi-panel layouts
+### Session management
+- **Save / restore** across IDE restarts (sessions live in `sessions.json`, no workspaceState lock-in).
+- **Resume Later** group + **Recent Sessions** + **Trash** built-ins.
+- **Custom groups** with drag-and-drop, rename, delete, reorder.
+- **Nested sub-folders up to 3 levels** (`Work → Backend → API`). Right-click a group → *Add Sub-Group*.
+- **Sub-sessions**: nest one session under another with *Nest Under Session…*.
 
-### Context Usage Indicator
-- **Toolbar progress bar** shows token usage at a glance
-- **Auto-updates** from Claude Code's status line (`ctx:52%` in prompt)
-- Click `ctx` to manually refresh via `/context` command
-- Color changes based on usage: green → orange → red
+### Context usage indicator
+- Toolbar progress bar reads Claude Code's `ctx:XX%` status line and color-codes
+  green → orange → red as the window fills.
+- Click the bar to manually refresh via `/context`.
 
-> **Tip:** Enable the status line in Claude Code for automatic context tracking:
-> ```bash
-> claude config set -g preferredNotifChannel terminal
-> ```
-> This shows `ctx:XX%` in the prompt after each response, which the launcher reads automatically.
+### Input panel
+- Slash command autocomplete (type `/` → suggestions).
+- Task queue (queue multiple prompts, run sequentially).
+- Custom buttons (label + slash command), configurable in Settings.
+- Ctrl/Cmd+Up/Down input history.
+- Drag-and-drop files / paste images / paste large text → file (configurable threshold).
 
-### Input Panel
-- **Rich input area** with Enter to send, Shift+Enter for newlines
-- **Slash command autocomplete** — type `/` to see available commands
-- **Task queue** — queue multiple prompts and run them sequentially
-- **Custom buttons** — add your own shortcut buttons (configurable)
-- **Input history** — Ctrl+Up/Down to navigate previous inputs
+### Themes & customization
+- 7 themes: Default / Midnight / Ocean / Forest / Sunset / Aurora / Warm.
+- Background particle effects with state-based animation.
+- Configurable font size and family.
+- In-extension Settings UI; Export/Import as JSON.
 
-### Customization
-- **7 background themes** — Default, Midnight, Ocean, Forest, Sunset, Aurora, Warm
-- **Background particle effects** with state-based animations
-- **Configurable font size and family**
-- **In-extension Settings UI** — gear icon or right-click menu
-- **Export/Import settings** — share your configuration as JSON
+### Brace-expanded path opening
+- File/folder click handlers expand `worker-{1,2,3}/answer.md` style patterns (common
+  in OMC team artifacts) and open every match at once.
 
-### Productivity
-- **Ctrl+C smart copy** — copies selected text, sends interrupt when no selection
-- **Image paste** — Ctrl+V to attach clipboard images
-- **File path click** — click file paths to open in editor, `.md` in Obsidian, `.html` in browser
-- **Search** — Ctrl+F to search terminal content
-- **Conversation export** — save terminal content as markdown
-- **Desktop notifications** — Windows toast / macOS notification on task completion
+## OMC mode
 
-### i18n
-- **English** and **Korean** — auto-detected from IDE language setting
+OMC-dependent features are **gated behind a single context key**. When you don't have
+OMC installed (or simply don't want it), nothing extra is surfaced.
 
-## Requirements
+Toggle: command palette → *Enter OMC Mode* / *Exit OMC Mode*. The first time the
+extension detects a local OMC install (`~/.omc/` + `omc` CLI + valid config), it asks
+once whether to enable OMC mode automatically.
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) must be installed
-- Node.js (for node-pty terminal backend)
+### What lights up under OMC mode
 
-## Installation
+- **CCG (Claude-Codex-Gemini) viewer** — sidebar tree of every `/ccg` artifact pair
+  (`.omc/artifacts/ask/codex-*.md` ↔ `gemini-*.md`) with a per-pair Webview comparison.
+  Commands: *Show CCG*, *Refresh CCG*, *Open CCG Pair*, *Rerun CCG*.
+- **HUD status bar item** — bottom-right pill showing model / context % / total cost /
+  5-hour rate-limit %, driven by `<workspace>/.omc/state/hud-stdin-cache.json`.
+- **HUD snapshot command** — *Show HUD Snapshot* dumps the current HUD JSON to the
+  output panel.
 
-1. Install from Open VSX or download `.vsix` from [Releases](https://github.com/rockuen/cli-launcher-for-claude/releases)
-2. Open command palette: `Ctrl+Shift+P` → `Open Claude Code`
-3. Or use keyboard shortcut: `Ctrl+Shift+;` (`Cmd+Shift+;` on Mac)
+## Optional tmux/psmux backend
 
-## Settings
+The launcher can wrap claude inside an attached tmux (Mac/Linux) or psmux (Windows)
+session, all inside the same Webview tab. The Webview UI is identical — only the
+underlying pty changes — so power users get external attach + multi-machine workflows
+without giving up the launcher's terminal niceties.
 
-Access settings via the **gear icon** in the toolbar or **right-click → Settings**.
+### Switching modes
+- **In-app**: Settings (⚙) → *Default Terminal* → `Webview` or `tmux / psmux`.
+- **Per-action override**:
+  - Command palette → *Open Claude Code* (always Webview)
+  - Command palette → *Open Claude Code in tmux/psmux* (always multiplexer)
+- **Per-session override** (right-click a saved session): *Resume in Webview* or
+  *Resume in tmux/psmux*.
 
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `defaultTheme` | Background theme | `default` |
-| `defaultFontSize` | Terminal font size (8-22) | `11` |
-| `defaultFontFamily` | Terminal font family | `D2Coding, Consolas, monospace` |
-| `soundEnabled` | Task completion sound | `true` |
-| `particlesEnabled` | Background particle effects | `true` |
-| `customButtons` | Input panel shortcut buttons | `[]` |
-| `customSlashCommands` | Autocomplete slash commands | `[]` |
+### Session lifecycle
+By default (`kill-on-close`), closing the launcher tab also kills the tmux/psmux session
+so claude is fully cleaned up — same lifecycle as the Webview backend, no zombies.
 
-### Custom Buttons Example
+For external attach workflows, switch *Multiplexer Lifecycle* to `Leave detached`:
+- The session survives the tab close. Re-attach from any terminal with
+  `tmux attach -t cli-launcher-XXXXXXXX`.
+- Use *Clean Up Detached Multiplexer Sessions* (command palette) to nuke them in bulk
+  when you're done.
 
-```json
-"claudeCodeLauncher.customButtons": [
-  { "label": "WrapUp", "command": "/wrap-up" },
-  { "label": "GitSync", "command": "/git-sync" }
-]
+If `tmux` / `psmux` isn't on `PATH`, the multiplexer setting silently falls back to the
+Webview backend with a one-time info message; no broken UI surfaces.
+
+## Settings reference
+
+All settings live under `claudeCodeLauncher.*`. The most relevant ones:
+
+| Key | Purpose | Default |
+|---|---|---|
+| `terminal.defaultBackend` | `webview` or `multiplexer` | `webview` |
+| `terminal.multiplexerLifecycle` | `kill-on-close` or `detached` | `kill-on-close` |
+| `multiplexer.preferred` | `auto` / `tmux` / `psmux` / `none` | `auto` |
+| `defaultTheme` | one of 7 themes | `default` |
+| `defaultFontSize` | 8–22 | `11` |
+| `defaultFontFamily` | CSS font stack | D2Coding-first |
+| `soundEnabled` / `particlesEnabled` | UI polish toggles | `true` / `true` |
+| `autoEffortMax` | auto-promote to /effort max | `false` |
+| `customButtons` | extra slash-command shortcuts | `[]` |
+| `customSlashCommands` | autocomplete additions | `[]` |
+| `fileAssociations` | per-extension open method | sensible defaults |
+| `pasteToFileThreshold` | paste size that auto-creates a file | `2000` |
+
+The same picks (Default Terminal, Multiplexer Lifecycle, Theme, Font, etc.) are
+available in the in-app Settings modal, so most users never need to leave the launcher.
+
+## Commands
+
+Frequent ones (more in the command palette under the *Claude* category):
+
+- *Open Claude Code* / *Open Claude Code in tmux/psmux* — launch with explicit backend
+- Right-click in Sessions tree:
+  - *Move to Group…* (with indented picks for nested groups + *New Sub-Group…*)
+  - *Add Sub-Group* (depth ≤ 3)
+  - *Resume in Webview* / *Resume in tmux/psmux*
+  - *Rename Group* / *Delete Group* (descendants follow automatically)
+- *Show CCG* / *Refresh CCG* / *Rerun CCG* (OMC mode)
+- *Show HUD Snapshot* (OMC mode)
+- *Clean Up Detached Multiplexer Sessions*
+
+## Architecture overview
+
+```
+extension.js              ← thin re-export
+└─ src/activation.js      ← v2.6.x JS lifecycle, command registrations
+└─ src/panel/             ← Webview terminal (xterm.js + node-pty / mux client)
+└─ src/tree/              ← Sessions sidebar (drag-and-drop, nested groups)
+└─ src/handlers/          ← open-file, paste-image, brace expansion, …
+└─ src/orchestration/     ← TS, OMC integration layer (loaded lazily)
+   ├─ core/OMCRuntime.ts  ← detect ~/.omc + omc CLI
+   ├─ core/omcMode.ts     ← context key + status bar + onboarding
+   ├─ core/StateWatcher.ts ← .omc/state/hud-stdin-cache.json
+   ├─ core/CcgArtifactWatcher.ts
+   ├─ core/multiplexerLauncher.ts (legacy detached path)
+   ├─ backends/Tmux|PsmuxBackend.ts
+   ├─ ui/HUDStatusBarItem.ts
+   ├─ ui/CcgTreeProvider.ts + CcgViewerPanel.ts
+   └─ webview/ccg-viewer-main.ts (esbuild bundled)
 ```
 
-### Custom Slash Commands Example
+The v2.6.x JavaScript core is unchanged — orchestration code is added on top via
+`require('./out/orchestration')`, so users without OMC see exactly the v2.6.6
+launcher.
 
-```json
-"claudeCodeLauncher.customSlashCommands": [
-  { "cmd": "/daily-note", "desc": "Create daily note" },
-  { "cmd": "/code-review", "desc": "Run code review" }
-]
-```
+## Versioning & history
 
-### Share Settings
+- **v3.0.0** — OMC integration arc: TS+esbuild toolchain, multiplexer abstraction
+  (tmux/psmux), OMC mode, CCG viewer, HUD status bar, optional multiplexer terminal,
+  brace-expanded path opening, nested session groups (max depth 3), in-app settings UI.
+- **v2.7.25** — final v2.6.6 deprecation marker (when this repo briefly forked to
+  Podium). The Podium experiment is now [archived at v0.16.0](https://github.com/rockuen/podium/releases/tag/v0.16.0)
+  and active development returned here on 2026-04-26.
+- **v2.6.x** — stable launcher (status icons, session save/restore, themes, ctx bar,
+  custom buttons, drag-and-drop). All of that still ships unchanged inside v3.0.
 
-Use **Export** button in Settings to copy all settings as JSON, then share with teammates. They can paste and **Import** to apply.
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Shift+;` | Open Claude Code |
-| `Ctrl+C` | Copy selection / Send interrupt |
-| `Ctrl+V` | Paste text / Paste image |
-| `Ctrl+F` | Search terminal |
-| `Ctrl+=` / `Ctrl+-` | Zoom in / out |
-| `Ctrl+0` | Reset zoom |
-| `Ctrl+Up/Down` | Input history |
-| `Ctrl+Shift+Enter` | Toggle input panel |
-| `Ctrl+?` | Keyboard shortcuts help |
+Full changelog: [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](./LICENSE). Made by [@rockuen](https://github.com/rockuen).
