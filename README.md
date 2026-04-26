@@ -1,6 +1,10 @@
 # CLI Launcher for Claude
 
-> **⚠️ This project has moved to [rockuen/podium](https://github.com/rockuen/podium) as "Podium CLI Launcher for Claude" (v0.0.1+). This repository is frozen at v2.7.33 — please install the new extension for future updates.**
+> **🔄 Development resumed here as of 2026-04-26.**
+>
+> This project briefly forked to [rockuen/podium](https://github.com/rockuen/podium) between 2026-04-22 and 2026-04-25, but that experiment is now [archived at v0.16.0](https://github.com/rockuen/podium/releases/tag/v0.16.0). Active development has returned to this repository — OMC (Oh-My-Claudecode) integration will land here as an extension feature rather than a separate product.
+>
+> 🇰🇷 본 프로젝트의 개발이 2026-04-26부터 다시 이 리포에서 진행됩니다. 2026-04-22~25 동안 별도 제품 [rockuen/podium](https://github.com/rockuen/podium)으로 분기했으나 그 실험은 [v0.16.0에서 동결](https://github.com/rockuen/podium/releases/tag/v0.16.0)되었고, 개발은 다시 본 리포로 돌아왔습니다. OMC 통합은 별도 제품이 아니라 본 launcher의 확장 기능으로 추가될 예정입니다.
 
 Run [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code/overview) inside a rich Webview terminal tab — with status icons, session management, and productivity features.
 
