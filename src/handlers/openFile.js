@@ -11,6 +11,7 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const { t } = require('../i18n');
+const { expandBraces } = require('../util/braceExpand');
 
 // Resolve a possibly-partial path to an existing absolute path.
 // Tries (in order): absolute, cwd+frag, walk up cwd ancestors, homedir, platform roots.
@@ -52,6 +53,14 @@ function handleOpenFile(filePath, line, entry) {
   let raw = (filePath || '').trim();
   if (!raw) {
     vscode.window.showWarningMessage(t('fileNotFound') + filePath);
+    return;
+  }
+
+  // Phase 11: shell-style brace expansion. Agent output often contains
+  // patterns like `worker-{1,2,3}/answer.md`; open each expansion.
+  const _expansions = expandBraces(raw);
+  if (_expansions.length > 1) {
+    for (const _exp of _expansions) handleOpenFile(_exp, line, entry);
     return;
   }
 

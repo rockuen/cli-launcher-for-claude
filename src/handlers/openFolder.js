@@ -7,11 +7,19 @@ const os = require('os');
 const fs = require('fs');
 const { t } = require('../i18n');
 const { resolvePathFragment } = require('./openFile');
+const { expandBraces } = require('../util/braceExpand');
 
 function handleOpenFolder(filePath, entry) {
   let raw = (filePath || '').trim();
   if (!raw) {
     vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
+    return;
+  }
+
+  // Phase 11: shell-style brace expansion (mirrors handleOpenFile).
+  const _expansions = expandBraces(raw);
+  if (_expansions.length > 1) {
+    for (const _exp of _expansions) handleOpenFolder(_exp, entry);
     return;
   }
 
