@@ -307,6 +307,12 @@
           },
           "description": "Custom buttons in the input panel. Each button has a label and a slash command."
         },
+        "claudeCodeLauncher.multiplexer.preferred": {
+          "type": "string",
+          "enum": ["auto", "tmux", "psmux", "none"],
+          "default": "auto",
+          "description": "Multiplexer backend selection. 'auto' picks tmux on Mac/Linux and psmux on Windows. 'none' disables multiplexer integration entirely."
+        },
         "claudeCodeLauncher.fileAssociations": {
           "type": "object",
           "default": {
