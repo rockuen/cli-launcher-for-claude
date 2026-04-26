@@ -128,6 +128,27 @@
         "command": "claudeCodeLauncher.omc.exit",
         "title": "Exit OMC Mode",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.ccg.focus",
+        "title": "Show CCG",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.ccg.refresh",
+        "title": "Refresh CCG",
+        "icon": "$(refresh)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.ccg.openPair",
+        "title": "Open CCG Pair",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.ccg.rerun",
+        "title": "Rerun CCG",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -144,6 +165,11 @@
         {
           "id": "claudeCodeLauncher.sessionList",
           "name": "%sessions%"
+        },
+        {
+          "id": "claudeCodeLauncher.ccgPanel",
+          "name": "CCG",
+          "when": "claudeCodeLauncher.omcModeActive"
         }
       ]
     },
@@ -232,6 +258,11 @@
           "command": "claudeCodeLauncher.refreshSessions",
           "group": "navigation@2",
           "when": "view == claudeCodeLauncher.sessionList"
+        },
+        {
+          "command": "claudeCodeLauncher.ccg.refresh",
+          "group": "navigation@1",
+          "when": "view == claudeCodeLauncher.ccgPanel"
         }
       ]
     },
