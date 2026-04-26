@@ -161,6 +161,11 @@
         "title": "Show HUD Snapshot",
         "category": "Claude",
         "enablement": "claudeCodeLauncher.omcModeActive"
+      },
+      {
+        "command": "claudeCodeLauncher.openTerminal",
+        "title": "Open Claude Code (use default backend)",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -192,9 +197,15 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "claudeCodeLauncher.openTerminal",
+          "when": "false"
+        }
+      ],
       "editor/title": [
         {
-          "command": "claudeCodeLauncher.open",
+          "command": "claudeCodeLauncher.openTerminal",
           "group": "navigation@0"
         }
       ],
@@ -366,6 +377,16 @@
           "default": "auto",
           "description": "Multiplexer backend selection. 'auto' picks tmux on Mac/Linux and psmux on Windows. 'none' disables multiplexer integration entirely."
         },
+        "claudeCodeLauncher.terminal.defaultBackend": {
+          "type": "string",
+          "enum": ["webview", "multiplexer"],
+          "enumDescriptions": [
+            "Default — open Claude Code inside a Webview tab (rich xterm.js terminal, status icons, session save/restore).",
+            "Open Claude Code inside a tmux/psmux session. Falls back to webview if no multiplexer is detected."
+          ],
+          "default": "webview",
+          "description": "Backend used by the default 'Open Claude Code' action (keybinding + editor title icon). You can still pick the other mode any time from the command palette ('Open Claude Code' = webview, 'Open Claude Code in tmux/psmux' = multiplexer)."
+        },
         "claudeCodeLauncher.fileAssociations": {
           "type": "object",
           "default": {
@@ -389,7 +410,7 @@
     },
     "keybindings": [
       {
-        "command": "claudeCodeLauncher.open",
+        "command": "claudeCodeLauncher.openTerminal",
         "key": "ctrl+shift+;",
         "mac": "cmd+shift+;"
       }

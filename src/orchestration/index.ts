@@ -19,6 +19,7 @@ import { openClaudeInMultiplexer } from './core/multiplexerLauncher';
 import { StateWatcher } from './core/StateWatcher';
 import { HUDStatusBarItem } from './ui/HUDStatusBarItem';
 import type { HUDStdinCache } from './types/hud';
+import { pickBackend, TerminalBackend } from './core/openTerminalCommand';
 
 const MULTIPLEXER_AVAILABLE_KEY = 'claudeCodeLauncher.multiplexerAvailable';
 
@@ -182,4 +183,27 @@ export async function activate(
       ),
     );
   }
+
+  // --- Phase 8: smart `openTerminal` wrapper ---
+  // Drives keybindings + editor/title icon. Reads the user's default
+  // backend setting and delegates to the appropriate command. Falls back
+  // to webview when multiplexer is preferred but unavailable.
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.openTerminal', async () => {
+      const preference = vscode.workspace
+        .getConfiguration('claudeCodeLauncher')
+        .get<TerminalBackend>('terminal.defaultBackend', 'webview');
+      const choice = pickBackend({ preference, multiplexerAvailable });
+      const target =
+        choice === 'multiplexer'
+          ? 'claudeCodeLauncher.openInMultiplexer'
+          : 'claudeCodeLauncher.open';
+      if (preference === 'multiplexer' && choice === 'webview') {
+        output.appendLine(
+          '[openTerminal] preference=multiplexer but no multiplexer detected — falling back to webview',
+        );
+      }
+      await vscode.commands.executeCommand(target);
+    }),
+  );
 }
