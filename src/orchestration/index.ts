@@ -5,7 +5,7 @@
 //   orchestration.activate(context, outputChannel).catch(...)
 
 import * as vscode from 'vscode';
-import { activateOMCMode, OMCModeController } from './core/omcMode';
+import { activateOMCMode, OMCModeController, onDidChangeOMCMode } from './core/omcMode';
 import { CcgArtifactWatcher } from './core/CcgArtifactWatcher';
 import { CcgTreeProvider } from './ui/CcgTreeProvider';
 import { CcgViewerPanel } from './ui/CcgViewerPanel';
@@ -16,6 +16,9 @@ import {
 } from './backends/detectMultiplexer';
 import { IMultiplexerBackend } from './backends/IMultiplexerBackend';
 import { openClaudeInMultiplexer } from './core/multiplexerLauncher';
+import { StateWatcher } from './core/StateWatcher';
+import { HUDStatusBarItem } from './ui/HUDStatusBarItem';
+import type { HUDStdinCache } from './types/hud';
 
 const MULTIPLEXER_AVAILABLE_KEY = 'claudeCodeLauncher.multiplexerAvailable';
 
@@ -96,6 +99,40 @@ export async function activate(
       if (!picked) return;
       const pair = ccgProvider.findPair(picked.id);
       if (pair) await ccgDeps.onRerun(pair);
+    }),
+  );
+
+  // --- Phase 7: HUD status bar (OMC mode gated) ---
+  const hudStatus = new HUDStatusBarItem();
+  ctx.subscriptions.push(hudStatus);
+
+  const updateHudVisibility = (active: boolean) => {
+    if (active) {
+      hudStatus.show();
+    } else {
+      hudStatus.hide();
+    }
+  };
+  updateHudVisibility(controller.isActive());
+  ctx.subscriptions.push(onDidChangeOMCMode((active) => updateHudVisibility(active)));
+
+  const stateWatcher = new StateWatcher((msg) => output.appendLine(msg));
+  stateWatcher.on('hud', (hud: HUDStdinCache | null) => {
+    hudStatus.update(hud);
+  });
+  ctx.subscriptions.push({ dispose: () => stateWatcher.stop() });
+  stateWatcher.start(initialRoot);
+
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.hud.show', () => {
+      const hud = stateWatcher.getCurrent();
+      if (!hud) {
+        vscode.window.showInformationMessage('CLI Launcher HUD: no OMC state detected yet.');
+        return;
+      }
+      output.show(true);
+      output.appendLine('--- HUD snapshot ---');
+      output.appendLine(JSON.stringify(hud, null, 2));
     }),
   );
 

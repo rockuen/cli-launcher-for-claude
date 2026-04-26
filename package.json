@@ -155,6 +155,12 @@
         "command": "claudeCodeLauncher.ccg.rerun",
         "title": "Rerun CCG",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.hud.show",
+        "title": "Show HUD Snapshot",
+        "category": "Claude",
+        "enablement": "claudeCodeLauncher.omcModeActive"
       }
     ],
     "viewsContainers": {

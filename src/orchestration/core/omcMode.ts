@@ -11,6 +11,14 @@ import * as vscode from 'vscode';
 import { detectOMC } from './OMCRuntime';
 import { decideInitialMode } from './omcModeLogic';
 
+// ---------------------------------------------------------------------------
+// onDidChange event — notifies listeners when OMC mode active state changes.
+// Used by Phase 7 HUD wiring to show/hide the HUD status bar item.
+// ---------------------------------------------------------------------------
+const _onDidChangeEmitter = new vscode.EventEmitter<boolean>();
+/** Fires with `true` when OMC mode becomes active, `false` when inactive. */
+export const onDidChangeOMCMode: vscode.Event<boolean> = _onDidChangeEmitter.event;
+
 // Re-export pure types so callers only need to import from omcMode.
 export type {
   InitialModeInputs,
@@ -85,7 +93,7 @@ export async function activateOMCMode(
 
   let _active = false;
 
-  // Internal setter — updates context key, globalState, and status bar.
+  // Internal setter — updates context key, globalState, status bar, and fires onDidChange.
   async function setActive(next: boolean, persistPref: boolean): Promise<void> {
     _active = next;
     await vscode.commands.executeCommand('setContext', OMC_MODE_CONTEXT_KEY, next);
@@ -93,6 +101,7 @@ export async function activateOMCMode(
       await ctx.globalState.update(OMC_MODE_PREF_KEY, next);
     }
     applyStatusBar(statusBar, next);
+    _onDidChangeEmitter.fire(next);
   }
 
   if (decision.state === 'active') {
@@ -135,6 +144,7 @@ export async function activateOMCMode(
 
     dispose(): void {
       statusBar.dispose();
+      _onDidChangeEmitter.dispose();
     },
   };
 
