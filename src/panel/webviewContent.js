@@ -101,6 +101,13 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         </select>
       </div>
       <div class="settings-row">
+        <label title="What to do with the tmux/psmux session when the launcher tab closes. 'Kill on close' matches the webview lifecycle and avoids zombie sessions. 'Detached' leaves the session running so you can re-attach from an external terminal.">Multiplexer Lifecycle</label>
+        <select class="settings-select" id="set-mux-lifecycle">
+          <option value="kill-on-close">Kill on close (default)</option>
+          <option value="detached">Leave detached</option>
+        </select>
+      </div>
+      <div class="settings-row">
         <label>Font Size</label>
         <div style="display:flex;align-items:center;gap:6px;">
           <input type="range" id="set-fontsize" min="8" max="22" step="1" value="${fontSize}" style="width:80px;">

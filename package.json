@@ -172,6 +172,12 @@
         "category": "Claude"
       },
       {
+        "command": "claudeCodeLauncher.cleanupMultiplexerSessions",
+        "title": "Clean Up Detached Multiplexer Sessions",
+        "category": "Claude",
+        "enablement": "claudeCodeLauncher.multiplexerAvailable"
+      },
+      {
         "command": "claudeCodeLauncher.resumeSessionInWebview",
         "title": "Resume in Webview",
         "category": "Claude"
@@ -419,6 +425,16 @@
           ],
           "default": "webview",
           "description": "Backend used by the default 'Open Claude Code' action (keybinding + editor title icon). You can still pick the other mode any time from the command palette ('Open Claude Code' = webview, 'Open Claude Code in tmux/psmux' = multiplexer)."
+        },
+        "claudeCodeLauncher.terminal.multiplexerLifecycle": {
+          "type": "string",
+          "enum": ["kill-on-close", "detached"],
+          "enumDescriptions": [
+            "Default — kill the tmux/psmux session when the launcher tab closes, matching the webview backend's lifecycle.",
+            "Leave the tmux/psmux session detached when the tab closes so you can re-attach it from any external terminal."
+          ],
+          "default": "kill-on-close",
+          "description": "Lifecycle of the tmux/psmux session a multiplexer-backed launcher tab created. 'kill-on-close' avoids zombie sessions (recommended). 'detached' is for power users who want to attach the same session from an external terminal."
         },
         "claudeCodeLauncher.fileAssociations": {
           "type": "object",

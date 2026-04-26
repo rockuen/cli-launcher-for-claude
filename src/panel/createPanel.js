@@ -103,6 +103,7 @@ function createPanel(context, extensionPath, session, opts) {
   const pasteToFileThreshold = config.get('pasteToFileThreshold', 2000);
   const pasteTableAsMarkdown = config.get('pasteTableAsMarkdown', true);
   const defaultBackend = config.get('terminal.defaultBackend', 'webview');
+  const multiplexerLifecycle = config.get('terminal.multiplexerLifecycle', 'kill-on-close');
 
   const xtermCssUri = panel.webview.asWebviewUri(
     vscode.Uri.file(path.join(extensionPath, 'node_modules', 'xterm', 'css', 'xterm.css'))
@@ -128,7 +129,7 @@ function createPanel(context, extensionPath, session, opts) {
   const customSlashCommands = config.get('customSlashCommands', []);
   const fileAssociations = config.get('fileAssociations', {});
   const T = getTranslations();
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend };
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands);
 
   // Spawn claude CLI
@@ -213,7 +214,9 @@ function createPanel(context, extensionPath, session, opts) {
     cwd: cwd,
     sessionId: sessionId,
     state: 'running',
-    idleTimer: null
+    idleTimer: null,
+    backend: backend,
+    muxSessionName: muxSessionName
   };
   state.panels.set(tabId, entry);
   saveSessions();
@@ -402,6 +405,26 @@ function createPanel(context, extensionPath, session, opts) {
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
     stopTitleBlink();
     killPtyProcess(entry.pty);
+    // Phase 12: optional multiplexer session cleanup. Killing the pty above
+    // only detaches the tmux/psmux client — the server-side session keeps
+    // claude alive in the background. The 'kill-on-close' lifecycle kills
+    // it explicitly so the user does not accumulate zombie sessions.
+    if (entry.backend === 'multiplexer' && entry.muxSessionName) {
+      const lifecycle = vscode.workspace
+        .getConfiguration('claudeCodeLauncher')
+        .get('terminal.multiplexerLifecycle', 'kill-on-close');
+      if (lifecycle === 'kill-on-close') {
+        const muxBin = process.platform === 'win32' ? 'psmux' : 'tmux';
+        try {
+          require('child_process').execFile(
+            muxBin,
+            ['kill-session', '-t', entry.muxSessionName],
+            { timeout: 1500 },
+            () => {}
+          );
+        } catch (_) { /* best-effort */ }
+      }
+    }
     state.panels.delete(tabId);
     if (!state.isDeactivating) {
       saveSessions();

@@ -414,6 +414,7 @@ function getClientScript(ctx) {
     const setParticles = document.getElementById('set-particles');
     const setAutoEffortMax = document.getElementById('set-autoeffortmax');
     const setDefaultBackend = document.getElementById('set-default-backend');
+    const setMuxLifecycle = document.getElementById('set-mux-lifecycle');
 
     function toggleSettings() {
       const visible = settingsModal.style.display === 'block';
@@ -423,6 +424,7 @@ function getClientScript(ctx) {
         setFontsize.value = currentFontSize;
         setFontsizeLabel.textContent = currentFontSize + 'px';
         if (setDefaultBackend) setDefaultBackend.value = SETTINGS.defaultBackend || 'webview';
+        if (setMuxLifecycle) setMuxLifecycle.value = SETTINGS.multiplexerLifecycle || 'kill-on-close';
       }
     }
 
@@ -448,6 +450,14 @@ function getClientScript(ctx) {
         const v = setDefaultBackend.value;
         SETTINGS.defaultBackend = v;
         vscode.postMessage({ type: 'save-setting', key: 'terminal.defaultBackend', value: v });
+      });
+    }
+
+    if (setMuxLifecycle) {
+      setMuxLifecycle.addEventListener('change', () => {
+        const v = setMuxLifecycle.value;
+        SETTINGS.multiplexerLifecycle = v;
+        vscode.postMessage({ type: 'save-setting', key: 'terminal.multiplexerLifecycle', value: v });
       });
     }
 

@@ -169,6 +169,37 @@ export async function activate(
           backend: 'multiplexer',
         }),
       ),
+      // Phase 12: bulk cleanup for detached cli-launcher-* sessions left
+      // around by the 'detached' lifecycle setting (or earlier crashes).
+      vscode.commands.registerCommand(
+        'claudeCodeLauncher.cleanupMultiplexerSessions',
+        async () => {
+          try {
+            const sessions = await backend.listSessions();
+            const ours = sessions.filter((s) => s.name.startsWith('cli-launcher-'));
+            if (ours.length === 0) {
+              vscode.window.showInformationMessage(
+                `CLI Launcher: no detached ${backend.id} sessions to clean up.`,
+              );
+              return;
+            }
+            for (const s of ours) {
+              await backend.killSession(s.name);
+            }
+            vscode.window.showInformationMessage(
+              `CLI Launcher: cleaned up ${ours.length} ${backend.id} session(s).`,
+            );
+            output.appendLine(
+              `[multiplexer] cleanup killed: ${ours.map((s) => s.name).join(', ')}`,
+            );
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(
+              `CLI Launcher: failed to enumerate ${backend.id} sessions — ${msg}`,
+            );
+          }
+        },
+      ),
     );
   }
 
