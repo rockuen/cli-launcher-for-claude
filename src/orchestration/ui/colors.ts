@@ -1,5 +1,3 @@
-import * as vscode from 'vscode';
-
 /**
  * CLI Launcher brand palette — aligned with Pencil design mockup
  * (designs/omc-ide-mockup.pen). Exposed via VSCode theme colors so
@@ -103,33 +101,7 @@ export function agentHex(kind: AgentKind): string {
   }
 }
 
-export function agentThemeIcon(kind: AgentKind): vscode.ThemeIcon {
-  const id = agentIconId(kind);
-  const colorId = agentColorId(kind);
-  return colorId
-    ? new vscode.ThemeIcon(id, new vscode.ThemeColor(colorId))
-    : new vscode.ThemeIcon(id);
-}
-
 export type LauncherStatus = 'running' | 'done' | 'failed' | 'cancelled' | 'idle';
-
-export function statusThemeIcon(status: LauncherStatus | undefined): vscode.ThemeIcon {
-  switch (status) {
-    case 'running':
-      return new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor(COLOR_IDS.statusRunning));
-    case 'done':
-      return new vscode.ThemeIcon('pass', new vscode.ThemeColor(COLOR_IDS.statusDone));
-    case 'failed':
-      return new vscode.ThemeIcon('error', new vscode.ThemeColor(COLOR_IDS.statusFailed));
-    case 'cancelled':
-      return new vscode.ThemeIcon(
-        'circle-slash',
-        new vscode.ThemeColor(COLOR_IDS.statusCancelled),
-      );
-    default:
-      return new vscode.ThemeIcon('circle-outline', new vscode.ThemeColor(COLOR_IDS.statusIdle));
-  }
-}
 
 export function statusHex(status: LauncherStatus | undefined): string {
   switch (status) {
