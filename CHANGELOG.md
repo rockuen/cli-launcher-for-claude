@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.1] - 2026-04-26
+
+### Fixed
+- **Multiplexer backend on Windows**: opening the launcher with
+  `claudeCodeLauncher.terminal.defaultBackend = "multiplexer"` produced a
+  `Claude Code 시작 실패: File not found:` toast and disposed the panel
+  before any output. Root cause: bare binary names (`psmux`/`tmux`) were
+  passed to `pty.spawn`, but node-pty's `WindowsPtyAgent` does not search
+  `PATH` — it calls `fs.existsSync()` on the string directly, so the spawn
+  threw "File not found:" even though `child_process.execFileSync` had
+  successfully resolved the same binary in the detect step. Now resolved to
+  an absolute path via `where` / `which` during detect and reused for
+  spawn. Hosts without psmux/tmux still fall back silently to webview.
+
 ## [3.0.0] - 2026-04-26
 
 ### OMC integration arc — major chapter restart
