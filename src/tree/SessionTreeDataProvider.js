@@ -80,7 +80,18 @@ class SessionTreeDataProvider {
 
   _buildGroups() {
     const projDir = this._getProjectDir();
-    const customGroups = sessionStoreGet('claudeSessionGroups', {});
+    const customGroupsRaw = sessionStoreGet('claudeSessionGroups', {});
+    // Phase 13 hotfix-2: synthesize empty ancestor paths so a saved tree
+    // like { 'Foo/Bar': [...] } still renders 'Foo' as a root folder. The
+    // store object is left untouched — synthesis is render-only.
+    const customGroups = { ...customGroupsRaw };
+    for (const key of Object.keys(customGroupsRaw)) {
+      const segs = key.split('/');
+      for (let i = 1; i < segs.length; i++) {
+        const ancestor = segs.slice(0, i).join('/');
+        if (!(ancestor in customGroups)) customGroups[ancestor] = [];
+      }
+    }
     const savedSessions = sessionStoreGet('claudeSavedSessions', []);
     const parents = sessionStoreGet('claudeSessionParent', {});
     const sortOrder = sessionStoreGet('claudeSessionSortOrder', {});

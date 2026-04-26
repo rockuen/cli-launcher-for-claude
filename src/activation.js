@@ -155,10 +155,16 @@ function activate(context) {
       ];
       const choice = await vscode.window.showQuickPick(pickItems, { placeHolder: 'Move session to group...' });
       if (!choice) return;
-      // Remove from all existing groups first
+      // Remove from all existing groups first.
+      // Phase 13 hotfix-2: do NOT delete an empty group key when it still
+      // anchors a sub-group path. Otherwise moving the last session out of
+      // 'Foo' into 'Foo/Bar' nukes 'Foo' and the renderer (which only emits
+      // depth-1 paths at root) loses both 'Foo' AND 'Foo/Bar' from the tree.
+      const hasDescendants = (g) =>
+        Object.keys(groups).some(k => k !== g && k.startsWith(g + '/'));
       for (const g of Object.keys(groups)) {
         groups[g] = groups[g].filter(id => id !== sessionId);
-        if (groups[g].length === 0) delete groups[g];
+        if (groups[g].length === 0 && !hasDescendants(g)) delete groups[g];
       }
       // Also remove from legacy saved/archived
       const saved = sessionStoreGet('claudeSavedSessions', []);
