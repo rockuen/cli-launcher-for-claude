@@ -160,26 +160,14 @@ export async function activate(
   if (multiplexerBackend) {
     const backend = multiplexerBackend;
     ctx.subscriptions.push({ dispose: () => backend.dispose() });
+    // Phase 9: same launcher UI, multiplexer-attached pty inside.
+    // The webview command handles the actual spawn; this command just
+    // forwards with a backend hint.
     ctx.subscriptions.push(
-      vscode.commands.registerCommand(
-        'claudeCodeLauncher.openInMultiplexer',
-        async () => {
-          const cwd =
-            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-          try {
-            await openClaudeInMultiplexer({
-              backend,
-              cwd,
-              showInfo: (m) => vscode.window.showInformationMessage(m),
-            });
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(
-              `CLI Launcher: failed to start ${backend.id} session — ${msg}`,
-            );
-            output.appendLine(`[multiplexer] launch failed: ${msg}`);
-          }
-        },
+      vscode.commands.registerCommand('claudeCodeLauncher.openInMultiplexer', () =>
+        vscode.commands.executeCommand('claudeCodeLauncher.open', {
+          backend: 'multiplexer',
+        }),
       ),
     );
   }
@@ -194,16 +182,14 @@ export async function activate(
         .getConfiguration('claudeCodeLauncher')
         .get<TerminalBackend>('terminal.defaultBackend', 'webview');
       const choice = pickBackend({ preference, multiplexerAvailable });
-      const target =
-        choice === 'multiplexer'
-          ? 'claudeCodeLauncher.openInMultiplexer'
-          : 'claudeCodeLauncher.open';
       if (preference === 'multiplexer' && choice === 'webview') {
         output.appendLine(
           '[openTerminal] preference=multiplexer but no multiplexer detected — falling back to webview',
         );
       }
-      await vscode.commands.executeCommand(target);
+      await vscode.commands.executeCommand('claudeCodeLauncher.open', {
+        backend: choice,
+      });
     }),
   );
 }

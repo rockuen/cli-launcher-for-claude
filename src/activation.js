@@ -38,8 +38,8 @@ function activate(context) {
   context.subscriptions.push(state.statusBar);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.open', () => {
-      createPanel(context, extensionPath, null);
+    vscode.commands.registerCommand('claudeCodeLauncher.open', (opts) => {
+      createPanel(context, extensionPath, null, opts || {});
     })
   );
 

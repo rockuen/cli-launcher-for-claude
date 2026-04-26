@@ -46,13 +46,30 @@ function looksLikePrompt(data) {
   return false;
 }
 
-function createPanel(context, extensionPath, session) {
+function createPanel(context, extensionPath, session, opts) {
   let pty;
   try {
     pty = require('node-pty');
   } catch (e) {
     vscode.window.showErrorMessage(t('nodePtyFail') + e.message);
     return;
+  }
+
+  // Phase 8: backend selection. 'webview' = direct claude pty (v2.6.6 default),
+  // 'multiplexer' = wrap claude inside a tmux/psmux session so the same webview
+  // hosts an attached multiplexer client. Falls back to webview silently if
+  // the multiplexer binary is missing.
+  let backend = (opts && opts.backend) || 'webview';
+  if (backend === 'multiplexer') {
+    const muxBin = process.platform === 'win32' ? 'psmux' : 'tmux';
+    try {
+      require('child_process').execFileSync(muxBin, ['-V'], { timeout: 600, stdio: 'ignore' });
+    } catch (_) {
+      vscode.window.showInformationMessage(
+        `CLI Launcher: ${muxBin} not detected — opening with the default webview backend.`
+      );
+      backend = 'webview';
+    }
   }
 
   state.tabCounter++;
@@ -138,12 +155,28 @@ function createPanel(context, extensionPath, session) {
     : ['--session-id', sessionId];
   const args = [...resolved.args, ...claudeArgs];
 
-  console.log('[Claude Launcher] Spawning:', shell, args.join(' '), '| cwd:', cwd);
+  // Multiplexer wrap: keep the webview UI, but spawn an attached tmux/psmux
+  // client so the in-tab terminal IS the multiplexer session. Quotes
+  // whitespace-bearing tokens before joining into the single shell-command
+  // argument that `<mux> new-session` expects.
+  let spawnBin = shell;
+  let spawnArgs = args;
+  let muxSessionName = null;
+  if (backend === 'multiplexer') {
+    const muxBin = process.platform === 'win32' ? 'psmux' : 'tmux';
+    muxSessionName = `cli-launcher-${sessionId.slice(0, 8)}`;
+    const quote = (s) => (/[\s"']/.test(s) ? "'" + s.replace(/'/g, "'\\''") + "'" : s);
+    const claudeCmdString = [shell, ...args].map(quote).join(' ');
+    spawnBin = muxBin;
+    spawnArgs = ['new-session', '-A', '-s', muxSessionName, claudeCmdString];
+  }
+
+  console.log('[Claude Launcher] Spawning:', spawnBin, spawnArgs.join(' '), '| cwd:', cwd, '| backend:', backend);
   console.log('[Claude Launcher] resolved shell:', shell, '| args prefix:', resolved.args);
 
   let ptyProcess;
   try {
-    ptyProcess = pty.spawn(shell, args, {
+    ptyProcess = pty.spawn(spawnBin, spawnArgs, {
       name: 'xterm-256color',
       cols: 120,
       rows: 30,
