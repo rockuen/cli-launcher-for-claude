@@ -170,6 +170,17 @@
           "dark": "./icons/claude-robot.svg"
         },
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.resumeSessionInWebview",
+        "title": "Resume in Webview",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.resumeSessionInMultiplexer",
+        "title": "Resume in tmux/psmux",
+        "category": "Claude",
+        "enablement": "claudeCodeLauncher.multiplexerAvailable"
       }
     ],
     "viewsContainers": {
@@ -204,6 +215,14 @@
       "commandPalette": [
         {
           "command": "claudeCodeLauncher.openTerminal",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.resumeSessionInWebview",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.resumeSessionInMultiplexer",
           "when": "false"
         }
       ],
@@ -253,6 +272,16 @@
           "command": "claudeCodeLauncher.moveSessionDown",
           "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.resumeSessionInWebview",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
+          "group": "0_resume@1"
+        },
+        {
+          "command": "claudeCodeLauncher.resumeSessionInMultiplexer",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession) && claudeCodeLauncher.multiplexerAvailable",
+          "group": "0_resume@2"
         },
         {
           "command": "claudeCodeLauncher.moveUnderSession",

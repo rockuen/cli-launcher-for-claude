@@ -89,7 +89,7 @@ function activate(context) {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.resumeSession', (sessionId) => {
+    vscode.commands.registerCommand('claudeCodeLauncher.resumeSession', (sessionId, opts) => {
       const titleMap = sessionStoreGet('claudeSessionTitles', {});
       const title = titleMap[sessionId] || undefined;
       // Remove from saved sessions list when resuming
@@ -98,7 +98,32 @@ function activate(context) {
       if (filtered.length !== saved.length) {
         sessionStoreUpdate('claudeSavedSessions', filtered);
       }
-      createPanel(context, extensionPath, { sessionId, title });
+      const backend = (opts && opts.backend) || vscode.workspace
+        .getConfiguration('claudeCodeLauncher')
+        .get('terminal.defaultBackend', 'webview');
+      createPanel(context, extensionPath, { sessionId, title }, { backend });
+    }),
+    // Phase 10 — explicit backend override commands for the tree context menu.
+    // The tree's default click still goes through resumeSession (default backend);
+    // these two let the user resume the same session in the other backend
+    // without flipping the global default.
+    vscode.commands.registerCommand('claudeCodeLauncher.resumeSessionInWebview', (item) => {
+      const sessionId = typeof item === 'string' ? item : item && item._sessionId;
+      if (!sessionId) return;
+      return vscode.commands.executeCommand(
+        'claudeCodeLauncher.resumeSession',
+        sessionId,
+        { backend: 'webview' }
+      );
+    }),
+    vscode.commands.registerCommand('claudeCodeLauncher.resumeSessionInMultiplexer', (item) => {
+      const sessionId = typeof item === 'string' ? item : item && item._sessionId;
+      if (!sessionId) return;
+      return vscode.commands.executeCommand(
+        'claudeCodeLauncher.resumeSession',
+        sessionId,
+        { backend: 'multiplexer' }
+      );
     })
   );
 
@@ -307,7 +332,12 @@ function activate(context) {
   });
 
   // Restore previous sessions (MUST be last — tree + commands must be ready first)
-  restoreSessions(s => createPanel(context, extensionPath, s));
+  restoreSessions(s => {
+    const backend = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('terminal.defaultBackend', 'webview');
+    createPanel(context, extensionPath, s, { backend });
+  });
 }
 
 function deactivate() {
