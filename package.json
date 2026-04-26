@@ -118,6 +118,16 @@
         "title": "Move Group Down",
         "icon": "$(arrow-down)",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.omc.enter",
+        "title": "Enter OMC Mode",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.omc.exit",
+        "title": "Exit OMC Mode",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {

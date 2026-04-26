@@ -1,17 +1,21 @@
-// Orchestration layer entry point.
+// Orchestration layer entry point — Phase 4: OMC mode toggle.
 //
-// Phase 0 stub — toolchain bootstrap only. Real activation logic lands
-// in Phase 4 (OMC mode toggle) and Phase 5 (CCG wiring).
-//
-// Wiring contract: extension.js (root) does
-//   const { activate } = require('./out/orchestration');
-// once Phase 4 lights up the OMC mode entry point.
+// Wiring contract: activation.js does
+//   const orchestration = require('./out/orchestration');
+//   orchestration.activate(context, outputChannel).catch(...)
 
 import * as vscode from 'vscode';
+import { activateOMCMode, OMCModeController } from './core/omcMode';
 
-export function activate(
-  _ctx: vscode.ExtensionContext,
-  _output: vscode.OutputChannel,
-): void {
-  // No-op. Phase 4 will populate this with OMC mode lifecycle wiring.
+export async function activate(
+  ctx: vscode.ExtensionContext,
+  output: vscode.OutputChannel,
+): Promise<void> {
+  const controller: OMCModeController = await activateOMCMode(ctx, output);
+
+  ctx.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.omc.enter', () => controller.enable()),
+    vscode.commands.registerCommand('claudeCodeLauncher.omc.exit', () => controller.disable()),
+    { dispose: () => controller.dispose() },
+  );
 }

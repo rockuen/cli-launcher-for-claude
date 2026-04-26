@@ -298,6 +298,14 @@ function activate(context) {
     })
   );
 
+  // Phase 4 — orchestration layer (OMC mode + future OMC-dependent UI).
+  const orchestration = require('../out/orchestration');
+  const orchestrationOutput = vscode.window.createOutputChannel('CLI Launcher — Orchestration');
+  context.subscriptions.push(orchestrationOutput);
+  orchestration.activate(context, orchestrationOutput).catch((err) => {
+    orchestrationOutput.appendLine(`[orch] activate failed: ${err}`);
+  });
+
   // Restore previous sessions (MUST be last — tree + commands must be ready first)
   restoreSessions(s => createPanel(context, extensionPath, s));
 }
