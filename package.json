@@ -130,6 +130,12 @@
         "category": "Claude"
       },
       {
+        "command": "claudeCodeLauncher.openInMultiplexer",
+        "title": "Open Claude Code in tmux/psmux",
+        "category": "Claude",
+        "enablement": "claudeCodeLauncher.multiplexerAvailable"
+      },
+      {
         "command": "claudeCodeLauncher.ccg.focus",
         "title": "Show CCG",
         "category": "Claude"

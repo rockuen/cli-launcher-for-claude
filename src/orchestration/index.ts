@@ -1,4 +1,4 @@
-// Orchestration layer entry point — Phase 5: CCG tri-model viewer.
+// Orchestration layer entry point — Phase 6: optional multiplexer terminal.
 //
 // Wiring contract: activation.js does
 //   const orchestration = require('./out/orchestration');
@@ -10,6 +10,14 @@ import { CcgArtifactWatcher } from './core/CcgArtifactWatcher';
 import { CcgTreeProvider } from './ui/CcgTreeProvider';
 import { CcgViewerPanel } from './ui/CcgViewerPanel';
 import type { CcgPair, CcgSnapshot } from './types/ccg';
+import {
+  detectMultiplexer,
+  MultiplexerPreference,
+} from './backends/detectMultiplexer';
+import { IMultiplexerBackend } from './backends/IMultiplexerBackend';
+import { openClaudeInMultiplexer } from './core/multiplexerLauncher';
+
+const MULTIPLEXER_AVAILABLE_KEY = 'claudeCodeLauncher.multiplexerAvailable';
 
 export async function activate(
   ctx: vscode.ExtensionContext,
@@ -90,4 +98,51 @@ export async function activate(
       if (pair) await ccgDeps.onRerun(pair);
     }),
   );
+
+  // --- Phase 6: optional multiplexer terminal ---
+  // Detect tmux/psmux availability up-front and reflect it in a context
+  // key so package.json can hide the multiplexer command on hosts where
+  // it would never work.
+  const multiplexerPref = vscode.workspace
+    .getConfiguration('claudeCodeLauncher')
+    .get<MultiplexerPreference>('multiplexer.preferred', 'auto');
+  let multiplexerBackend: IMultiplexerBackend | null = null;
+  try {
+    multiplexerBackend = await detectMultiplexer(multiplexerPref);
+  } catch (err) {
+    output.appendLine(`[multiplexer] detect failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const multiplexerAvailable = multiplexerBackend !== null;
+  await vscode.commands.executeCommand('setContext', MULTIPLEXER_AVAILABLE_KEY, multiplexerAvailable);
+  output.appendLine(
+    `[multiplexer] preference=${multiplexerPref} available=${multiplexerAvailable}` +
+      (multiplexerBackend ? ` backend=${multiplexerBackend.id}` : ''),
+  );
+
+  if (multiplexerBackend) {
+    const backend = multiplexerBackend;
+    ctx.subscriptions.push({ dispose: () => backend.dispose() });
+    ctx.subscriptions.push(
+      vscode.commands.registerCommand(
+        'claudeCodeLauncher.openInMultiplexer',
+        async () => {
+          const cwd =
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+          try {
+            await openClaudeInMultiplexer({
+              backend,
+              cwd,
+              showInfo: (m) => vscode.window.showInformationMessage(m),
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(
+              `CLI Launcher: failed to start ${backend.id} session — ${msg}`,
+            );
+            output.appendLine(`[multiplexer] launch failed: ${msg}`);
+          }
+        },
+      ),
+    );
+  }
 }
