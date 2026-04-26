@@ -187,6 +187,12 @@
         "title": "Resume in tmux/psmux",
         "category": "Claude",
         "enablement": "claudeCodeLauncher.multiplexerAvailable"
+      },
+      {
+        "command": "claudeCodeLauncher.addSubGroup",
+        "title": "Add Sub-Group",
+        "icon": "$(new-folder)",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -308,6 +314,11 @@
           "command": "claudeCodeLauncher.moveGroupDown",
           "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.addSubGroup",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
+          "group": "inline@3"
         }
       ],
       "view/title": [

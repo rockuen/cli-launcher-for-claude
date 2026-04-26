@@ -22,6 +22,7 @@ const { killPtyProcess } = require('./pty/kill');
 const { SessionTreeDataProvider } = require('./tree/SessionTreeDataProvider');
 const { setStatusBar } = require('./panel/statusIndicator');
 const { createPanel } = require('./panel/createPanel');
+const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
   state.context = context;
@@ -74,12 +75,16 @@ function activate(context) {
   });
   context.subscriptions.push(treeView);
 
-  // Track expanded groups
+  // Track expanded groups. For custom groups use _groupName (full path) so
+  // nested groups at the same leaf name are distinguished. Fall back to the
+  // label-stripped value for built-in groups (Resume Later, Recent, Trash).
   treeView.onDidExpandElement(e => {
-    if (e.element.label) state.sessionTreeProvider._expandedGroups.add(String(e.element.label).replace(/\s*\(\d+\)$/, ''));
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.sessionTreeProvider._expandedGroups.add(key);
   });
   treeView.onDidCollapseElement(e => {
-    if (e.element.label) state.sessionTreeProvider._expandedGroups.delete(String(e.element.label).replace(/\s*\(\d+\)$/, ''));
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.sessionTreeProvider._expandedGroups.delete(key);
   });
 
   context.subscriptions.push(
@@ -133,8 +138,22 @@ function activate(context) {
       if (!sessionId) return;
       const groups = sessionStoreGet('claudeSessionGroups', {});
       const groupNames = Object.keys(groups);
-      const picks = [...groupNames, '$(add) New Group...', '$(close) Remove from Group'];
-      const choice = await vscode.window.showQuickPick(picks, { placeHolder: 'Move session to group...' });
+      // Build indented picks: 'Work', '  Backend', '    API'
+      const indentedPicks = groupNames.map(n => {
+        const depth = pathDepth(n);
+        const indent = '  '.repeat(depth - 1);
+        return { label: indent + getLeafName(n), description: n, _fullPath: n };
+      });
+      const ADD_NEW = '$(add) New Group...';
+      const ADD_SUB = '$(add) New Sub-Group...';
+      const REMOVE = '$(close) Remove from Group';
+      const pickItems = [
+        ...indentedPicks,
+        { label: ADD_NEW, _fullPath: ADD_NEW },
+        { label: ADD_SUB, _fullPath: ADD_SUB },
+        { label: REMOVE, _fullPath: REMOVE }
+      ];
+      const choice = await vscode.window.showQuickPick(pickItems, { placeHolder: 'Move session to group...' });
       if (!choice) return;
       // Remove from all existing groups first
       for (const g of Object.keys(groups)) {
@@ -146,17 +165,43 @@ function activate(context) {
       sessionStoreUpdate('claudeSavedSessions', saved.filter(s => s.sessionId !== sessionId));
       const archived = sessionStoreGet('claudeArchivedSessions', []);
       sessionStoreUpdate('claudeArchivedSessions', archived.filter(s => s.sessionId !== sessionId));
-      if (choice === '$(close) Remove from Group') {
+      if (choice._fullPath === REMOVE) {
         // Just remove, already done above
-      } else if (choice === '$(add) New Group...') {
+      } else if (choice._fullPath === ADD_NEW) {
         const name = await vscode.window.showInputBox({ prompt: 'Group name' });
-        if (name) {
+        if (name && name.trim() && !name.includes('/')) {
           if (!groups[name]) groups[name] = [];
           groups[name].push(sessionId);
+        } else if (name) {
+          vscode.window.showErrorMessage('Group name cannot contain "/".');
         }
+      } else if (choice._fullPath === ADD_SUB) {
+        // Step 1: pick parent group
+        const parentPicks = groupNames
+          .filter(n => isAddAllowed(n))
+          .map(n => {
+            const depth = pathDepth(n);
+            const indent = '  '.repeat(depth - 1);
+            return { label: indent + getLeafName(n), description: n, _fullPath: n };
+          });
+        if (parentPicks.length === 0) {
+          vscode.window.showErrorMessage(`Maximum group depth (${MAX_DEPTH}) reached.`);
+          return;
+        }
+        const parentChoice = await vscode.window.showQuickPick(parentPicks, { placeHolder: 'Select parent group...' });
+        if (!parentChoice) return;
+        const leafName = await vscode.window.showInputBox({ prompt: 'Sub-group name' });
+        if (!leafName || !leafName.trim() || leafName.includes('/')) {
+          if (leafName !== undefined) vscode.window.showErrorMessage('Sub-group name cannot be empty or contain "/".');
+          return;
+        }
+        const newPath = `${parentChoice._fullPath}/${leafName.trim()}`;
+        if (!groups[newPath]) groups[newPath] = [];
+        groups[newPath].push(sessionId);
       } else {
-        if (!groups[choice]) groups[choice] = [];
-        groups[choice].push(sessionId);
+        const targetPath = choice._fullPath;
+        if (!groups[targetPath]) groups[targetPath] = [];
+        groups[targetPath].push(sessionId);
       }
       sessionStoreUpdate('claudeSessionGroups', groups);
       if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
@@ -167,8 +212,25 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.deleteGroup', async (item) => {
       const groups = sessionStoreGet('claudeSessionGroups', {});
       const choice = item?._groupName;
-      if (!choice || !groups[choice]) return;
-      delete groups[choice];
+      if (!choice || !(choice in groups)) return;
+      // Confirm
+      const descendants = getDescendants(groups, choice);
+      const toDelete = [choice, ...descendants];
+      const sessionCount = toDelete.reduce((s, p) => s + (groups[p] ? groups[p].length : 0), 0);
+      const detail = descendants.length > 0
+        ? `This will also delete ${descendants.length} sub-group(s). ${sessionCount} session(s) will be moved to Recent Sessions.`
+        : sessionCount > 0
+          ? `${sessionCount} session(s) will be moved to Recent Sessions.`
+          : '';
+      const confirm = await vscode.window.showWarningMessage(
+        `Delete group "${choice}"?${detail ? ' ' + detail : ''}`,
+        { modal: true }, 'Delete'
+      );
+      if (confirm !== 'Delete') return;
+      // Remove all descendant + self groups (sessions become ungrouped)
+      for (const p of toDelete) {
+        delete groups[p];
+      }
       sessionStoreUpdate('claudeSessionGroups', groups);
       if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
     })
@@ -177,18 +239,45 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.renameGroup', async (item) => {
       const groups = sessionStoreGet('claudeSessionGroups', {});
-      const choice = item?._groupName;
-      if (!choice || !groups[choice]) return;
-      const newName = await vscode.window.showInputBox({ prompt: 'New group name', value: choice });
-      if (!newName || newName === choice) return;
-      groups[newName] = groups[choice];
-      delete groups[choice];
-      // Update expanded state
-      if (state.sessionTreeProvider._expandedGroups.has(choice)) {
-        state.sessionTreeProvider._expandedGroups.delete(choice);
-        state.sessionTreeProvider._expandedGroups.add(newName);
+      const oldFullPath = item?._groupName;
+      if (!oldFullPath || !(oldFullPath in groups)) return;
+      const currentLeaf = getLeafName(oldFullPath);
+      const newLeaf = await vscode.window.showInputBox({ prompt: 'New group name (leaf only)', value: currentLeaf });
+      if (!newLeaf || !newLeaf.trim() || newLeaf === currentLeaf) return;
+      if (newLeaf.includes('/')) {
+        vscode.window.showErrorMessage('Group name cannot contain "/".');
+        return;
       }
-      sessionStoreUpdate('claudeSessionGroups', groups);
+      const parentPath = getParentPath(oldFullPath);
+      const newFullPath = parentPath ? `${parentPath}/${newLeaf.trim()}` : newLeaf.trim();
+      if (pathDepth(newFullPath) > MAX_DEPTH) {
+        vscode.window.showErrorMessage(`Maximum group depth (${MAX_DEPTH}) reached.`);
+        return;
+      }
+      if (newFullPath === oldFullPath) return;
+      // Rename: this group + all descendants
+      const descendants = getDescendants(groups, oldFullPath);
+      const toRename = [oldFullPath, ...descendants];
+      // Build replacement in key order
+      const allKeys = Object.keys(groups);
+      const rebuilt = {};
+      for (const k of allKeys) {
+        if (toRename.includes(k)) {
+          const newKey = newFullPath + k.substring(oldFullPath.length);
+          rebuilt[newKey] = groups[k];
+        } else {
+          rebuilt[k] = groups[k];
+        }
+      }
+      // Update expanded state
+      const exp = state.sessionTreeProvider._expandedGroups;
+      for (const old of toRename) {
+        if (exp.has(old)) {
+          exp.delete(old);
+          exp.add(newFullPath + old.substring(oldFullPath.length));
+        }
+      }
+      sessionStoreUpdate('claudeSessionGroups', rebuilt);
       if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
     })
   );
@@ -301,6 +390,33 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.moveGroupDown', (item) => {
       const name = item?._groupName;
       if (name) state.sessionTreeProvider.moveGroupDown(name);
+    })
+  );
+
+  // Phase 13: add a sub-group under a given group node
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.addSubGroup', async (item) => {
+      const parentPath = item?._groupName;
+      if (!parentPath) return;
+      if (!isAddAllowed(parentPath)) {
+        vscode.window.showErrorMessage(`Maximum group depth (${MAX_DEPTH}) reached.`);
+        return;
+      }
+      const leafName = await vscode.window.showInputBox({ prompt: `New sub-group name under "${parentPath}"` });
+      if (leafName === undefined) return; // cancelled
+      if (!leafName.trim()) {
+        vscode.window.showErrorMessage('Sub-group name cannot be empty.');
+        return;
+      }
+      if (leafName.includes('/')) {
+        vscode.window.showErrorMessage('Sub-group name cannot contain "/".');
+        return;
+      }
+      const newPath = `${parentPath}/${leafName.trim()}`;
+      const groups = sessionStoreGet('claudeSessionGroups', {});
+      if (!groups[newPath]) groups[newPath] = [];
+      sessionStoreUpdate('claudeSessionGroups', groups);
+      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
     })
   );
 

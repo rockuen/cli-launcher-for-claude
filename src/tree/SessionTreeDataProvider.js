@@ -11,6 +11,7 @@ const os = require('os');
 const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
+const { pathDepth, getDescendants } = require('../util/groupPath');
 
 const DND_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.sessions';
 const DND_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.groups';
@@ -143,20 +144,56 @@ class SessionTreeDataProvider {
       groups.push(savedGroup);
     }
 
-    // Custom groups (only top-level sessions; sub-sessions appear under parent)
-    for (const [name, ids] of Object.entries(customGroups)) {
-      const items = ids
+    // Custom groups — nested path support (Phase 13).
+    // Only depth-1 groups are rendered at root. Deeper groups appear as
+    // children of their parent group node via getChildren(item).
+    //
+    // Build a TreeItem for a given group path (recursive for sub-groups).
+    const makeGroupNode = (name) => {
+      // Direct sessions in this group (exclude sub-sessions of sessions)
+      const ids = customGroups[name] || [];
+      const directItems = ids
         .map(id => itemMap.get(id))
         .filter(Boolean)
         .filter(it => !isSubSession(it._sessionId));
-      if (items.length === 0) continue;
-      items.sort(cmp);
-      const group = new vscode.TreeItem(`${name} (${items.length})`, stateOf(name));
-      group.iconPath = new vscode.ThemeIcon('folder');
+      directItems.sort(cmp);
+
+      // Immediate child group paths (depth+1, same prefix)
+      const myDepth = pathDepth(name);
+      const childGroupNames = Object.keys(customGroups).filter(k => {
+        if (pathDepth(k) !== myDepth + 1) return false;
+        return k.startsWith(name + '/');
+      });
+      // Sort child groups by their position in customGroups key order
+      const allGroupKeys = Object.keys(customGroups);
+      childGroupNames.sort((a, b) => allGroupKeys.indexOf(a) - allGroupKeys.indexOf(b));
+
+      const subGroupNodes = childGroupNames.map(makeGroupNode);
+
+      const totalCount = directItems.length + subGroupNodes.reduce((s, n) => s + (n._totalCount || 0), 0);
+      if (totalCount === 0 && subGroupNodes.length === 0) return null;
+
+      // Label: show only the leaf segment for non-root nodes; for root nodes
+      // (depth 1) the full name IS the leaf, so it's the same.
+      const leafLabel = name.includes('/') ? name.substring(name.lastIndexOf('/') + 1) : name;
+      const label = totalCount > 0 ? `${leafLabel} (${totalCount})` : leafLabel;
+      const collState = (subGroupNodes.length > 0 || directItems.length > 0)
+        ? stateOf(name)
+        : vscode.TreeItemCollapsibleState.None;
+      const group = new vscode.TreeItem(label, collState);
+      group.iconPath = new vscode.ThemeIcon(subGroupNodes.length > 0 ? 'folder-opened' : 'folder');
       group.contextValue = 'customGroup';
       group._groupName = name;
-      group._children = items;
-      groups.push(group);
+      group._children = [...subGroupNodes, ...directItems];
+      group._totalCount = totalCount;
+      return group;
+    };
+
+    // Render only depth-1 groups at root level (sub-groups appear as children)
+    const rootGroupNames = Object.keys(customGroups).filter(k => pathDepth(k) === 1);
+    for (const name of rootGroupNames) {
+      const node = makeGroupNode(name);
+      if (node) groups.push(node);
     }
 
     // Recent Sessions (ungrouped top-level)
