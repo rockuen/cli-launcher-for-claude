@@ -60,10 +60,19 @@ function createPanel(context, extensionPath, session, opts) {
   // hosts an attached multiplexer client. Falls back to webview silently if
   // the multiplexer binary is missing.
   let backend = (opts && opts.backend) || 'webview';
+  // node-pty (WindowsPtyAgent) does NOT search PATH — it does fs.existsSync()
+  // on whatever path string we hand it, so a bare name like "psmux" throws
+  // "File not found:" even when child_process.execFileSync resolves it fine.
+  // Resolve to an absolute path here so spawn never sees a bare name.
+  let muxBinResolved = null;
   if (backend === 'multiplexer') {
     const muxBin = process.platform === 'win32' ? 'psmux' : 'tmux';
     try {
       require('child_process').execFileSync(muxBin, ['-V'], { timeout: 600, stdio: 'ignore' });
+      const whichBin = process.platform === 'win32' ? 'where' : 'which';
+      const whichOut = require('child_process')
+        .execFileSync(whichBin, [muxBin], { encoding: 'utf8', timeout: 600 });
+      muxBinResolved = whichOut.split(/\r?\n/)[0].trim() || null;
     } catch (_) {
       vscode.window.showInformationMessage(
         `CLI Launcher: ${muxBin} not detected — opening with the default webview backend.`
@@ -168,7 +177,8 @@ function createPanel(context, extensionPath, session, opts) {
     muxSessionName = `cli-launcher-${sessionId.slice(0, 8)}`;
     const quote = (s) => (/[\s"']/.test(s) ? "'" + s.replace(/'/g, "'\\''") + "'" : s);
     const claudeCmdString = [shell, ...args].map(quote).join(' ');
-    spawnBin = muxBin;
+    // Always hand node-pty an absolute path (see detect block above for why).
+    spawnBin = muxBinResolved || muxBin;
     spawnArgs = ['new-session', '-A', '-s', muxSessionName, claudeCmdString];
   }
 
