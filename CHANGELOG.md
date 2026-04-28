@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.0.3] - 2026-04-29
+
+### Changed
+- **HUD status bar — one-decimal percentages.** `5h` and `7d` rate-limit usage now render with one decimal place (`28.0%`) instead of the raw float that occasionally surfaced JS arithmetic noise like `28.000000000000004%`. Tooltip mirrors the same precision.
+- **7d reset clock — 12-hour am/pm form.** Switched from the 24-hour `M/D, Hh` form to a more compact 12-hour form: `5/6,6am` / `5/6,6pm` (`12am` for midnight, `12pm` for noon). The comma now sits flush against the hour to keep the segment tight.
+
+### Internal
+- Added `formatPct(v)` helper used by both the status bar and the tooltip so percent formatting can't drift between the two surfaces.
+
 ## [3.0.2] - 2026-04-28
 
 ### Changed
