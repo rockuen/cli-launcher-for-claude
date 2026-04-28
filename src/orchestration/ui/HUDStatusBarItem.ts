@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
 import type { HUDStdinCache } from '../types/hud';
 import { COLOR_IDS } from './colors';
-import { shortModel, formatUsd } from './hudFormatters';
-
-export { shortModel, formatUsd } from './hudFormatters';
 
 export class HUDStatusBarItem implements vscode.Disposable {
   private readonly item: vscode.StatusBarItem;
@@ -22,30 +19,30 @@ export class HUDStatusBarItem implements vscode.Disposable {
     }
 
     const parts: string[] = [];
-    const model = shortModel(hud.model?.display_name || hud.model?.id);
-    if (model) parts.push(`$(sparkle) ${model}`);
+    const fh = hud.rate_limits?.five_hour;
+    const sd = hud.rate_limits?.seven_day;
 
-    const ctxPct = hud.context_window?.used_percentage;
-    if (typeof ctxPct === 'number') {
-      parts.push(`$(graph) ${ctxPct}%`);
+    if (fh && typeof fh.used_percentage === 'number') {
+      const reset = formatResetClock(fh.resets_at);
+      parts.push(`$(clock) 5h:${fh.used_percentage}%${reset ? ` (${reset})` : ''}`);
     }
 
-    const cost = hud.cost?.total_cost_usd;
-    if (typeof cost === 'number') {
-      parts.push(`$(database) ${formatUsd(cost)}`);
-    }
-
-    const fh = hud.rate_limits?.five_hour?.used_percentage;
-    if (typeof fh === 'number') {
-      parts.push(`$(clock) 5h:${fh}%`);
+    if (sd && typeof sd.used_percentage === 'number') {
+      const reset = formatResetMonthDayHour(sd.resets_at);
+      parts.push(`$(calendar) 7d:${sd.used_percentage}%${reset ? ` (${reset})` : ''}`);
     }
 
     this.item.text = parts.length > 0 ? parts.join('  ') : '$(organization) HUD';
     this.item.tooltip = buildTooltip(hud);
+
+    const maxPct = Math.max(
+      typeof fh?.used_percentage === 'number' ? fh.used_percentage : 0,
+      typeof sd?.used_percentage === 'number' ? sd.used_percentage : 0,
+    );
     this.item.color = new vscode.ThemeColor(
-      typeof ctxPct === 'number' && ctxPct >= 85
+      maxPct >= 85
         ? COLOR_IDS.statusFailed
-        : typeof ctxPct === 'number' && ctxPct >= 60
+        : maxPct >= 60
         ? COLOR_IDS.statusRunning
         : COLOR_IDS.omc,
     );
@@ -72,16 +69,6 @@ export class HUDStatusBarItem implements vscode.Disposable {
   }
 }
 
-function formatDuration(ms: number): string {
-  const sec = Math.floor(ms / 1000);
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
 function formatResetClock(unix?: number): string | undefined {
   if (typeof unix !== 'number') return undefined;
   const d = new Date(unix * 1000);
@@ -90,64 +77,36 @@ function formatResetClock(unix?: number): string | undefined {
   return `${hh}:${mm}`;
 }
 
+function formatResetMonthDayHour(unix?: number): string | undefined {
+  if (typeof unix !== 'number') return undefined;
+  const d = new Date(unix * 1000);
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  return `${m}/${day},${hh}h`;
+}
+
 function buildTooltip(hud: HUDStdinCache): vscode.MarkdownString {
   const md = new vscode.MarkdownString(undefined, true);
   md.supportThemeIcons = true;
   md.appendMarkdown(`**CLI Launcher HUD**\n\n`);
 
-  if (hud.model?.display_name) {
-    md.appendMarkdown(`- $(sparkle) Model: \`${hud.model.display_name}\`\n`);
-  }
-  if (hud.session_id) {
-    md.appendMarkdown(`- $(key) Session: \`${hud.session_id.slice(0, 8)}\`\n`);
-  }
-
-  if (hud.context_window) {
-    const cw = hud.context_window;
-    const windowK =
-      typeof cw.context_window_size === 'number'
-        ? `${Math.round(cw.context_window_size / 1000)}K`
-        : '?';
+  const rl = hud.rate_limits;
+  if (rl?.five_hour) {
+    const reset = formatResetClock(rl.five_hour.resets_at);
     md.appendMarkdown(
-      `- $(graph) Context: ${cw.used_percentage ?? '?'}% of ${windowK}` +
-        (typeof cw.total_input_tokens === 'number'
-          ? ` · in ${cw.total_input_tokens.toLocaleString()}, out ${(cw.total_output_tokens ?? 0).toLocaleString()}`
-          : '') +
+      `- $(watch) 5h limit: ${rl.five_hour.used_percentage ?? '?'}%` +
+        (reset ? ` (resets at ${reset})` : '') +
         `\n`,
     );
   }
-
-  if (hud.cost) {
-    if (typeof hud.cost.total_cost_usd === 'number') {
-      md.appendMarkdown(`- $(database) Cost: $${hud.cost.total_cost_usd.toFixed(4)}\n`);
-    }
-    if (typeof hud.cost.total_duration_ms === 'number') {
-      md.appendMarkdown(
-        `- $(clock) Session duration: ${formatDuration(hud.cost.total_duration_ms)}` +
-          (typeof hud.cost.total_api_duration_ms === 'number'
-            ? ` (API ${formatDuration(hud.cost.total_api_duration_ms)})`
-            : '') +
-          `\n`,
-      );
-    }
-  }
-
-  if (hud.rate_limits) {
-    const rl = hud.rate_limits;
-    if (rl.five_hour) {
-      md.appendMarkdown(
-        `- $(watch) 5h limit: ${rl.five_hour.used_percentage ?? '?'}%` +
-          (formatResetClock(rl.five_hour.resets_at)
-            ? ` (resets at ${formatResetClock(rl.five_hour.resets_at)})`
-            : '') +
-          `\n`,
-      );
-    }
-    if (rl.seven_day) {
-      md.appendMarkdown(
-        `- $(calendar) 7d limit: ${rl.seven_day.used_percentage ?? '?'}%\n`,
-      );
-    }
+  if (rl?.seven_day) {
+    const reset = formatResetMonthDayHour(rl.seven_day.resets_at);
+    md.appendMarkdown(
+      `- $(calendar) 7d limit: ${rl.seven_day.used_percentage ?? '?'}%` +
+        (reset ? ` (resets at ${reset})` : '') +
+        `\n`,
+    );
   }
 
   md.appendMarkdown(`\n_Click to open CLI Launcher HUD._`);
