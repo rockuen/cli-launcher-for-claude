@@ -24,12 +24,12 @@ export class HUDStatusBarItem implements vscode.Disposable {
 
     if (fh && typeof fh.used_percentage === 'number') {
       const reset = formatResetClock(fh.resets_at);
-      parts.push(`$(clock) 5h:${fh.used_percentage}%${reset ? ` (${reset})` : ''}`);
+      parts.push(`$(clock) 5h:${formatPct(fh.used_percentage)}%${reset ? ` (${reset})` : ''}`);
     }
 
     if (sd && typeof sd.used_percentage === 'number') {
       const reset = formatResetMonthDayHour(sd.resets_at);
-      parts.push(`$(calendar) 7d:${sd.used_percentage}%${reset ? ` (${reset})` : ''}`);
+      parts.push(`$(calendar) 7d:${formatPct(sd.used_percentage)}%${reset ? ` (${reset})` : ''}`);
     }
 
     this.item.text = parts.length > 0 ? parts.join('  ') : '$(organization) HUD';
@@ -69,6 +69,10 @@ export class HUDStatusBarItem implements vscode.Disposable {
   }
 }
 
+function formatPct(v: unknown): string {
+  return typeof v === 'number' ? v.toFixed(1) : '?';
+}
+
 function formatResetClock(unix?: number): string | undefined {
   if (typeof unix !== 'number') return undefined;
   const d = new Date(unix * 1000);
@@ -82,8 +86,10 @@ function formatResetMonthDayHour(unix?: number): string | undefined {
   const d = new Date(unix * 1000);
   const m = d.getMonth() + 1;
   const day = d.getDate();
-  const hh = String(d.getHours()).padStart(2, '0');
-  return `${m}/${day},${hh}h`;
+  const h24 = d.getHours();
+  const period = h24 < 12 ? 'am' : 'pm';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${m}/${day},${h12}${period}`;
 }
 
 function buildTooltip(hud: HUDStdinCache): vscode.MarkdownString {
@@ -95,7 +101,7 @@ function buildTooltip(hud: HUDStdinCache): vscode.MarkdownString {
   if (rl?.five_hour) {
     const reset = formatResetClock(rl.five_hour.resets_at);
     md.appendMarkdown(
-      `- $(watch) 5h limit: ${rl.five_hour.used_percentage ?? '?'}%` +
+      `- $(watch) 5h limit: ${formatPct(rl.five_hour.used_percentage)}%` +
         (reset ? ` (resets at ${reset})` : '') +
         `\n`,
     );
@@ -103,7 +109,7 @@ function buildTooltip(hud: HUDStdinCache): vscode.MarkdownString {
   if (rl?.seven_day) {
     const reset = formatResetMonthDayHour(rl.seven_day.resets_at);
     md.appendMarkdown(
-      `- $(calendar) 7d limit: ${rl.seven_day.used_percentage ?? '?'}%` +
+      `- $(calendar) 7d limit: ${formatPct(rl.seven_day.used_percentage)}%` +
         (reset ? ` (resets at ${reset})` : '') +
         `\n`,
     );
