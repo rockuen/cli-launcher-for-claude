@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.0.2] - 2026-04-28
+
+### Changed
+- **HUD status bar — trimmed to rate-limits only.** Removed the model name, context-window %, and session cost segments from the status bar pill. The bar now surfaces only the two rate-limit pieces most operators actually watch:
+  - `$(clock) 5h:NN% (HH:MM)` — 5-hour window with reset clock time.
+  - `$(calendar) 7d:NN% (M/D,HHh)` — 7-day window with month/day + reset hour.
+- Status bar color now tracks the higher of 5h / 7d usage (≥85% failed-red, ≥60% running-amber, otherwise OMC orange) instead of context %.
+- Tooltip mirrors the same two-line layout — model / session / context / cost markdown sections were removed; both rate limits now show their reset time.
+
+### Internal
+- Dropped unused `shortModel` / `formatUsd` re-exports and the `formatDuration` helper from `HUDStatusBarItem.ts`. The pure formatters in `hudFormatters.ts` are kept as-is (still covered by unit tests so no test churn).
+
 ## [3.0.1] - 2026-04-26
 
 ### Fixed
