@@ -8,7 +8,6 @@ export class HUDStatusBarItem implements vscode.Disposable {
   constructor() {
     this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
     this.item.name = 'CLI Launcher HUD';
-    this.item.command = 'claudeCodeLauncher.hud.show';
     this.setIdle();
   }
 
@@ -70,7 +69,7 @@ export class HUDStatusBarItem implements vscode.Disposable {
 }
 
 function formatPct(v: unknown): string {
-  return typeof v === 'number' ? v.toFixed(1) : '?';
+  return typeof v === 'number' ? String(Math.round(v)) : '?';
 }
 
 function formatResetClock(unix?: number): string | undefined {
@@ -115,6 +114,5 @@ function buildTooltip(hud: HUDStdinCache): vscode.MarkdownString {
     );
   }
 
-  md.appendMarkdown(`\n_Click to open CLI Launcher HUD._`);
   return md;
 }

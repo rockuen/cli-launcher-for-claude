@@ -124,19 +124,6 @@ export async function activate(
   ctx.subscriptions.push({ dispose: () => stateWatcher.stop() });
   stateWatcher.start(initialRoot);
 
-  ctx.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.hud.show', () => {
-      const hud = stateWatcher.getCurrent();
-      if (!hud) {
-        vscode.window.showInformationMessage('CLI Launcher HUD: no OMC state detected yet.');
-        return;
-      }
-      output.show(true);
-      output.appendLine('--- HUD snapshot ---');
-      output.appendLine(JSON.stringify(hud, null, 2));
-    }),
-  );
-
   // --- Phase 6: optional multiplexer terminal ---
   // Detect tmux/psmux availability up-front and reflect it in a context
   // key so package.json can hide the multiplexer command on hosts where
