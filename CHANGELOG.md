@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.4] - 2026-05-02
+
+### Changed
+- **HUD status bar — no click handler.** Removed the `command:` binding on the HUD status bar item. Hovering still surfaces the same rate-limit tooltip; clicking is now a deliberate no-op so the bar acts as a passive indicator. The `claudeCodeLauncher.hud.show` command (which dumped the raw HUD JSON to the orchestration output channel) was deleted entirely along with its package.json registration.
+- **HUD percentages — integers.** `formatPct()` now uses `Math.round()` instead of `toFixed(1)`, so the status bar reads `5h:28%` / `7d:9%` instead of `28.0%` / `9.0%`. The tooltip mirrors the same precision.
+- **OMC mode — always-on by default + status pill removed.** The dedicated `$(organization) OMC` / `$(organization) OMC OFF` status bar pill and the first-run onboarding info message were both removed. `activateOMCMode()` now flips the `claudeCodeLauncher.omcModeActive` context key to `true` on activate without consulting `decideInitialMode()` — CCG and HUD UI surface immediately on first install. The `claudeCodeLauncher.omc.enter` / `omc.exit` commands stay registered (and persist via `globalState`) for power users who want to flip the mode off through the command palette.
+
+### Internal
+- `omcMode.ts` shrank from 152 → ~75 lines after dropping the status bar UI, the onboarding branch, and the initial-state decision tree. The pure logic in `omcModeLogic.ts` and its six `decideInitialMode` unit tests are unchanged — the function is still re-exported from `omcMode.ts` so any external import keeps working.
+- `HUDStatusBarItem` tooltip dropped the `_Click to open CLI Launcher HUD._` footer that turned misleading once the click handler was gone.
+
 ## [3.0.3] - 2026-04-29
 
 ### Changed
