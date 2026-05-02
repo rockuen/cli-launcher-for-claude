@@ -1,5 +1,29 @@
 # Changelog
 
+## [3.1.0] - 2026-05-02
+
+### Added
+- **Reader panel** — read-only markdown viewer for the active session. Pulls user / assistant turns directly from the session jsonl (`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`) instead of scraping the PTY transcript, so the rendered output is clean markdown with zero ANSI / CR / alt-screen workarounds. Filters out thinking blocks, `tool_use` / `tool_result`, attachments, sidechain, and system-tag-prefixed strings. Single shared panel: subsequent invocations re-render in place.
+  - **Theme toggle** in the top-right (☀ / 🌙) — choice persists in `ExtensionContext.globalState`. Default = dark; both themes use brighter foreground tokens for legibility. CSP locks the panel to a nonce'd inline script.
+  - **Save as Markdown** (💾) — `showSaveDialog` defaulted to `<workspace>/reader-<timestamp>-<title>.md`. Writes user / assistant turns as `## user — <ts>` / `## assistant — <ts>` sections; the success toast offers an Open action.
+  - Entry points: toolbar 📖 button + right-click "Open in Reader".
+- **Sidebar tree label fallback** — sessions without a saved title now fall back to the jsonl `ai-title` (Claude Code's auto-generated title) before the first-user-message fallback. Both saved and ai-titled sessions get the `comment-discussion` icon.
+- **Repo Sync — Sprint 1: auto-commit + push.** When `claudeCodeLauncher.repoSync.autoCommit` is on, file changes are buffered behind a debounce window (default 5 min) and flushed via `git add -A && commit -m "[<device>] auto-sync: <ts> (<n>)"` followed by a fire-and-forget push. Failures surface on a new left-aligned status bar item (states: disabled / idle / pending / syncing / error). On first use, an InputBox prompts for a device name and saves it to user settings (`ConfigurationTarget.Global`). New commands: `Repo Sync: Set Device Name`, `Repo Sync: Open Settings`.
+- **Repo Sync — hot reload.** `onDidChangeConfiguration` restarts the watcher when any `repoSync.*` key changes — Reload Window is no longer required.
+- **Repo Sync — shutdown safety.** `deactivate()` runs a synchronous best-effort commit so the last debounce window's changes don't get stranded if VS Code is closed before the timer fires.
+
+### Changed
+- **Export Conversation removed.** The 💾 export button (which scraped the xterm viewport with all its ANSI / alt-screen quirks) was replaced by the new Reader. The `src/handlers/exportConversation.js` module, the `export-conversation` message route, the `export-result` toast handler, and 9 i18n keys (`exportTip`, `ctxExport`, `exportingToast`, `exportDone`, `exportFailToast`, `exportFail`, `exportLabel`, `conversationSaved`, `fsExportWarn`) were all dropped.
+
+### Internal
+- New `src/lib/sessionJsonl.js` — shared jsonl parser used by both the sidebar tree label fallback and the reader panel. Handles the encoded-cwd path convention (`[/\\' ]` → `-`), ai-title scan, first-user-message scan, and message extraction.
+- New `marked@^18` dependency for jsonl text → HTML rendering.
+
+### Settings (new)
+- `claudeCodeLauncher.repoSync.autoCommit` (default `false`)
+- `claudeCodeLauncher.repoSync.deviceName` (default `""` — prompted on first sync)
+- `claudeCodeLauncher.repoSync.debounceMs` (default `300000`, min `10000`)
+
 ## [3.0.4] - 2026-05-02
 
 ### Changed
