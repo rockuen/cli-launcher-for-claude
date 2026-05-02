@@ -174,7 +174,7 @@ function routeWebviewMessage(msg, ctx) {
       return;
 
     case 'open-reader':
-      readerView.show(entry);
+      readerView.show(entry, context);
       return;
 
     case 'paste-large-text':
