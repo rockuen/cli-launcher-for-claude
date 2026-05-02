@@ -7,9 +7,15 @@
 // Theme: per-user choice (dark default), persisted to ExtensionContext
 // globalState. Toggle button in the panel flips the choice and posts back
 // to the extension so the next open keeps the same theme.
+//
+// Save: serialises current user/assistant turns to a single markdown file
+// via showSaveDialog. The default folder is the workspace root, and the
+// default filename embeds session id + timestamp.
 
 const vscode = require('vscode');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const crypto = require('crypto');
 const marked = require('marked');
 const {
@@ -23,6 +29,9 @@ const DEFAULT_THEME = 'dark';
 
 let activePanel = null;
 let _context = null;
+let currentEntry = null;
+let currentMessages = [];
+let currentAiTitle = null;
 
 function getTheme() {
   if (!_context) return DEFAULT_THEME;
@@ -60,6 +69,10 @@ function show(entry, context) {
     return;
   }
 
+  currentEntry = entry;
+  currentMessages = messages;
+  currentAiTitle = aiTitle;
+
   const stat = fs.statSync(filePath);
   const titleSuffix = aiTitle || formatStamp(stat.mtimeMs);
   const title = `Reader — ${titleSuffix}`;
@@ -81,9 +94,16 @@ function show(entry, context) {
   );
   activePanel.webview.html = html;
   activePanel.webview.onDidReceiveMessage((msg) => {
-    if (msg && msg.type === 'set-theme') setTheme(msg.theme);
+    if (!msg) return;
+    if (msg.type === 'set-theme') setTheme(msg.theme);
+    else if (msg.type === 'save-conversation') saveAsMarkdown();
   });
-  activePanel.onDidDispose(() => { activePanel = null; });
+  activePanel.onDidDispose(() => {
+    activePanel = null;
+    currentEntry = null;
+    currentMessages = [];
+    currentAiTitle = null;
+  });
 }
 
 function formatStamp(ms) {
@@ -92,10 +112,90 @@ function formatStamp(ms) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function fileSafeStamp(ms) {
+  return formatStamp(ms).replace(/[: ]/g, '-');
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[c]));
+}
+
+function sanitizeFilename(s) {
+  return String(s)
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+}
+
+async function saveAsMarkdown() {
+  const entry = currentEntry;
+  const messages = currentMessages;
+  const aiTitle = currentAiTitle;
+  if (!entry || !entry.sessionId) {
+    vscode.window.showWarningMessage('Reader: nothing to save.');
+    return;
+  }
+
+  const stamp = fileSafeStamp(Date.now());
+  const titlePart = aiTitle ? sanitizeFilename(aiTitle) : entry.sessionId.slice(0, 8);
+  const defaultName = `reader-${stamp}-${titlePart}.md`;
+
+  const wsFolder = vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0];
+  const defaultUri = wsFolder
+    ? vscode.Uri.joinPath(wsFolder.uri, defaultName)
+    : vscode.Uri.file(path.join(os.homedir(), defaultName));
+
+  let target;
+  try {
+    target = await vscode.window.showSaveDialog({
+      defaultUri,
+      filters: { Markdown: ['md'], 'All Files': ['*'] },
+    });
+  } catch (e) {
+    vscode.window.showErrorMessage('Reader: save dialog failed — ' + e.message);
+    return;
+  }
+  if (!target) return;
+
+  const text = serializeMarkdown(entry, aiTitle, messages);
+  try {
+    await vscode.workspace.fs.writeFile(target, Buffer.from(text, 'utf-8'));
+    const baseName = path.basename(target.fsPath);
+    const open = 'Open';
+    const choice = await vscode.window.showInformationMessage(
+      `Reader: saved ${baseName}`, open
+    );
+    if (choice === open) {
+      try { await vscode.commands.executeCommand('vscode.open', target); } catch (_) {}
+    }
+  } catch (e) {
+    vscode.window.showErrorMessage('Reader: save failed — ' + e.message);
+  }
+}
+
+function serializeMarkdown(entry, aiTitle, messages) {
+  const lines = [];
+  const heading = aiTitle || `Reader — ${entry.sessionId.slice(0, 8)}`;
+  lines.push(`# ${heading}`);
+  lines.push('');
+  lines.push(`- Session: \`${entry.sessionId}\``);
+  if (entry.cwd) lines.push(`- cwd: \`${entry.cwd}\``);
+  lines.push(`- Exported: ${formatStamp(Date.now())}`);
+  lines.push(`- Messages: ${messages.length}`);
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  for (const m of messages) {
+    const ts = m.timestamp ? formatStamp(new Date(m.timestamp).getTime()) : '';
+    lines.push(`## ${m.role}${ts ? ` — ${ts}` : ''}`);
+    lines.push('');
+    lines.push(m.text || '');
+    lines.push('');
+  }
+  return lines.join('\n');
 }
 
 function renderHtml({ title, entry, aiTitle, messages, theme }) {
@@ -157,14 +257,17 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   }
   .reader-empty { color: var(--fg-muted); font-style: italic; padding: 40px 0; text-align: center; }
 
-  .theme-toggle {
+  .reader-actions {
     position: fixed; top: 14px; right: 18px; z-index: 10;
+    display: flex; gap: 6px;
+  }
+  .reader-action {
     background: var(--bg); border: 1px solid var(--border); color: var(--fg);
     cursor: pointer; padding: 4px 10px; border-radius: 4px;
     font-size: 14px; line-height: 1; opacity: 0.65; transition: opacity 0.15s;
     font-family: inherit;
   }
-  .theme-toggle:hover { opacity: 1; }
+  .reader-action:hover { opacity: 1; }
 
   .msg { margin-bottom: 28px; }
   .msg-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 11px; }
@@ -204,23 +307,33 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
 </style>
 </head>
 <body class="theme-${theme}">
-<button class="theme-toggle" id="theme-toggle" title="${toggleTitle}" aria-label="Toggle theme">${toggleIcon}</button>
+<div class="reader-actions">
+  <button class="reader-action" id="save-btn" title="Save as Markdown" aria-label="Save">💾</button>
+  <button class="reader-action" id="theme-toggle" title="${toggleTitle}" aria-label="Toggle theme">${toggleIcon}</button>
+</div>
 <div class="reader-meta">${escapeHtml(meta)}</div>
 ${blocks}
 <script nonce="${nonce}">
   (function() {
     const vscode = acquireVsCodeApi();
-    const btn = document.getElementById('theme-toggle');
-    if (!btn) return;
-    btn.addEventListener('click', function() {
-      const isDark = document.body.classList.contains('theme-dark');
-      const next = isDark ? 'light' : 'dark';
-      document.body.classList.remove('theme-dark', 'theme-light');
-      document.body.classList.add('theme-' + next);
-      btn.textContent = next === 'dark' ? '☀' : '🌙';
-      btn.title = next === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
-      vscode.postMessage({ type: 'set-theme', theme: next });
-    });
+    const themeBtn = document.getElementById('theme-toggle');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', function() {
+        const isDark = document.body.classList.contains('theme-dark');
+        const next = isDark ? 'light' : 'dark';
+        document.body.classList.remove('theme-dark', 'theme-light');
+        document.body.classList.add('theme-' + next);
+        themeBtn.textContent = next === 'dark' ? '☀' : '🌙';
+        themeBtn.title = next === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+        vscode.postMessage({ type: 'set-theme', theme: next });
+      });
+    }
+    const saveBtn = document.getElementById('save-btn');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function() {
+        vscode.postMessage({ type: 'save-conversation' });
+      });
+    }
   })();
 </script>
 </body></html>`;
