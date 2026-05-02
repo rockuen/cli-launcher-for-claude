@@ -18,6 +18,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const marked = require('marked');
+const chokidar = require('chokidar');
 const {
   getSessionJsonlPath,
   extractAiTitle,
@@ -26,12 +27,16 @@ const {
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
+const LIVE_DEBOUNCE_MS = 200;
 
 let activePanel = null;
 let _context = null;
 let currentEntry = null;
 let currentMessages = [];
 let currentAiTitle = null;
+let currentFilePath = null;
+let liveWatcher = null;
+let liveDebounceTimer = null;
 
 function getTheme() {
   if (!_context) return DEFAULT_THEME;
@@ -43,6 +48,75 @@ function setTheme(theme) {
   if (!_context) return;
   if (theme !== 'dark' && theme !== 'light') return;
   _context.globalState.update(THEME_KEY, theme);
+}
+
+// Live watch: chokidar tails the active session jsonl. Claude Code flushes
+// each turn as a single batch (verified empirically — no chunk-level streaming),
+// so a single change → debounce → re-extract → postMessage pattern is enough.
+function startLiveWatch(filePath) {
+  stopLiveWatch();
+  currentFilePath = filePath;
+  try {
+    // macOS fsevents misses single-file watches under hidden paths
+    // (~/.claude/projects/...). Polling at 200ms is reliable and the cost
+    // is one stat() per tick on one file — negligible.
+    liveWatcher = chokidar.watch(filePath, {
+      persistent: true,
+      ignoreInitial: true,
+      usePolling: true,
+      interval: 200,
+    });
+    liveWatcher.on('change', (p) => { console.log('[reader] change ' + p); scheduleLiveRender(); });
+    liveWatcher.on('add',    (p) => { console.log('[reader] add ' + p);    scheduleLiveRender(); });
+    liveWatcher.on('ready',  () => console.log('[reader] watcher ready'));
+    liveWatcher.on('error',  (e) => console.error('[reader] watcher error:', e && e.message));
+    console.log('[reader] live watch ' + filePath);
+  } catch (e) {
+    console.error('[reader] failed to start live watch:', e.message);
+    liveWatcher = null;
+  }
+}
+
+function stopLiveWatch() {
+  if (liveDebounceTimer) { clearTimeout(liveDebounceTimer); liveDebounceTimer = null; }
+  if (liveWatcher) {
+    try { liveWatcher.close(); } catch (_) {}
+    liveWatcher = null;
+  }
+  currentFilePath = null;
+}
+
+function scheduleLiveRender() {
+  if (liveDebounceTimer) clearTimeout(liveDebounceTimer);
+  liveDebounceTimer = setTimeout(renderLive, LIVE_DEBOUNCE_MS);
+}
+
+function renderLive() {
+  liveDebounceTimer = null;
+  if (!activePanel || !currentFilePath || !currentEntry) {
+    console.log('[reader] renderLive skipped panel=' + !!activePanel + ' path=' + !!currentFilePath + ' entry=' + !!currentEntry);
+    return;
+  }
+  let messages, aiTitle;
+  try {
+    aiTitle = extractAiTitle(currentFilePath);
+    messages = extractMessages(currentFilePath);
+  } catch (e) {
+    console.error('[reader] re-read failed:', e.message);
+    return;
+  }
+  currentMessages = messages;
+  currentAiTitle = aiTitle;
+  try {
+    activePanel.webview.postMessage({
+      type: 'messages-updated',
+      meta: buildMeta(currentEntry, aiTitle, messages),
+      blocksHtml: renderBlocks(messages),
+    });
+    console.log('[reader] posted messages-updated count=' + messages.length);
+  } catch (e) {
+    console.error('[reader] postMessage failed:', e.message);
+  }
 }
 
 function show(entry, context) {
@@ -83,6 +157,7 @@ function show(entry, context) {
     activePanel.title = title;
     activePanel.webview.html = html;
     activePanel.reveal(undefined, false);
+    startLiveWatch(filePath);
     return;
   }
 
@@ -99,11 +174,13 @@ function show(entry, context) {
     else if (msg.type === 'save-conversation') saveAsMarkdown();
   });
   activePanel.onDidDispose(() => {
+    stopLiveWatch();
     activePanel = null;
     currentEntry = null;
     currentMessages = [];
     currentAiTitle = null;
   });
+  startLiveWatch(filePath);
 }
 
 function formatStamp(ms) {
@@ -198,28 +275,36 @@ function serializeMarkdown(entry, aiTitle, messages) {
   return lines.join('\n');
 }
 
-function renderHtml({ title, entry, aiTitle, messages, theme }) {
-  const nonce = crypto.randomBytes(16).toString('hex');
-  const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
-
+function buildMeta(entry, aiTitle, messages) {
   const metaParts = [
     aiTitle || '(untitled)',
     entry.sessionId.slice(0, 8),
     `${messages.length} message${messages.length === 1 ? '' : 's'}`,
   ];
   if (entry.cwd) metaParts.push(`cwd: ${entry.cwd}`);
-  const meta = metaParts.join(' · ');
+  return metaParts.join(' · ');
+}
 
-  const blocks = messages.length === 0
-    ? '<div class="reader-empty">No user/assistant messages yet.</div>'
-    : messages.map((m) => {
-        const ts = m.timestamp ? formatStamp(new Date(m.timestamp).getTime()) : '';
-        const body = marked.parse(m.text || '', { breaks: false, gfm: true });
-        return `<div class="msg msg-${m.role}">
+function renderBlocks(messages) {
+  if (messages.length === 0) {
+    return '<div class="reader-empty">No user/assistant messages yet.</div>';
+  }
+  return messages.map((m) => {
+    const ts = m.timestamp ? formatStamp(new Date(m.timestamp).getTime()) : '';
+    const body = marked.parse(m.text || '', { breaks: false, gfm: true });
+    return `<div class="msg msg-${m.role}">
   <div class="msg-head"><span class="role">${m.role}</span><span class="ts">${escapeHtml(ts)}</span></div>
   <div class="msg-body">${body}</div>
 </div>`;
-      }).join('\n');
+  }).join('\n');
+}
+
+function renderHtml({ title, entry, aiTitle, messages, theme }) {
+  const nonce = crypto.randomBytes(16).toString('hex');
+  const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
+
+  const meta = buildMeta(entry, aiTitle, messages);
+  const blocks = renderBlocks(messages);
 
   const toggleIcon = theme === 'dark' ? '☀' : '🌙';
   const toggleTitle = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
@@ -269,6 +354,14 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   }
   .reader-action:hover { opacity: 1; }
 
+  .reader-live-dot {
+    font-size: 9px; color: #4caf50; opacity: 0.4;
+    padding: 0 4px; transition: opacity 0.25s, transform 0.25s;
+    user-select: none; line-height: 1; cursor: default;
+    display: inline-flex; align-items: center;
+  }
+  .reader-live-dot.flash { opacity: 1; transform: scale(1.4); }
+
   .msg { margin-bottom: 28px; }
   .msg-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 11px; }
   .msg-head .role { text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
@@ -308,11 +401,12 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
 </head>
 <body class="theme-${theme}">
 <div class="reader-actions">
+  <span class="reader-live-dot" id="live-dot" title="Watching session for new messages">●</span>
   <button class="reader-action" id="save-btn" title="Save as Markdown" aria-label="Save">💾</button>
   <button class="reader-action" id="theme-toggle" title="${toggleTitle}" aria-label="Toggle theme">${toggleIcon}</button>
 </div>
-<div class="reader-meta">${escapeHtml(meta)}</div>
-${blocks}
+<div class="reader-meta" id="reader-meta">${escapeHtml(meta)}</div>
+<div id="reader-blocks">${blocks}</div>
 <script nonce="${nonce}">
   (function() {
     const vscode = acquireVsCodeApi();
@@ -334,6 +428,27 @@ ${blocks}
         vscode.postMessage({ type: 'save-conversation' });
       });
     }
+
+    const liveDot = document.getElementById('live-dot');
+    const metaEl = document.getElementById('reader-meta');
+    const blocksEl = document.getElementById('reader-blocks');
+    let flashTimer = null;
+    function flashLive() {
+      if (!liveDot) return;
+      liveDot.classList.add('flash');
+      if (flashTimer) clearTimeout(flashTimer);
+      flashTimer = setTimeout(function() { liveDot.classList.remove('flash'); flashTimer = null; }, 500);
+    }
+    window.addEventListener('message', function(e) {
+      const m = e.data;
+      console.log('[reader webview] msg', m && m.type);
+      if (!m || m.type !== 'messages-updated') return;
+      const wasNearBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 80);
+      if (typeof m.meta === 'string' && metaEl) metaEl.textContent = m.meta;
+      if (typeof m.blocksHtml === 'string' && blocksEl) blocksEl.innerHTML = m.blocksHtml;
+      if (wasNearBottom) window.scrollTo(0, document.body.scrollHeight);
+      flashLive();
+    });
   })();
 </script>
 </body></html>`;
