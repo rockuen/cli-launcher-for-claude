@@ -1,5 +1,26 @@
 # Changelog
 
+## [3.2.0] - 2026-05-03
+
+### Added
+- **Reader Live Watch (Phase 1)** — chokidar polling tail of the active session jsonl auto-refreshes the standalone reader panel as Claude streams new turns. 200ms debounce after each turn-end flush. macOS fsevents misses single-file watches under hidden `~/.claude/projects/...`, so polling (`usePolling: true, interval: 200`) is used for reliability. The ● live dot in the top-right flashes on each refresh.
+- **Reader Input Box (Phase 2)** — textarea + Send at the reader bottom. Three-mode payload routing matching the main editor: >`pasteToFileThreshold` → temp file + `@<path>`, multiline → bracketed paste sequence (`\x1b[200~ ... \x1b[201~`), single line → `text + \r`. IME-safe Enter (`e.isComposing`). Typing indicator pulses orange from PTY write until the assistant turn lands (`lastRole` payload check). PTY-dead state disables input + shows inline error.
+- **Split Layout (Phase 3)** — single cli-launcher panel now hosts the markdown reader and the xterm TUI together with a drag splitter between them. Default 70/30 reader/terminal, persisted to `globalState` (`claudeCodeLauncher.splitRatio`), clamped 0.15–0.85 so neither pane collapses. Toolbar 👁 (replacing 📖) toggles the split for the active tab only; new setting `claudeCodeLauncher.splitLayoutDefault` decides the initial state for newly opened tabs. Standalone reader panel is still reachable via the right-click context menu.
+- **Reader file/folder open (Phase 4)** — anchor clicks inside the reader route through the extension. `http(s)` reuses the existing `open-link` handler; absolute paths, `~` paths, `file://`, and `:LINE` suffixes go through a new `open-path` case that stats and dispatches to `handleOpenFile` or `handleOpenFolder`. Right-click in the reader works too: when xterm has no selection, `ctxSelectionCache` / `readSelection` fall back to `window.getSelection()`, so the existing Open File / Open Folder context items operate on selected reader text.
+
+### Changed
+- **Assistant role color → Claude orange.** Both the split-layout reader (`webviewStyles`) and the standalone reader panel (`readerView`) use `#D97757` (dark) / `#C96442` (light) for the assistant role badge and message-body left border. User role color (cyan/blue) is unchanged.
+- **Toolbar 📖 → 👁.** The button that opened the standalone reader was repurposed: it now toggles the in-panel split layout. The standalone reader stays available via the right-click context menu (Reader).
+
+### Internal
+- New `src/lib/readerRender.js` — `escapeHtml`, `formatStamp`, `buildMeta`, `renderBlocks` extracted from `readerView` so both `readerView` and `createPanel` share a single rendering path.
+- `createPanel.js` gained `startReaderWatch(entry, panel)` — chokidar polling on the session jsonl, 200ms-debounced render, posts `reader-update` to the webview. Cleaned up via `entry._stopReaderWatch` on dispose.
+- `messageRouter.js` gained two new cases: `save-split-ratio` (writes `globalState`) and `open-path` (file:// decode, `~` expand, `:LINE` strip, `fs.statSync` → dispatch).
+- `webviewClient.js` gained `setupSplitter`, `setupReaderLinks`, `applySplitVisibility`, `markReaderTyping` (4 trigger points: xterm Enter, editor textarea, queue, custom buttons), and a `reader-update` message handler.
+
+### Settings (new)
+- `claudeCodeLauncher.splitLayoutDefault` (default `false`) — show the in-panel reader+terminal split by default in new tabs.
+
 ## [3.1.0] - 2026-05-02
 
 ### Added
