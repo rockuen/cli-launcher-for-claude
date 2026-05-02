@@ -399,8 +399,8 @@ function getClientScript(ctx) {
       showToast(T.clipboardChecking);
       term.focus();
     });
-    document.getElementById('btn-export').addEventListener('click', () => {
-      exportConversation();
+    document.getElementById('btn-reader').addEventListener('click', () => {
+      vscode.postMessage({ type: 'open-reader' });
       term.focus();
     });
 
@@ -768,28 +768,6 @@ function getClientScript(ctx) {
       }
     });
 
-    function exportConversation() {
-      // v2.5.3: TUI apps (Claude CLI = Ink-based) emit cursor-move + partial
-      // writes that look like gibberish once you strip ANSI blindly (which
-      // v2.5.2 did). xterm.js already runs a full virtual-terminal state
-      // machine — let it do the work, then export the resulting text.
-      // term.getSelection() merges isWrapped logical lines correctly.
-      //
-      // v2.5.7: In alternate screen (fullscreen mode), selectAll only captures
-      // the current viewport — scroll history lives in the normal buffer which
-      // is not accessible. Warn the user so they know the export is partial.
-      if (isAlternateScreen) {
-        showToast(T.fsExportWarn);
-      }
-      term.selectAll();
-      const all = term.getSelection();
-      term.clearSelection();
-      let text = all.split('\\n').map(l => l.replace(/\\s+$/, '')).join('\\n');
-      text = text.replace(/\\n+$/, '');
-      vscode.postMessage({ type: 'export-conversation', text: text });
-      if (!isAlternateScreen) showToast(T.exportingToast);
-    }
-
     document.getElementById('btn-zoom-in').addEventListener('click', () => {
       setFontSize(currentFontSize + FONT_STEP);
       term.focus();
@@ -947,9 +925,6 @@ function getClientScript(ctx) {
       if (msg.type === 'memo-updated') {
         currentMemo = msg.memo;
         updateMemoDisplay();
-      }
-      if (msg.type === 'export-result') {
-        showToast(msg.success ? T.exportDone : T.exportFailToast);
       }
       if (msg.type === 'paste-file-ready') {
         if (msg.error) {
@@ -1417,8 +1392,8 @@ function getClientScript(ctx) {
         case 'zoom-reset':
           setFontSize(${fontSize});
           break;
-        case 'export':
-          exportConversation();
+        case 'reader':
+          vscode.postMessage({ type: 'open-reader' });
           break;
         case 'edit-memo':
           memoEl.click();

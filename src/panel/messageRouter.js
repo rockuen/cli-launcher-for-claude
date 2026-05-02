@@ -5,7 +5,7 @@
 // Message protocol (18 webview→ext):
 //   webview-ready, input, resize, toolbar, paste-image, check-clipboard-image,
 //   drop-files, open-link, rename-tab, save-setting, export-settings, import-settings,
-//   close-resume, open-file, open-folder, export-conversation, restart-session,
+//   close-resume, open-file, open-folder, open-reader, restart-session,
 //   request-edit-memo
 
 const vscode = require('vscode');
@@ -22,7 +22,7 @@ const { handlePasteImage, readClipboardImageFromSystem } = require('../handlers/
 const { handleDropFiles } = require('../handlers/dropFiles');
 const { handleOpenFile } = require('../handlers/openFile');
 const { handleOpenFolder } = require('../handlers/openFolder');
-const { handleExportConversation } = require('../handlers/exportConversation');
+const readerView = require('./readerView');
 const { handlePasteLargeText } = require('../handlers/pasteLargeText');
 const { restartPty } = require('./restartPty');
 
@@ -173,8 +173,8 @@ function routeWebviewMessage(msg, ctx) {
       handleOpenFolder(msg.filePath, entry);
       return;
 
-    case 'export-conversation':
-      handleExportConversation(msg.text, entry, panel);
+    case 'open-reader':
+      readerView.show(entry);
       return;
 
     case 'paste-large-text':

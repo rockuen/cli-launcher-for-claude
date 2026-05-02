@@ -50,7 +50,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <button class="toolbar-btn" id="btn-zoom-out" title="${T.zoomOutTip}" style="display:none">-</button>
       <span id="font-size-label" style="display:none">${fontSize}px</span>
       <button class="toolbar-btn" id="btn-zoom-in" title="${T.zoomInTip}" style="display:none">+</button>
-      <button class="toolbar-btn" id="btn-export" title="${T.exportTip}">&#x1F4BE;</button>
+      <button class="toolbar-btn" id="btn-reader" title="${T.readerTip}">&#x1F4D6;</button>
       <button class="toolbar-btn" id="btn-sound" title="${T.soundToggleTip}" style="display:none">&#x1F514;</button>
       <button class="toolbar-btn" id="btn-settings" title="Settings" style="font-size:13px;">&#x2699;</button>
       <button class="toolbar-btn new-tab" id="btn-new" title="${T.newTabTip}">&#x2795;</button>
@@ -226,7 +226,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-action="search">${T.ctxSearch}<span class="shortcut">Ctrl+F</span></div>
       <div class="ctx-item" data-action="clear">${T.ctxClear}<span class="shortcut">/clear</span></div>
-      <div class="ctx-item" data-action="export">${T.ctxExport}<span class="shortcut">&#x1F4BE;</span></div>
+      <div class="ctx-item" data-action="reader">${T.ctxReader}<span class="shortcut">&#x1F4D6;</span></div>
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-action="zoom-in">${T.ctxZoomIn}<span class="shortcut">Ctrl+=</span></div>
       <div class="ctx-item" data-action="zoom-out">${T.ctxZoomOut}<span class="shortcut">Ctrl+-</span></div>
