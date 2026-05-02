@@ -63,7 +63,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <button class="search-btn" id="search-close" title="${T.searchCloseTip}">&#x2715;</button>
     </div>
     <div id="content-split">
-      <div id="reader-area" style="flex-basis: ${(splitRatio != null ? splitRatio : 0.7) * 100}%;${splitLayoutOn ? '' : 'display:none;'}">
+      <div id="reader-area" style="flex-basis: ${(splitRatio != null ? splitRatio : 0.85) * 100}%;${splitLayoutOn ? '' : 'display:none;'}">
         <span class="reader-live-dot" id="reader-live-dot" title="Watching session for new messages">&#x25CF;</span>
         <div id="reader-meta"></div>
         <div id="reader-blocks">${initialReaderBlocks || '<div class="reader-empty">Waiting for session output…</div>'}</div>

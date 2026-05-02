@@ -211,8 +211,10 @@ function createPanel(context, extensionPath, session, opts) {
   // Split layout: reader area / terminal ratio is per-user, persisted across reloads.
   // Clamp to [0.15, 0.85] so neither pane ever collapses to zero (xterm fit needs
   // at least a few rows, reader needs at least a header's worth of height).
-  const splitRatioRaw = context.globalState.get('claudeCodeLauncher.splitRatio', 0.7);
-  const splitRatio = Math.max(0.15, Math.min(0.85, Number(splitRatioRaw) || 0.7));
+  // Default 0.85 = reader takes most of the space, terminal stays compact at the
+  // bottom (matches the design target of "TUI ~4 lines small, reader prominent").
+  const splitRatioRaw = context.globalState.get('claudeCodeLauncher.splitRatio', 0.85);
+  const splitRatio = Math.max(0.15, Math.min(0.85, Number(splitRatioRaw) || 0.85));
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, null, splitLayoutDefault);
 
   // Spawn claude CLI

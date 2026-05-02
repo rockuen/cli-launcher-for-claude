@@ -4,7 +4,7 @@
 
 function getClientScript(ctx) {
   const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn } = ctx;
-  const initialSplitRatio = (splitRatio != null && Number.isFinite(Number(splitRatio))) ? Number(splitRatio) : 0.7;
+  const initialSplitRatio = (splitRatio != null && Number.isFinite(Number(splitRatio))) ? Number(splitRatio) : 0.85;
   const initialSplitOn = splitLayoutOn === true;
   return `
     const vscode = acquireVsCodeApi();
