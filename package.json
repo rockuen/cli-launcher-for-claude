@@ -339,7 +339,15 @@
         "claudeCodeLauncher.defaultTheme": {
           "type": "string",
           "default": "default",
-          "enum": ["default", "midnight", "ocean", "forest", "sunset", "aurora", "warm"],
+          "enum": [
+            "default",
+            "midnight",
+            "ocean",
+            "forest",
+            "sunset",
+            "aurora",
+            "warm"
+          ],
           "enumDescriptions": [
             "IDE default theme",
             "Midnight — deep purple (#1c1740)",
@@ -395,10 +403,19 @@
           "items": {
             "type": "object",
             "properties": {
-              "cmd": { "type": "string", "description": "Slash command (e.g. /wrap-up)" },
-              "desc": { "type": "string", "description": "Description shown in dropdown" }
+              "cmd": {
+                "type": "string",
+                "description": "Slash command (e.g. /wrap-up)"
+              },
+              "desc": {
+                "type": "string",
+                "description": "Description shown in dropdown"
+              }
             },
-            "required": ["cmd", "desc"]
+            "required": [
+              "cmd",
+              "desc"
+            ]
           },
           "description": "Custom slash commands for the autocomplete dropdown. Shareable as JSON."
         },
@@ -408,22 +425,39 @@
           "items": {
             "type": "object",
             "properties": {
-              "label": { "type": "string", "description": "Button label" },
-              "command": { "type": "string", "description": "Slash command to execute (e.g. /wrap-up)" }
+              "label": {
+                "type": "string",
+                "description": "Button label"
+              },
+              "command": {
+                "type": "string",
+                "description": "Slash command to execute (e.g. /wrap-up)"
+              }
             },
-            "required": ["label", "command"]
+            "required": [
+              "label",
+              "command"
+            ]
           },
           "description": "Custom buttons in the input panel. Each button has a label and a slash command."
         },
         "claudeCodeLauncher.multiplexer.preferred": {
           "type": "string",
-          "enum": ["auto", "tmux", "psmux", "none"],
+          "enum": [
+            "auto",
+            "tmux",
+            "psmux",
+            "none"
+          ],
           "default": "auto",
           "description": "Multiplexer backend selection. 'auto' picks tmux on Mac/Linux and psmux on Windows. 'none' disables multiplexer integration entirely."
         },
         "claudeCodeLauncher.terminal.defaultBackend": {
           "type": "string",
-          "enum": ["webview", "multiplexer"],
+          "enum": [
+            "webview",
+            "multiplexer"
+          ],
           "enumDescriptions": [
             "Default — open Claude Code inside a Webview tab (rich xterm.js terminal, status icons, session save/restore).",
             "Open Claude Code inside a tmux/psmux session. Falls back to webview if no multiplexer is detected."
@@ -433,7 +467,10 @@
         },
         "claudeCodeLauncher.terminal.multiplexerLifecycle": {
           "type": "string",
-          "enum": ["kill-on-close", "detached"],
+          "enum": [
+            "kill-on-close",
+            "detached"
+          ],
           "enumDescriptions": [
             "Default — kill the tmux/psmux session when the launcher tab closes, matching the webview backend's lifecycle.",
             "Leave the tmux/psmux session detached when the tab closes so you can re-attach it from any external terminal."
@@ -459,6 +496,16 @@
             ".svg": "system"
           },
           "description": "File extension → open method. Values: 'editor' (IDE), 'system' (OS default), 'obsidian', 'browser', 'excel', or full app path."
+        },
+        "claudeCodeLauncher.vaultSync.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Sprint 0 — enable the vault file watcher. Logs change/add/unlink events to the Debug Console; auto-commit/push will land in later sprints."
+        },
+        "claudeCodeLauncher.vaultSync.path": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the Obsidian vault to watch. Required when vaultSync.enabled is true."
         }
       }
     },
@@ -471,6 +518,7 @@
     ]
   },
   "dependencies": {
+    "chokidar": "^3.6.0",
     "node-pty": "^1.1.0",
     "xterm": "^5.3.0",
     "xterm-addon-fit": "^0.8.0",
@@ -493,7 +541,7 @@
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.24.0",
-    "typescript": "^5.4.0",
-    "esbuild": "^0.21.0"
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
   }
 }
