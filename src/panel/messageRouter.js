@@ -101,6 +101,19 @@ function routeWebviewMessage(msg, ctx) {
       return;
     }
 
+    // Phase 4-extra: reader inline prompt response. Webview detected a
+    // binary y/n prompt and the user clicked Approve/Reject — write the
+    // chosen key plus CR to the PTY, same as if they typed it into the TUI
+    // themselves. Falls through silently if the pty is gone (panel closed
+    // mid-flight); the reader will time the bar out on its own.
+    case 'prompt-respond': {
+      if (!entry || !entry.pty || entry._disposed) return;
+      const key = String(msg.key || '').trim();
+      if (!key) return;
+      try { writePtyChunked(entry, key + '\r'); } catch (_) {}
+      return;
+    }
+
     // Phase 3 split layout: persist reader/terminal ratio across reloads.
     // Stored in extension globalState (not user settings) so the value is
     // per-machine without polluting settings.json. Webview clamps before

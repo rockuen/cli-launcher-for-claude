@@ -426,9 +426,13 @@ function getClientScript(ctx) {
     function applySplitVisibility() {
       const reader = document.getElementById('reader-area');
       const splitter = document.getElementById('splitter');
+      const promptBar = document.getElementById('reader-prompt-bar');
       if (!reader || !splitter) return;
       reader.style.display = splitOn ? '' : 'none';
       splitter.style.display = splitOn ? '' : 'none';
+      // Phase 4-extra: when split is off, fall back to TUI swing-back —
+      // the inline approve/reject bar is a split-only affordance.
+      if (promptBar && !splitOn) promptBar.style.display = 'none';
       try { fitAddon.fit(); } catch (_) {}
       try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
     }
@@ -1041,6 +1045,14 @@ function getClientScript(ctx) {
           : T.processNormalExit;
         restartBtn.textContent = msg.canResume ? '\\u25B6 ' + T.resumeRestart : '\\u25B6 ' + T.newStart;
         restartBar.style.display = 'flex';
+      }
+      // Phase 4-extra: ext detected a binary y/n prompt — show the inline
+      // approve/reject bar above the reader. Skips when split is off so the
+      // user doesn't get a hidden bar (TUI swing-back is the fallback in
+      // fullscreen mode). Auto-hides after 30s in case the prompt stayed on
+      // the screen longer than expected.
+      if (msg.type === 'prompt-detected') {
+        showPromptBar(msg.prompt);
       }
       // Phase 3 split layout: jsonl watcher in createPanel pushes rendered
       // markdown blocks here. Preserve scroll position unless near bottom
@@ -2021,6 +2033,61 @@ function getClientScript(ctx) {
       origUpdateState(state);
       particleState = state;
     };
+
+    // Phase 4-extra: inline prompt bar — show / hide / respond. Lives
+    // inside #content-split so it shares the split-on/off lifecycle with
+    // the reader. The 30s timer is a safety net (the prompt may stay on
+    // screen longer than the user expects); user dismiss + button click
+    // both clear immediately.
+    let promptBarHideTimer = null;
+    function showPromptBar(prompt) {
+      if (!prompt || !splitOn) return;
+      const bar = document.getElementById('reader-prompt-bar');
+      if (!bar) return;
+      const snippetEl = bar.querySelector('.reader-prompt-snippet');
+      const approveBtn = bar.querySelector('.reader-prompt-approve');
+      const rejectBtn = bar.querySelector('.reader-prompt-reject');
+      if (snippetEl) {
+        const kind = prompt.kind || '';
+        const snippet = prompt.snippet || '';
+        snippetEl.innerHTML = '<span class="reader-prompt-kind">' + escapeHtml(kind) + '</span>' + escapeHtml(snippet);
+      }
+      if (approveBtn) {
+        approveBtn.dataset.key = prompt.approveKey || 'y';
+        approveBtn.classList.toggle('reader-prompt-default', prompt.defaultSide === 'approve');
+      }
+      if (rejectBtn) {
+        rejectBtn.dataset.key = prompt.rejectKey || 'n';
+        rejectBtn.classList.toggle('reader-prompt-default', prompt.defaultSide === 'reject');
+      }
+      bar.style.display = 'flex';
+      if (promptBarHideTimer) clearTimeout(promptBarHideTimer);
+      promptBarHideTimer = setTimeout(hidePromptBar, 30000);
+      try { fitAddon.fit(); } catch (_) {}
+    }
+    function hidePromptBar() {
+      const bar = document.getElementById('reader-prompt-bar');
+      if (!bar) return;
+      bar.style.display = 'none';
+      if (promptBarHideTimer) { clearTimeout(promptBarHideTimer); promptBarHideTimer = null; }
+      try { fitAddon.fit(); } catch (_) {}
+    }
+    (function setupPromptBar() {
+      const bar = document.getElementById('reader-prompt-bar');
+      if (!bar) return;
+      bar.addEventListener('click', (e) => {
+        const btn = e.target.closest('.reader-prompt-btn');
+        if (!btn) return;
+        if (btn.classList.contains('reader-prompt-dismiss')) {
+          hidePromptBar();
+          return;
+        }
+        const key = btn.dataset.key;
+        if (key) vscode.postMessage({ type: 'prompt-respond', key });
+        hidePromptBar();
+        term.focus();
+      });
+    })();
 
     // Phase 4 reader: route <a> clicks inside the reader back to the
     // extension. The webview blocks file:// navigation entirely, and http(s)

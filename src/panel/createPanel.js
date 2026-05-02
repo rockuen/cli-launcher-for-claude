@@ -50,6 +50,40 @@ function looksLikePrompt(data) {
   return false;
 }
 
+// Phase 4-extra: classify the binary prompt so the reader can render
+// the right Approve/Reject pair. Distinguishes the four common shapes
+// emitted by Claude Code and other CLIs:
+//   [Y/n]   — capital Y = Y is the default; Enter alone = approve
+//   [y/N]   — capital N = N is the default; Enter alone = reject
+//   (y/n)   — symmetric; no implicit default
+//   (yes/no)— same as (y/n) but the responder writes "yes"/"no"
+// snippet captures the last visible prompt line (ANSI-stripped) so the
+// user can read what they're answering before clicking.
+function detectBinaryPrompt(data) {
+  const raw = String(data || '');
+  // ANSI strip — same minimal regex used elsewhere in this codebase.
+  const stripped = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  let kind = null, approveKey = null, rejectKey = null, defaultSide = null;
+  if (/\[Y\/n\]/.test(stripped)) {
+    kind = 'Y/n'; approveKey = 'y'; rejectKey = 'n'; defaultSide = 'approve';
+  } else if (/\[y\/N\]/.test(stripped)) {
+    kind = 'y/N'; approveKey = 'y'; rejectKey = 'n'; defaultSide = 'reject';
+  } else if (/\(y\/n\)/i.test(stripped)) {
+    kind = 'y/n'; approveKey = 'y'; rejectKey = 'n'; defaultSide = null;
+  } else if (/\(yes\/no\)/i.test(stripped)) {
+    kind = 'yes/no'; approveKey = 'yes'; rejectKey = 'no'; defaultSide = null;
+  } else {
+    return null;
+  }
+  // Take the last non-empty line (or two trailing lines) of the stripped
+  // output so the snippet shows the actual question text. Cap so a giant
+  // PTY chunk doesn't produce an unwieldy bar.
+  const lines = stripped.split(/\r?\n/).map(l => l.replace(/\s+$/, ''));
+  const tail = lines.filter(l => l.trim()).slice(-2).join(' · ');
+  const snippet = tail.length > 240 ? tail.slice(-240) : tail;
+  return { kind, approveKey, rejectKey, defaultSide, snippet };
+}
+
 // Split-layout reader watcher: tail the active session's jsonl and broadcast
 // rendered blocks to the webview so the in-panel reader stays in sync with
 // the TUI. Same polling shape as readerView's startLiveWatch — macOS fsevents
@@ -355,6 +389,15 @@ function createPanel(context, extensionPath, session, opts) {
     const usage = contextParser.feed(data, entry);
     if (usage) {
       try { panel.webview.postMessage({ type: 'context-usage', ...usage }); } catch (_) {}
+    }
+
+    // Phase 4-extra: surface binary y/n prompts as inline approve/reject
+    // buttons inside the reader area. Independent of the needs-attention
+    // fast-path below — even when state is already 'needs-attention' from a
+    // previous prompt, we still want the new bar to show.
+    const binaryPrompt = detectBinaryPrompt(data);
+    if (binaryPrompt) {
+      try { panel.webview.postMessage({ type: 'prompt-detected', prompt: binaryPrompt }); } catch (_) {}
     }
 
     // v2.6.6: interactive prompt fast-path. Skip the 7-second running

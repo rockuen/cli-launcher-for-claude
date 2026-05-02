@@ -455,6 +455,82 @@ function getStyles(ctx) {
     #reader-area .msg-body hr { border: 0; border-top: 1px solid ${border}; margin: 0.8em 0; }
     #reader-area .msg-body ul, #reader-area .msg-body ol { padding-left: 22px; margin: 0.4em 0; }
 
+    /* Phase 4-extra: inline prompt bar — appears above the reader when ext
+       detects a binary y/n prompt. Stays inside #content-split so it hides
+       together with the reader when the split layout is off. */
+    .reader-prompt-bar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: ${isDark ? 'rgba(217,119,87,0.18)' : 'rgba(201,100,66,0.12)'};
+      border-bottom: 1px solid ${isDark ? '#D97757' : '#C96442'};
+      font-family: -apple-system, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+      font-size: 11px;
+      color: ${fg};
+      box-sizing: border-box;
+    }
+    .reader-prompt-snippet {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: ${fg};
+    }
+    .reader-prompt-kind {
+      display: inline-block;
+      padding: 1px 6px;
+      margin-right: 8px;
+      border-radius: 3px;
+      background: ${isDark ? '#D97757' : '#C96442'};
+      color: #ffffff;
+      font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
+      font-size: 10px;
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    .reader-prompt-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .reader-prompt-btn {
+      height: 24px;
+      padding: 0 10px;
+      border: 1px solid ${border};
+      border-radius: 4px;
+      background: ${btnBg};
+      color: ${fg};
+      font-family: -apple-system, "Segoe UI", sans-serif;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .reader-prompt-btn:hover { background: ${btnHover}; }
+    .reader-prompt-approve {
+      background: ${isDark ? '#D97757' : '#C96442'};
+      border-color: ${isDark ? '#D97757' : '#C96442'};
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .reader-prompt-approve:hover {
+      background: ${isDark ? '#E8956A' : '#D97757'};
+      border-color: ${isDark ? '#E8956A' : '#D97757'};
+    }
+    .reader-prompt-default {
+      box-shadow: 0 0 0 2px ${isDark ? 'rgba(217,119,87,0.6)' : 'rgba(201,100,66,0.5)'};
+    }
+    .reader-prompt-dismiss {
+      width: 26px;
+      padding: 0;
+      font-size: 13px;
+      line-height: 1;
+      color: ${statusGray};
+    }
+    .reader-prompt-dismiss:hover { color: ${fg}; }
+
     /* Splitter — drag handle between reader and terminal */
     #splitter {
       flex: 0 0 auto;
