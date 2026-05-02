@@ -12,6 +12,7 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
+const { extractAiTitle, extractFirstUserMessage } = require('../lib/sessionJsonl');
 
 const DND_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.sessions';
 const DND_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.groups';
@@ -241,9 +242,10 @@ class SessionTreeDataProvider {
             const date = new Date(mtime);
             const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
             const savedTitle = titleMap[sid];
-            const firstMsg = this._extractFirstUserMessage(fullPath);
-            if (!savedTitle && !firstMsg) continue;
-            const displayText = savedTitle || firstMsg;
+            const aiTitle = extractAiTitle(fullPath);
+            const firstMsg = extractFirstUserMessage(fullPath);
+            if (!savedTitle && !aiTitle && !firstMsg) continue;
+            const displayText = savedTitle || aiTitle || firstMsg;
             const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
             const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
             item.description = dateStr;
@@ -291,22 +293,26 @@ class SessionTreeDataProvider {
     for (const file of files) {
       const sessionId = file.name.replace('.jsonl', '');
       const savedTitle = titleMap[sessionId];
-      const firstMsg = this._extractFirstUserMessage(file.path);
-      if (!savedTitle && !firstMsg) continue;
+      const aiTitle = extractAiTitle(file.path);
+      const firstMsg = extractFirstUserMessage(file.path);
+      if (!savedTitle && !aiTitle && !firstMsg) continue;
 
       const date = new Date(file.mtime);
       const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-      const displayText = savedTitle || firstMsg;
+      const displayText = savedTitle || aiTitle || firstMsg;
       const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
 
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       item.description = dateStr;
-      item.tooltip = `${savedTitle ? savedTitle + '\n\n' : ''}${firstMsg || ''}\n\nSession: ${sessionId}\n${date.toLocaleString()}`;
+      const tooltipHead = savedTitle || aiTitle;
+      const tooltipBody = firstMsg && firstMsg !== tooltipHead ? firstMsg : '';
+      item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}${tooltipBody ? tooltipBody + '\n\n' : ''}Session: ${sessionId}\n${date.toLocaleString()}`;
       // v2.6.0: conversation-style icons. Titled sessions get a "discussion"
       // (two overlapping speech bubbles) icon; untitled get "comment-draft"
       // (dashed-border bubble) so the two are visually distinguishable.
-      item.iconPath = new vscode.ThemeIcon(savedTitle ? 'comment-discussion' : 'comment-draft');
+      // Both saved titles and ai-generated titles count as "titled".
+      item.iconPath = new vscode.ThemeIcon((savedTitle || aiTitle) ? 'comment-discussion' : 'comment-draft');
       item.command = {
         command: 'claudeCodeLauncher.resumeSession',
         title: t('resumeSession'),
@@ -318,44 +324,6 @@ class SessionTreeDataProvider {
       items.push(item);
     }
     return items;
-  }
-
-  _extractFirstUserMessage(filePath) {
-    try {
-      let fd, chunk;
-      try {
-        fd = fs.openSync(filePath, 'r');
-        const buf = Buffer.alloc(32768);
-        const bytesRead = fs.readSync(fd, buf, 0, 32768, 0);
-        chunk = buf.toString('utf-8', 0, bytesRead);
-      } finally {
-        if (fd !== undefined) fs.closeSync(fd);
-      }
-      const lines = chunk.split('\n');
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const d = JSON.parse(line);
-          if (d.type !== 'user') continue;
-          const msg = d.message;
-          if (!msg || msg.role !== 'user') continue;
-          let text = '';
-          if (typeof msg.content === 'string') {
-            text = msg.content;
-          } else if (Array.isArray(msg.content)) {
-            for (const c of msg.content) {
-              if (c.type === 'text' && c.text) {
-                text = c.text;
-                break;
-              }
-            }
-          }
-          text = text.replace(/<[^>]+>/g, '').trim().split('\n')[0].trim();
-          if (text) return text;
-        } catch {}
-      }
-    } catch {}
-    return null;
   }
 
   // ─── Sort + Nest helpers (v2.6.0) ───────────────────────────────────────
