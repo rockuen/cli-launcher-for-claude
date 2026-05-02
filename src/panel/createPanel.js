@@ -109,6 +109,8 @@ function createPanel(context, extensionPath, session, opts) {
   const soundEnabled = config.get('soundEnabled', true);
   const particlesEnabled = config.get('particlesEnabled', true);
   const autoEffortMax = config.get('autoEffortMax', false);
+  const repoSyncEnabled = config.get('repoSync.enabled', false);
+  const repoSyncPath = config.get('repoSync.path', '');
   const pasteToFileThreshold = config.get('pasteToFileThreshold', 2000);
   const pasteTableAsMarkdown = config.get('pasteTableAsMarkdown', true);
   const defaultBackend = config.get('terminal.defaultBackend', 'webview');
@@ -138,7 +140,7 @@ function createPanel(context, extensionPath, session, opts) {
   const customSlashCommands = config.get('customSlashCommands', []);
   const fileAssociations = config.get('fileAssociations', {});
   const T = getTranslations();
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands);
 
   // Spawn claude CLI

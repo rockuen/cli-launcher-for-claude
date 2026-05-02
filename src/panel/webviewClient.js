@@ -413,6 +413,8 @@ function getClientScript(ctx) {
     const setSound = document.getElementById('set-sound');
     const setParticles = document.getElementById('set-particles');
     const setAutoEffortMax = document.getElementById('set-autoeffortmax');
+    const setRepoSyncEnabled = document.getElementById('set-repo-sync-enabled');
+    const setRepoSyncPath = document.getElementById('set-repo-sync-path');
     const setDefaultBackend = document.getElementById('set-default-backend');
     const setMuxLifecycle = document.getElementById('set-mux-lifecycle');
 
@@ -485,6 +487,24 @@ function getClientScript(ctx) {
       updateSoundUI();
       vscode.postMessage({ type: 'save-setting', key: 'soundEnabled', value: soundEnabled });
     });
+
+    if (setRepoSyncEnabled) {
+      setRepoSyncEnabled.addEventListener('click', () => {
+        const next = !setRepoSyncEnabled.classList.contains('on');
+        setRepoSyncEnabled.classList.toggle('on', next);
+        vscode.postMessage({ type: 'save-setting', key: 'repoSync.enabled', value: next });
+      });
+    }
+
+    if (setRepoSyncPath) {
+      let repoSyncPathTimer = null;
+      setRepoSyncPath.addEventListener('input', () => {
+        clearTimeout(repoSyncPathTimer);
+        repoSyncPathTimer = setTimeout(() => {
+          vscode.postMessage({ type: 'save-setting', key: 'repoSync.path', value: setRepoSyncPath.value });
+        }, 500);
+      });
+    }
 
     // Custom Buttons management
     let localButtons = ${JSON.stringify(customButtons || [])};

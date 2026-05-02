@@ -130,6 +130,14 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <label title="${T.autoEffortMaxTip}">${T.autoEffortMaxLabel}</label>
         <div class="settings-toggle ${settings.autoEffortMax === true ? 'on' : ''}" id="set-autoeffortmax"></div>
       </div>
+      <div class="settings-row">
+        <label title="Sprint 0 — chokidar file watcher on the repo path. Reload Window after toggling to apply.">Repo Sync (Sprint 0)</label>
+        <div class="settings-toggle ${settings.repoSyncEnabled === true ? 'on' : ''}" id="set-repo-sync-enabled"></div>
+      </div>
+      <div class="settings-row">
+        <label title="Path to the git repo to watch. Empty = current IDE workspace folder. Supports \${workspaceFolder} (commit a workspace settings.json with this for cross-device auto-resolve), \${userHome}, and \${env:VAR}. Reload Window to apply.">Repo Path</label>
+        <input type="text" class="settings-input" id="set-repo-sync-path" value="${(settings.repoSyncPath || '').replace(/"/g, '&quot;')}" placeholder="/Users/..." style="width:200px;font-size:10px;">
+      </div>
       <div style="border-top:1px solid ${border};margin:12px 0 8px;"></div>
       <details>
         <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">Custom Buttons</summary>

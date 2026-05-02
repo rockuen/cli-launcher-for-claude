@@ -461,7 +461,7 @@ function activate(context) {
     createPanel(context, extensionPath, s, { backend });
   });
 
-  // Sprint 0 — vault sync watcher (gated on claudeCodeLauncher.vaultSync.enabled).
+  // Sprint 0 — repo sync watcher (gated on claudeCodeLauncher.repoSync.enabled).
   // Wrapped in try/catch so a missing chokidar or a throw inside start()
   // can never break the rest of activate().
   try {

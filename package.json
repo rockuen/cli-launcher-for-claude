@@ -497,15 +497,15 @@
           },
           "description": "File extension → open method. Values: 'editor' (IDE), 'system' (OS default), 'obsidian', 'browser', 'excel', or full app path."
         },
-        "claudeCodeLauncher.vaultSync.enabled": {
+        "claudeCodeLauncher.repoSync.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Sprint 0 — enable the vault file watcher. Logs change/add/unlink events to the Debug Console; auto-commit/push will land in later sprints."
+          "description": "Sprint 0 — enable the repo file watcher. Logs change/add/unlink events to the Debug Console; auto-commit/push will land in later sprints."
         },
-        "claudeCodeLauncher.vaultSync.path": {
+        "claudeCodeLauncher.repoSync.path": {
           "type": "string",
           "default": "",
-          "description": "Absolute path to the Obsidian vault to watch. Required when vaultSync.enabled is true."
+          "description": "Path to the git repo to watch. Supports ${workspaceFolder}, ${userHome}, and ${env:VAR} substitution. Empty falls back to the first IDE workspace folder. Tip: commit \".vscode/settings.json\" in the repo with path set to \"${workspaceFolder}\" so every device auto-resolves to its own absolute path."
         }
       }
     },
