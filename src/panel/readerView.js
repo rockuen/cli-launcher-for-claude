@@ -19,6 +19,7 @@ const path = require('path');
 const crypto = require('crypto');
 const marked = require('marked');
 const chokidar = require('chokidar');
+const { writePtyChunked } = require('../pty/write');
 const {
   getSessionJsonlPath,
   extractAiTitle,
@@ -107,15 +108,59 @@ function renderLive() {
   }
   currentMessages = messages;
   currentAiTitle = aiTitle;
+  const lastRole = messages.length > 0 ? messages[messages.length - 1].role : null;
   try {
     activePanel.webview.postMessage({
       type: 'messages-updated',
       meta: buildMeta(currentEntry, aiTitle, messages),
       blocksHtml: renderBlocks(messages),
+      lastRole,
     });
-    console.log('[reader] posted messages-updated count=' + messages.length);
+    console.log('[reader] posted messages-updated count=' + messages.length + ' lastRole=' + lastRole);
   } catch (e) {
     console.error('[reader] postMessage failed:', e.message);
+  }
+}
+
+// Phase 2: textarea → PTY stdin. Three transport modes by payload size/shape:
+//   - >threshold       → temp file, send "@<path>" so Claude reads it as an attachment
+//   - contains newline → bracketed paste mode (\e[200~ ... \e[201~) so the TUI
+//                        treats it as one paste rather than line-by-line input
+//   - single line      → text + CR
+// PTY-dead path posts 'reader-input-failed' so the webview can disable the box.
+function handleReaderInput(text) {
+  if (!text || !text.trim()) return;
+  if (!currentEntry || !currentEntry.pty || currentEntry._disposed) {
+    if (activePanel) activePanel.webview.postMessage({ type: 'reader-input-failed', reason: 'session ended' });
+    return;
+  }
+  const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+  const threshold = cfg.get('pasteToFileThreshold', 2000);
+  let toSend;
+  if (text.length > threshold) {
+    try {
+      const tmpDir = path.join(os.tmpdir(), 'claude-launcher-paste');
+      if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+      const fname = 'reader-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex') + '.txt';
+      const fullPath = path.join(tmpDir, fname);
+      fs.writeFileSync(fullPath, text, 'utf8');
+      toSend = '@' + fullPath.replace(/\\/g, '/') + '\r';
+      console.log('[reader] large paste → ' + fullPath);
+    } catch (e) {
+      if (activePanel) activePanel.webview.postMessage({ type: 'reader-input-failed', reason: 'paste-to-file failed: ' + e.message });
+      return;
+    }
+  } else if (text.includes('\n')) {
+    toSend = '\x1b[200~' + text + '\x1b[201~\r';
+  } else {
+    toSend = text + '\r';
+  }
+  try {
+    writePtyChunked(currentEntry, toSend);
+    if (activePanel) activePanel.webview.postMessage({ type: 'typing-start' });
+    console.log('[reader] sent ' + text.length + ' chars to PTY ' + currentEntry.sessionId);
+  } catch (e) {
+    if (activePanel) activePanel.webview.postMessage({ type: 'reader-input-failed', reason: 'PTY write failed: ' + e.message });
   }
 }
 
@@ -172,6 +217,7 @@ function show(entry, context) {
     if (!msg) return;
     if (msg.type === 'set-theme') setTheme(msg.theme);
     else if (msg.type === 'save-conversation') saveAsMarkdown();
+    else if (msg.type === 'reader-input') handleReaderInput(msg.text || '');
   });
   activePanel.onDidDispose(() => {
     stopLiveWatch();
@@ -291,7 +337,11 @@ function renderBlocks(messages) {
   }
   return messages.map((m) => {
     const ts = m.timestamp ? formatStamp(new Date(m.timestamp).getTime()) : '';
-    const body = marked.parse(m.text || '', { breaks: false, gfm: true });
+    // user input preserves single newlines as <br> (GFM-comment style), so a
+    // multi-line message typed in the textarea reads the way it was typed.
+    // assistant text stays in standard markdown — single \n inside a paragraph
+    // collapses, double \n breaks paragraphs as authored.
+    const body = marked.parse(m.text || '', { breaks: m.role === 'user', gfm: true });
     return `<div class="msg msg-${m.role}">
   <div class="msg-head"><span class="role">${m.role}</span><span class="ts">${escapeHtml(ts)}</span></div>
   <div class="msg-body">${body}</div>
@@ -333,7 +383,7 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   body {
     background: var(--bg); color: var(--fg);
     font-family: -apple-system, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
-    line-height: 1.65; margin: 0; padding: 24px 32px; max-width: 980px;
+    line-height: 1.65; margin: 0; padding: 24px 32px 96px; max-width: 980px;
   }
   .reader-meta {
     font-size: 11px; color: var(--fg-muted);
@@ -361,6 +411,45 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     display: inline-flex; align-items: center;
   }
   .reader-live-dot.flash { opacity: 1; transform: scale(1.4); }
+  .reader-live-dot.typing {
+    animation: reader-typing-pulse 1.1s ease-in-out infinite;
+  }
+  @keyframes reader-typing-pulse {
+    0%, 100% { opacity: 0.4; transform: scale(1); color: #4caf50; }
+    50%      { opacity: 1; transform: scale(1.4); color: #ffaa3b; }
+  }
+
+  .reader-input-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg); border-top: 1px solid var(--border);
+    padding: 10px 32px; display: flex; gap: 8px;
+    z-index: 10; box-sizing: border-box;
+  }
+  .reader-input {
+    flex: 1; min-height: 38px; max-height: 200px;
+    padding: 8px 10px; resize: none; box-sizing: border-box;
+    background: var(--code-bg); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
+    font-size: 13px; line-height: 1.4; outline: none;
+  }
+  .reader-input:focus { border-color: var(--user); }
+  .reader-input:disabled { opacity: 0.5; cursor: not-allowed; }
+  .reader-send {
+    background: var(--user); color: var(--bg); border: none;
+    padding: 0 18px; border-radius: 4px; cursor: pointer;
+    font-size: 13px; font-weight: 600; min-height: 38px;
+    font-family: inherit;
+  }
+  .reader-send:hover { opacity: 0.9; }
+  .reader-send:disabled { opacity: 0.4; cursor: not-allowed; }
+  .reader-input-error {
+    position: fixed; bottom: 64px; left: 32px; right: 32px;
+    background: var(--code-bg); color: #ff6b6b; border: 1px solid #ff6b6b;
+    border-radius: 4px; padding: 8px 12px; font-size: 12px;
+    z-index: 11; display: none; box-sizing: border-box;
+  }
+  .reader-input-error.show { display: block; }
 
   .msg { margin-bottom: 28px; }
   .msg-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 11px; }
@@ -407,6 +496,11 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
 </div>
 <div class="reader-meta" id="reader-meta">${escapeHtml(meta)}</div>
 <div id="reader-blocks">${blocks}</div>
+<div class="reader-input-error" id="reader-input-error"></div>
+<div class="reader-input-bar">
+  <textarea class="reader-input" id="reader-input" placeholder="Send a message — Enter to send, Shift+Enter for newline" rows="1"></textarea>
+  <button class="reader-send" id="reader-send">Send</button>
+</div>
 <script nonce="${nonce}">
   (function() {
     const vscode = acquireVsCodeApi();
@@ -432,22 +526,73 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     const liveDot = document.getElementById('live-dot');
     const metaEl = document.getElementById('reader-meta');
     const blocksEl = document.getElementById('reader-blocks');
+    const inputEl = document.getElementById('reader-input');
+    const sendBtn = document.getElementById('reader-send');
+    const errorEl = document.getElementById('reader-input-error');
     let flashTimer = null;
+    let errorTimer = null;
     function flashLive() {
       if (!liveDot) return;
       liveDot.classList.add('flash');
       if (flashTimer) clearTimeout(flashTimer);
       flashTimer = setTimeout(function() { liveDot.classList.remove('flash'); flashTimer = null; }, 500);
     }
+    function showError(text) {
+      if (!errorEl) return;
+      errorEl.textContent = '✗ ' + text;
+      errorEl.classList.add('show');
+      if (errorTimer) clearTimeout(errorTimer);
+      errorTimer = setTimeout(function() { errorEl.classList.remove('show'); errorTimer = null; }, 4000);
+    }
+    function autoGrow() {
+      if (!inputEl) return;
+      inputEl.style.height = 'auto';
+      inputEl.style.height = Math.min(200, inputEl.scrollHeight) + 'px';
+    }
+    function send() {
+      if (!inputEl) return;
+      const text = inputEl.value;
+      if (!text.trim()) return;
+      vscode.postMessage({ type: 'reader-input', text: text });
+      inputEl.value = '';
+      autoGrow();
+    }
+    if (inputEl) {
+      inputEl.addEventListener('input', autoGrow);
+      inputEl.addEventListener('keydown', function(e) {
+        // IME composition: do not send while user is composing Hangul/CJK
+        if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing) {
+          e.preventDefault();
+          send();
+        }
+      });
+    }
+    if (sendBtn) sendBtn.addEventListener('click', send);
+
     window.addEventListener('message', function(e) {
       const m = e.data;
       console.log('[reader webview] msg', m && m.type);
-      if (!m || m.type !== 'messages-updated') return;
-      const wasNearBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 80);
-      if (typeof m.meta === 'string' && metaEl) metaEl.textContent = m.meta;
-      if (typeof m.blocksHtml === 'string' && blocksEl) blocksEl.innerHTML = m.blocksHtml;
-      if (wasNearBottom) window.scrollTo(0, document.body.scrollHeight);
-      flashLive();
+      if (!m) return;
+      if (m.type === 'messages-updated') {
+        const wasNearBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 80);
+        if (typeof m.meta === 'string' && metaEl) metaEl.textContent = m.meta;
+        if (typeof m.blocksHtml === 'string' && blocksEl) blocksEl.innerHTML = m.blocksHtml;
+        if (wasNearBottom) window.scrollTo(0, document.body.scrollHeight);
+        // Only release typing on assistant arrival — a user-only flush (the
+        // message we just sent landing in jsonl) should keep pulsing so the
+        // reader stays in "Claude is working" state until the reply lands.
+        if (m.lastRole === 'assistant' && liveDot) liveDot.classList.remove('typing');
+        flashLive();
+      } else if (m.type === 'typing-start') {
+        if (liveDot) liveDot.classList.add('typing');
+      } else if (m.type === 'reader-input-failed') {
+        const reason = m.reason || 'send failed';
+        showError(reason);
+        if (reason === 'session ended') {
+          if (inputEl) inputEl.disabled = true;
+          if (sendBtn) sendBtn.disabled = true;
+        }
+      }
     });
   })();
 </script>
