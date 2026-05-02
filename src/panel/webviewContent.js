@@ -5,7 +5,7 @@
 const { getStyles } = require('./webviewStyles');
 const { getClientScript } = require('./webviewClient');
 
-function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, title, memo, customButtons, T, settings, customSlashCommands) {
+function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, title, memo, customButtons, T, settings, customSlashCommands, splitRatio, initialReaderBlocks, splitLayoutOn) {
   const outerBg = isDark ? '#181818' : '#f0f0f0';
   const bg = isDark ? '#1e1e1e' : '#ffffff';
   const fg = isDark ? '#d4d4d4' : '#333333';
@@ -50,7 +50,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <button class="toolbar-btn" id="btn-zoom-out" title="${T.zoomOutTip}" style="display:none">-</button>
       <span id="font-size-label" style="display:none">${fontSize}px</span>
       <button class="toolbar-btn" id="btn-zoom-in" title="${T.zoomInTip}" style="display:none">+</button>
-      <button class="toolbar-btn" id="btn-reader" title="${T.readerTip}">&#x1F4D6;</button>
+      <button class="toolbar-btn" id="btn-toggle-split" title="Toggle split layout (reader + terminal)">&#x1F441;</button>
       <button class="toolbar-btn" id="btn-sound" title="${T.soundToggleTip}" style="display:none">&#x1F514;</button>
       <button class="toolbar-btn" id="btn-settings" title="Settings" style="font-size:13px;">&#x2699;</button>
       <button class="toolbar-btn new-tab" id="btn-new" title="${T.newTabTip}">&#x2795;</button>
@@ -62,7 +62,15 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <button class="search-btn" id="search-next" title="${T.searchNextTip}">&#x25BC;</button>
       <button class="search-btn" id="search-close" title="${T.searchCloseTip}">&#x2715;</button>
     </div>
-    <div id="terminal"></div>
+    <div id="content-split">
+      <div id="reader-area" style="flex-basis: ${(splitRatio != null ? splitRatio : 0.7) * 100}%;${splitLayoutOn ? '' : 'display:none;'}">
+        <span class="reader-live-dot" id="reader-live-dot" title="Watching session for new messages">&#x25CF;</span>
+        <div id="reader-meta"></div>
+        <div id="reader-blocks">${initialReaderBlocks || '<div class="reader-empty">Waiting for session output…</div>'}</div>
+      </div>
+      <div id="splitter" title="Drag to resize"${splitLayoutOn ? '' : ' style="display:none;"'}><div class="splitter-handle"></div></div>
+      <div id="terminal"></div>
+    </div>
     <div id="restart-bar">
       <span id="restart-msg">${T.processExited}</span>
       <button id="restart-btn">&#x25B6; ${T.restartBtn}</button>
@@ -129,6 +137,10 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div class="settings-row">
         <label title="${T.autoEffortMaxTip}">${T.autoEffortMaxLabel}</label>
         <div class="settings-toggle ${settings.autoEffortMax === true ? 'on' : ''}" id="set-autoeffortmax"></div>
+      </div>
+      <div class="settings-row">
+        <label title="Show the markdown reader pane above the terminal by default in new tabs. Each tab has a 👁 toggle in the toolbar that flips this for that tab only.">Split Layout (Default)</label>
+        <div class="settings-toggle ${settings.splitLayoutDefault === true ? 'on' : ''}" id="set-split-layout"></div>
       </div>
       <div class="settings-row">
         <label title="Sprint 0 — chokidar file watcher on the repo path. Reload Window after toggling to apply.">Repo Sync (Sprint 0)</label>
@@ -246,7 +258,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
   <script src="${fitAddonUri}"></script>
   <script src="${webLinksAddonUri}"></script>
   <script src="${searchAddonUri}"></script>
-  <script>${getClientScript({ T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands })}</script>
+  <script>${getClientScript({ T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn })}</script>
 </body>
 </html>`;
 }

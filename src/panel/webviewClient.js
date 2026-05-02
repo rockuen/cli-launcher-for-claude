@@ -3,7 +3,9 @@
 // v2.6.0 plan: convert to real static client.js with __CLAUDE_INIT__ JSON injection.
 
 function getClientScript(ctx) {
-  const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands } = ctx;
+  const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn } = ctx;
+  const initialSplitRatio = (splitRatio != null && Number.isFinite(Number(splitRatio))) ? Number(splitRatio) : 0.7;
+  const initialSplitOn = splitLayoutOn === true;
   return `
     const vscode = acquireVsCodeApi();
     const T = ${JSON.stringify(T)};
@@ -258,7 +260,14 @@ function getClientScript(ctx) {
       const live = getCleanSelection().trim();
       if (live) return live;
       if (ctxSelectionCache) return ctxSelectionCache;
-      return lastSelectionCache;
+      if (lastSelectionCache) return lastSelectionCache;
+      // Phase 4 reader: fall back to DOM selection so right-clicking after
+      // selecting text inside #reader-area also feeds Open File/Folder.
+      try {
+        const docSel = (window.getSelection && window.getSelection().toString()) || '';
+        if (docSel.trim()) return docSel.trim();
+      } catch (_) {}
+      return '';
     }
 
     // Open selected text as file path
@@ -366,6 +375,15 @@ function getClientScript(ctx) {
     let currentLine = '';
     let lineBuffer = '';
 
+    // Phase 3: pulse the reader's ● dot when the user submits via any path
+    // (xterm direct input, editor textarea, queue, custom button). Idempotent
+    // — adding the typing class twice is fine. The reader-update handler
+    // releases it on the next 'assistant' turn.
+    function markReaderTyping() {
+      const dot = document.getElementById('reader-live-dot');
+      if (dot) dot.classList.add('typing');
+    }
+
     term.onData(data => {
       // Track input for history
       if (data === '\\r') {
@@ -376,6 +394,7 @@ function getClientScript(ctx) {
             inputHistory.push(lineBuffer.trim());
             if (inputHistory.length > 100) inputHistory.shift();
           }
+          markReaderTyping();
         }
         lineBuffer = '';
         historyIndex = -1;
@@ -399,8 +418,23 @@ function getClientScript(ctx) {
       showToast(T.clipboardChecking);
       term.focus();
     });
-    document.getElementById('btn-reader').addEventListener('click', () => {
-      vscode.postMessage({ type: 'open-reader' });
+    // Phase 3 toolbar toggle: 👁 flips the split layout on/off for THIS panel
+    // only. The settings modal has a separate toggle that controls the default
+    // for new panels. Show/hide reader-area + splitter, then refit xterm so it
+    // reflows into the new vertical space.
+    let splitOn = ${initialSplitOn};
+    function applySplitVisibility() {
+      const reader = document.getElementById('reader-area');
+      const splitter = document.getElementById('splitter');
+      if (!reader || !splitter) return;
+      reader.style.display = splitOn ? '' : 'none';
+      splitter.style.display = splitOn ? '' : 'none';
+      try { fitAddon.fit(); } catch (_) {}
+      try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
+    }
+    document.getElementById('btn-toggle-split').addEventListener('click', () => {
+      splitOn = !splitOn;
+      applySplitVisibility();
       term.focus();
     });
 
@@ -415,6 +449,7 @@ function getClientScript(ctx) {
     const setAutoEffortMax = document.getElementById('set-autoeffortmax');
     const setRepoSyncEnabled = document.getElementById('set-repo-sync-enabled');
     const setRepoSyncPath = document.getElementById('set-repo-sync-path');
+    const setSplitLayout = document.getElementById('set-split-layout');
     const setDefaultBackend = document.getElementById('set-default-backend');
     const setMuxLifecycle = document.getElementById('set-mux-lifecycle');
 
@@ -493,6 +528,14 @@ function getClientScript(ctx) {
         const next = !setRepoSyncEnabled.classList.contains('on');
         setRepoSyncEnabled.classList.toggle('on', next);
         vscode.postMessage({ type: 'save-setting', key: 'repoSync.enabled', value: next });
+      });
+    }
+
+    if (setSplitLayout) {
+      setSplitLayout.addEventListener('click', () => {
+        const next = !setSplitLayout.classList.contains('on');
+        setSplitLayout.classList.toggle('on', next);
+        vscode.postMessage({ type: 'save-setting', key: 'splitLayoutDefault', value: next });
       });
     }
 
@@ -999,6 +1042,26 @@ function getClientScript(ctx) {
         restartBtn.textContent = msg.canResume ? '\\u25B6 ' + T.resumeRestart : '\\u25B6 ' + T.newStart;
         restartBar.style.display = 'flex';
       }
+      // Phase 3 split layout: jsonl watcher in createPanel pushes rendered
+      // markdown blocks here. Preserve scroll position unless near bottom
+      // (auto-scroll); pulse the ● dot; release typing class only when an
+      // assistant turn arrives so user-only flushes keep the indicator alive.
+      if (msg.type === 'reader-update') {
+        const blocksEl = document.getElementById('reader-blocks');
+        const metaEl = document.getElementById('reader-meta');
+        const areaEl = document.getElementById('reader-area');
+        const dotEl = document.getElementById('reader-live-dot');
+        if (!blocksEl || !areaEl) return;
+        const wasNearBottom = (areaEl.scrollTop + areaEl.clientHeight) >= (areaEl.scrollHeight - 80);
+        if (typeof msg.meta === 'string' && metaEl) metaEl.textContent = msg.meta;
+        if (typeof msg.blocksHtml === 'string') blocksEl.innerHTML = msg.blocksHtml;
+        if (wasNearBottom) areaEl.scrollTop = areaEl.scrollHeight;
+        if (dotEl) {
+          if (msg.lastRole === 'assistant') dotEl.classList.remove('typing');
+          dotEl.classList.add('flash');
+          setTimeout(() => dotEl.classList.remove('flash'), 500);
+        }
+      }
     });
 
     // Restart bar
@@ -1338,6 +1401,15 @@ function getClientScript(ctx) {
       e.preventDefault();
       // Snapshot selection before the menu click (mousedown/click may clear xterm selection)
       ctxSelectionCache = getCleanSelection().trim();
+      // Phase 4 reader: if no xterm selection, take whatever the DOM has
+      // selected (reader-area markdown text). This routes the same selection
+      // into the existing Open File/Open Folder handlers.
+      if (!ctxSelectionCache) {
+        try {
+          const docSel = (window.getSelection && window.getSelection().toString()) || '';
+          if (docSel.trim()) ctxSelectionCache = docSel.trim();
+        } catch (_) {}
+      }
       showContextMenu(e.clientX, e.clientY);
     }, true);
 
@@ -1493,6 +1565,7 @@ function getClientScript(ctx) {
       }
       // Send final Enter to submit
       vscode.postMessage({ type: 'input', data: '\\r' });
+      markReaderTyping();
       // Add to input history
       if (text.trim().length > 0) {
         if (inputHistory.length === 0 || inputHistory[inputHistory.length - 1] !== text.trim()) {
@@ -1515,6 +1588,7 @@ function getClientScript(ctx) {
         const cmd = btn.getAttribute('data-cmd');
         if (cmd) {
           vscode.postMessage({ type: 'input', data: cmd + String.fromCharCode(13) });
+          markReaderTyping();
         }
         term.focus();
       });
@@ -1600,6 +1674,7 @@ function getClientScript(ctx) {
         vscode.postMessage({ type: 'input', data: lines[i] });
       }
       vscode.postMessage({ type: 'input', data: '\\r' });
+      markReaderTyping();
     }
 
     // Slash command menu
@@ -1946,6 +2021,91 @@ function getClientScript(ctx) {
       origUpdateState(state);
       particleState = state;
     };
+
+    // Phase 4 reader: route <a> clicks inside the reader back to the
+    // extension. The webview blocks file:// navigation entirely, and http(s)
+    // anchors would otherwise rely on host default behavior. Centralizing
+    // here keeps reader-side clicks using the same handlers as xterm
+    // (open-link for URLs; open-path for absolute paths, ~paths, and
+    // file:// — ext side stats and dispatches to file vs folder).
+    (function setupReaderLinks() {
+      const reader = document.getElementById('reader-area');
+      if (!reader) return;
+      reader.addEventListener('click', (e) => {
+        const a = e.target.closest('a');
+        if (!a) return;
+        const href = a.getAttribute('href');
+        if (!href) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (/^https?:\\/\\//i.test(href)) {
+          vscode.postMessage({ type: 'open-link', url: href });
+          return;
+        }
+        if (/^file:\\/\\//i.test(href)
+            || href.startsWith('/')
+            || href.startsWith('~')
+            || /^[A-Za-z]:[\\\\/]/.test(href)) {
+          vscode.postMessage({ type: 'open-path', path: href });
+          return;
+        }
+        // mailto:, anchors, relative refs — let the webview default decide
+        // (most are no-ops here, which matches the previous behavior).
+      });
+    })();
+
+    // Phase 3 splitter: drag handle between reader and terminal. Saves the
+    // ratio on mouseup (one write per drag, not per pixel). Calls fitAddon
+    // during drag so xterm reflows visibly while the user resizes; the final
+    // resize message lands on mouseup.
+    (function setupSplitter() {
+      const split = document.getElementById('content-split');
+      const reader = document.getElementById('reader-area');
+      const splitter = document.getElementById('splitter');
+      if (!split || !reader || !splitter) return;
+
+      let dragging = false;
+      let lastRatio = ${initialSplitRatio};
+      let pendingFit = null;
+
+      const fitTerm = () => {
+        if (pendingFit) cancelAnimationFrame(pendingFit);
+        pendingFit = requestAnimationFrame(() => {
+          pendingFit = null;
+          try { fitAddon.fit(); } catch (_) {}
+          try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
+        });
+      };
+
+      splitter.addEventListener('mousedown', (e) => {
+        dragging = true;
+        splitter.classList.add('dragging');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const rect = split.getBoundingClientRect();
+        if (rect.height <= 0) return;
+        const raw = (e.clientY - rect.top) / rect.height;
+        const ratio = Math.max(0.15, Math.min(0.85, raw));
+        reader.style.flexBasis = (ratio * 100) + '%';
+        lastRatio = ratio;
+        fitTerm();
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        splitter.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        fitTerm();
+        vscode.postMessage({ type: 'save-split-ratio', ratio: lastRatio });
+      });
+    })();
 
     term.focus();
 

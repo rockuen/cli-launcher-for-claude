@@ -101,6 +101,19 @@ function routeWebviewMessage(msg, ctx) {
       return;
     }
 
+    // Phase 3 split layout: persist reader/terminal ratio across reloads.
+    // Stored in extension globalState (not user settings) so the value is
+    // per-machine without polluting settings.json. Webview clamps before
+    // sending, but clamp again here as a defensive belt.
+    case 'save-split-ratio': {
+      const r = Number(msg.ratio);
+      if (Number.isFinite(r)) {
+        const clamped = Math.max(0.15, Math.min(0.85, r));
+        try { context.globalState.update('claudeCodeLauncher.splitRatio', clamped); } catch (_) {}
+      }
+      return;
+    }
+
     case 'export-settings': {
       const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
       const exportData = {
@@ -172,6 +185,53 @@ function routeWebviewMessage(msg, ctx) {
     case 'open-folder':
       handleOpenFolder(msg.filePath, entry);
       return;
+
+    // Phase 4 reader: anchor href that isn't an http(s) URL is forwarded here.
+    // Common shapes from marked output and user pastes:
+    //   /Users/foo/bar.txt        → file
+    //   /Users/foo/bar.txt:42     → file at line 42
+    //   /Users/foo/                → folder
+    //   ~/Projects/x              → home-relative
+    //   file:///Users/foo/bar.txt → URL-encoded file scheme
+    //   C:\Users\foo or C:/Users/foo → Windows
+    // We stat the resolved path and dispatch to file vs folder helpers so
+    // reader-side single click reaches the same handlers as xterm right-click.
+    case 'open-path': {
+      if (!msg.path) return;
+      let p = String(msg.path).trim();
+      // Strip surrounding quotes/backticks (marked escapes are already done,
+      // but a user-pasted markdown link target sometimes includes them).
+      p = p.replace(/^['"`]+|['"`]+$/g, '');
+      // file://… — decode and drop the scheme. Tolerate file:/// and file://host.
+      if (/^file:\/\//i.test(p)) {
+        try {
+          let stripped = p.replace(/^file:\/\/[^/]*/i, '');
+          p = decodeURIComponent(stripped);
+        } catch (_) { /* fall through with raw */ }
+      }
+      // Trailing :LINE for files. Don't apply to Windows drive prefixes (C:\).
+      let line = 0;
+      const lineMatch = p.match(/:(\d+)$/);
+      if (lineMatch && !/^[A-Za-z]:[\\/]?$/.test(p.slice(0, p.length - lineMatch[0].length + 1))) {
+        line = parseInt(lineMatch[1], 10);
+        p = p.replace(/:\d+$/, '');
+      }
+      // ~ expansion
+      if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) {
+        p = path.join(os.homedir(), p.slice(1));
+      }
+      let isDir = false;
+      try {
+        const stat = fs.statSync(p);
+        isDir = stat.isDirectory();
+      } catch (_) {
+        vscode.window.showInformationMessage('Reader: path not found — ' + p);
+        return;
+      }
+      if (isDir) handleOpenFolder(p, entry);
+      else handleOpenFile(p, line, entry);
+      return;
+    }
 
     case 'open-reader':
       readerView.show(entry, context);

@@ -507,6 +507,11 @@
           },
           "description": "File extension → open method. Values: 'editor' (IDE), 'system' (OS default), 'obsidian', 'browser', 'excel', or full app path."
         },
+        "claudeCodeLauncher.splitLayoutDefault": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the markdown reader pane above the terminal by default in new tabs. Each tab also has a 👁 toggle in the toolbar that flips this for that tab only."
+        },
         "claudeCodeLauncher.repoSync.enabled": {
           "type": "boolean",
           "default": false,

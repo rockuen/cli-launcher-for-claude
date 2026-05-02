@@ -339,10 +339,159 @@ function getStyles(ctx) {
       border-radius: 8px;
     }
 
-    /* Terminal */
-    #terminal {
+    /* Split layout (Phase 3): #content-split wraps #reader-area + #splitter + #terminal */
+    #content-split {
       flex: 1;
-      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+    }
+    #reader-area {
+      flex: 0 0 70%;
+      min-height: 60px;
+      overflow-y: auto;
+      padding: 14px 22px 16px;
+      background: ${bg};
+      color: ${fg};
+      position: relative;
+      font-family: -apple-system, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+      font-size: 12px;
+      line-height: 1.6;
+      box-sizing: border-box;
+    }
+    #reader-area::-webkit-scrollbar { width: 8px; }
+    #reader-area::-webkit-scrollbar-track { background: ${scrollTrack}; border-radius: 4px; }
+    #reader-area::-webkit-scrollbar-thumb { background: ${scrollThumb}; border-radius: 4px; }
+    #reader-area::-webkit-scrollbar-thumb:hover { background: ${isDark ? '#777' : '#999'}; }
+
+    .reader-empty {
+      color: ${statusGray};
+      font-style: italic;
+      padding: 30px 0;
+      text-align: center;
+    }
+    #reader-meta {
+      font-size: 10px;
+      color: ${statusGray};
+      border-bottom: 1px solid ${border};
+      padding-bottom: 6px;
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+    #reader-meta:empty { display: none; }
+
+    #reader-live-dot {
+      position: absolute;
+      top: 6px;
+      right: 12px;
+      font-size: 9px;
+      color: #4caf50;
+      opacity: 0.4;
+      transition: opacity 0.25s, transform 0.25s, color 0.25s;
+      user-select: none;
+      cursor: default;
+      z-index: 5;
+      line-height: 1;
+    }
+    #reader-live-dot.flash { opacity: 1; transform: scale(1.4); }
+    #reader-live-dot.typing {
+      animation: reader-typing-pulse 1.1s ease-in-out infinite;
+    }
+    @keyframes reader-typing-pulse {
+      0%, 100% { opacity: 0.4; transform: scale(1); color: #4caf50; }
+      50%      { opacity: 1; transform: scale(1.4); color: #ffaa3b; }
+    }
+
+    /* Reader chat blocks (rendered from jsonl by ext-side renderBlocks) */
+    #reader-area .msg { margin-bottom: 18px; }
+    #reader-area .msg-head {
+      display: flex; align-items: baseline; gap: 8px;
+      margin-bottom: 4px; font-size: 10px;
+    }
+    #reader-area .msg-head .role {
+      text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;
+    }
+    #reader-area .msg-user .role { color: ${isDark ? '#4fc1ff' : '#0066cc'}; }
+    #reader-area .msg-assistant .role { color: ${isDark ? '#D97757' : '#C96442'}; }
+    #reader-area .msg-head .ts {
+      color: ${statusGray};
+      font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
+      font-size: 10px;
+    }
+    #reader-area .msg-body {
+      padding-left: 12px;
+      border-left: 2px solid ${border};
+      color: ${fg};
+    }
+    #reader-area .msg-user .msg-body { border-left-color: ${isDark ? 'rgba(79,193,255,0.45)' : 'rgba(0,102,204,0.4)'}; }
+    #reader-area .msg-assistant .msg-body { border-left-color: ${isDark ? 'rgba(217,119,87,0.5)' : 'rgba(201,100,66,0.45)'}; }
+    #reader-area .msg-body > :first-child { margin-top: 0; }
+    #reader-area .msg-body > :last-child { margin-bottom: 0; }
+    #reader-area .msg-body p { margin: 0.4em 0; }
+    #reader-area .msg-body strong { color: ${isDark ? '#ffffff' : '#000000'}; }
+    #reader-area .msg-body code {
+      background: ${isDark ? '#2a2a2a' : '#f3f3f3'};
+      color: ${isDark ? '#f5d59a' : '#c1671c'};
+      padding: 1px 5px; border-radius: 3px;
+      font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
+      font-size: 0.9em;
+    }
+    #reader-area .msg-body pre {
+      background: ${isDark ? '#161616' : '#f8f8f8'};
+      border: 1px solid ${border};
+      border-radius: 6px; padding: 10px; overflow-x: auto;
+    }
+    #reader-area .msg-body pre code { background: transparent; color: ${fg}; padding: 0; font-size: 0.85em; }
+    #reader-area .msg-body table { border-collapse: collapse; margin: 0.6em 0; font-size: 0.92em; }
+    #reader-area .msg-body th, #reader-area .msg-body td { border: 1px solid ${border}; padding: 4px 8px; }
+    #reader-area .msg-body th { background: ${isDark ? '#2a2a2a' : '#f3f3f3'}; }
+    #reader-area .msg-body blockquote {
+      margin: 0.4em 0; padding-left: 10px;
+      border-left: 3px solid ${border}; color: ${statusGray};
+    }
+    #reader-area .msg-body a { color: ${isDark ? '#4fc1ff' : '#0066cc'}; }
+    #reader-area .msg-body hr { border: 0; border-top: 1px solid ${border}; margin: 0.8em 0; }
+    #reader-area .msg-body ul, #reader-area .msg-body ol { padding-left: 22px; margin: 0.4em 0; }
+
+    /* Splitter — drag handle between reader and terminal */
+    #splitter {
+      flex: 0 0 auto;
+      height: 5px;
+      cursor: ns-resize;
+      background: ${toolbarBorder};
+      position: relative;
+      transition: background 0.15s, height 0.1s;
+      user-select: none;
+    }
+    #splitter:hover, #splitter.dragging {
+      background: ${isDark ? '#D97757' : '#C96442'};
+      height: 7px;
+    }
+    .splitter-handle {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 36px;
+      height: 3px;
+      background: ${statusGray};
+      border-radius: 2px;
+      opacity: 0.5;
+      pointer-events: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    #splitter:hover .splitter-handle, #splitter.dragging .splitter-handle {
+      background: #ffffff;
+      opacity: 0.9;
+    }
+
+    /* Terminal — now lives inside #content-split, fills remainder */
+    #terminal {
+      flex: 1 1 auto;
+      min-height: 50px;
+      padding: 10px 14px;
       overflow: hidden;
     }
     .xterm { padding: 0; }

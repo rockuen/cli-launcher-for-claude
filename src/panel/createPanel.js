@@ -12,7 +12,9 @@
 const vscode = require('vscode');
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 const crypto = require('crypto');
+const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
@@ -23,6 +25,8 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
+const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib/sessionJsonl');
+const { buildMeta, renderBlocks } = require('../lib/readerRender');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -44,6 +48,68 @@ function looksLikePrompt(data) {
     if (INTERACTIVE_PROMPT_PATTERNS[i].test(data)) return true;
   }
   return false;
+}
+
+// Split-layout reader watcher: tail the active session's jsonl and broadcast
+// rendered blocks to the webview so the in-panel reader stays in sync with
+// the TUI. Same polling shape as readerView's startLiveWatch — macOS fsevents
+// misses single-file watches under hidden ~/.claude/projects/, polling avoids
+// that. Watcher attaches even if the jsonl doesn't exist yet (Claude Code
+// creates it on first turn) — chokidar polls and fires `add` when it appears.
+function startReaderWatch(entry, panel) {
+  if (!entry || !entry.sessionId || !entry.cwd) return null;
+  const jsonlPath = getSessionJsonlPath(entry.sessionId, entry.cwd);
+  if (!jsonlPath) return null;
+
+  let debounceTimer = null;
+  const render = () => {
+    debounceTimer = null;
+    if (entry._disposed) return;
+    if (!fs.existsSync(jsonlPath)) return;
+    let messages, aiTitle;
+    try {
+      aiTitle = extractAiTitle(jsonlPath);
+      messages = extractMessages(jsonlPath);
+    } catch (e) {
+      console.error('[panel-reader] read failed:', e.message);
+      return;
+    }
+    const lastRole = messages.length > 0 ? messages[messages.length - 1].role : null;
+    try {
+      panel.webview.postMessage({
+        type: 'reader-update',
+        meta: buildMeta(entry, aiTitle, messages),
+        blocksHtml: renderBlocks(messages),
+        lastRole,
+      });
+    } catch (_) {}
+  };
+  const schedule = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(render, 200);
+  };
+
+  let watcher = null;
+  try {
+    watcher = chokidar.watch(jsonlPath, {
+      persistent: true,
+      ignoreInitial: false,
+      usePolling: true,
+      interval: 250,
+    });
+    watcher.on('add', () => schedule());
+    watcher.on('change', () => schedule());
+    watcher.on('error', (e) => console.error('[panel-reader] watcher error:', e && e.message));
+    console.log('[panel-reader] watching ' + jsonlPath);
+  } catch (e) {
+    console.error('[panel-reader] failed to start watch:', e.message);
+    return null;
+  }
+
+  return () => {
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    if (watcher) { try { watcher.close(); } catch (_) {} }
+  };
 }
 
 function createPanel(context, extensionPath, session, opts) {
@@ -111,6 +177,7 @@ function createPanel(context, extensionPath, session, opts) {
   const autoEffortMax = config.get('autoEffortMax', false);
   const repoSyncEnabled = config.get('repoSync.enabled', false);
   const repoSyncPath = config.get('repoSync.path', '');
+  const splitLayoutDefault = config.get('splitLayoutDefault', false);
   const pasteToFileThreshold = config.get('pasteToFileThreshold', 2000);
   const pasteTableAsMarkdown = config.get('pasteTableAsMarkdown', true);
   const defaultBackend = config.get('terminal.defaultBackend', 'webview');
@@ -140,8 +207,13 @@ function createPanel(context, extensionPath, session, opts) {
   const customSlashCommands = config.get('customSlashCommands', []);
   const fileAssociations = config.get('fileAssociations', {});
   const T = getTranslations();
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
-  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands);
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
+  // Split layout: reader area / terminal ratio is per-user, persisted across reloads.
+  // Clamp to [0.15, 0.85] so neither pane ever collapses to zero (xterm fit needs
+  // at least a few rows, reader needs at least a header's worth of height).
+  const splitRatioRaw = context.globalState.get('claudeCodeLauncher.splitRatio', 0.7);
+  const splitRatio = Math.max(0.15, Math.min(0.85, Number(splitRatioRaw) || 0.7));
+  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, null, splitLayoutDefault);
 
   // Spawn claude CLI
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
@@ -232,6 +304,8 @@ function createPanel(context, extensionPath, session, opts) {
   };
   state.panels.set(tabId, entry);
   saveSessions();
+
+  entry._stopReaderWatch = startReaderWatch(entry, panel);
 
   // v2.6.6: title blink while needs-attention AND tab not focused.
   // Self-stops via state polling, so external state changes don't need
@@ -415,6 +489,10 @@ function createPanel(context, extensionPath, session, opts) {
     entry._disposed = true;
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+    if (typeof entry._stopReaderWatch === 'function') {
+      try { entry._stopReaderWatch(); } catch (_) {}
+      entry._stopReaderWatch = null;
+    }
     stopTitleBlink();
     killPtyProcess(entry.pty);
     // Phase 12: optional multiplexer session cleanup. Killing the pty above

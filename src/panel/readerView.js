@@ -17,7 +17,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
-const marked = require('marked');
 const chokidar = require('chokidar');
 const { writePtyChunked } = require('../pty/write');
 const {
@@ -25,6 +24,12 @@ const {
   extractAiTitle,
   extractMessages,
 } = require('../lib/sessionJsonl');
+const {
+  escapeHtml,
+  formatStamp,
+  buildMeta,
+  renderBlocks,
+} = require('../lib/readerRender');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
@@ -229,20 +234,8 @@ function show(entry, context) {
   startLiveWatch(filePath);
 }
 
-function formatStamp(ms) {
-  const d = new Date(ms);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function fileSafeStamp(ms) {
   return formatStamp(ms).replace(/[: ]/g, '-');
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]));
 }
 
 function sanitizeFilename(s) {
@@ -321,34 +314,6 @@ function serializeMarkdown(entry, aiTitle, messages) {
   return lines.join('\n');
 }
 
-function buildMeta(entry, aiTitle, messages) {
-  const metaParts = [
-    aiTitle || '(untitled)',
-    entry.sessionId.slice(0, 8),
-    `${messages.length} message${messages.length === 1 ? '' : 's'}`,
-  ];
-  if (entry.cwd) metaParts.push(`cwd: ${entry.cwd}`);
-  return metaParts.join(' · ');
-}
-
-function renderBlocks(messages) {
-  if (messages.length === 0) {
-    return '<div class="reader-empty">No user/assistant messages yet.</div>';
-  }
-  return messages.map((m) => {
-    const ts = m.timestamp ? formatStamp(new Date(m.timestamp).getTime()) : '';
-    // user input preserves single newlines as <br> (GFM-comment style), so a
-    // multi-line message typed in the textarea reads the way it was typed.
-    // assistant text stays in standard markdown — single \n inside a paragraph
-    // collapses, double \n breaks paragraphs as authored.
-    const body = marked.parse(m.text || '', { breaks: m.role === 'user', gfm: true });
-    return `<div class="msg msg-${m.role}">
-  <div class="msg-head"><span class="role">${m.role}</span><span class="ts">${escapeHtml(ts)}</span></div>
-  <div class="msg-body">${body}</div>
-</div>`;
-  }).join('\n');
-}
-
 function renderHtml({ title, entry, aiTitle, messages, theme }) {
   const nonce = crypto.randomBytes(16).toString('hex');
   const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
@@ -369,13 +334,13 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
 
   body.theme-dark {
     --bg: #1e1e1e; --fg: #ececec; --fg-strong: #ffffff; --fg-muted: #9a9a9a;
-    --ts: #777; --border: #333; --user: #4fc1ff; --assistant: #c5a3ff;
+    --ts: #777; --border: #333; --user: #4fc1ff; --assistant: #D97757;
     --code-bg: #2a2a2a; --code-fg: #f5d59a; --pre-bg: #161616; --pre-border: #2a2a2a;
     --quote-border: #444; --quote-fg: #b8b8b8;
   }
   body.theme-light {
     --bg: #ffffff; --fg: #1f1f1f; --fg-strong: #000000; --fg-muted: #555;
-    --ts: #888; --border: #ddd; --user: #0066cc; --assistant: #6b46c1;
+    --ts: #888; --border: #ddd; --user: #0066cc; --assistant: #C96442;
     --code-bg: #f3f3f3; --code-fg: #c1671c; --pre-bg: #f8f8f8; --pre-border: #e1e1e1;
     --quote-border: #bbb; --quote-fg: #555;
   }
