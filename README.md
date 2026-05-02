@@ -104,6 +104,9 @@ once whether to enable OMC mode automatically.
   Commands: *Show CCG*, *Refresh CCG*, *Open CCG Pair*, *Rerun CCG*.
 - **HUD status bar item** — bottom-right pill showing model / context % / total cost /
   5-hour rate-limit %, driven by `<workspace>/.omc/state/hud-stdin-cache.json`.
+  *That cache is written by whatever script is registered as Claude Code's `statusLine`
+  command (OMC's `omc-hud.mjs` is the canonical producer); without it the HUD bar
+  stays idle.*
 - **HUD snapshot command** — *Show HUD Snapshot* dumps the current HUD JSON to the
   output panel.
 
