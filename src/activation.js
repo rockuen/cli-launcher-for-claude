@@ -461,11 +461,19 @@ function activate(context) {
     createPanel(context, extensionPath, s, { backend });
   });
 
-  // Sprint 0 — repo sync watcher (gated on claudeCodeLauncher.repoSync.enabled).
-  // Wrapped in try/catch so a missing chokidar or a throw inside start()
-  // can never break the rest of activate().
+  // Sprint 0+1 — repo sync (file watcher + auto-commit + push, all gated on
+  // claudeCodeLauncher.repoSync.enabled / autoCommit). Wrapped in try/catch so
+  // a missing chokidar or a throw inside start() never breaks activate().
   try {
-    require('./sync').start(context);
+    const sync = require('./sync');
+    sync.start(context);
+    context.subscriptions.push(
+      vscode.commands.registerCommand('claudeCodeLauncher.repoSync.setDeviceName', () => sync.setDeviceName()),
+      vscode.commands.registerCommand('claudeCodeLauncher.repoSync.openSettings', () =>
+        vscode.commands.executeCommand('workbench.action.openSettings', 'claudeCodeLauncher.repoSync')
+      ),
+    );
+    state.syncModule = sync;
   } catch (err) {
     console.log(`[sync] failed to start: ${err && err.message ? err.message : err}`);
   }
@@ -497,6 +505,12 @@ function deactivate() {
     killPtyProcess(entry.pty);
   }
   state.panels.clear();
+
+  // Best-effort synchronous force-commit on shutdown so changes from the last
+  // few minutes don't get stranded waiting for the debounce timer.
+  if (state.syncModule && typeof state.syncModule.flushSyncSync === 'function') {
+    try { state.syncModule.flushSyncSync(); } catch (_) {}
+  }
 }
 
 module.exports = { activate, deactivate };

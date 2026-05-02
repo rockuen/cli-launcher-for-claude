@@ -187,6 +187,16 @@
         "title": "Add Sub-Group",
         "icon": "$(new-folder)",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.repoSync.setDeviceName",
+        "title": "Repo Sync: Set Device Name",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.repoSync.openSettings",
+        "title": "Repo Sync: Open Settings",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -500,12 +510,28 @@
         "claudeCodeLauncher.repoSync.enabled": {
           "type": "boolean",
           "default": false,
-          "description": "Sprint 0 — enable the repo file watcher. Logs change/add/unlink events to the Debug Console; auto-commit/push will land in later sprints."
+          "description": "Enable the repo sync feature (file watcher + status bar). Auto-commit/push only fires when repoSync.autoCommit is also true."
         },
         "claudeCodeLauncher.repoSync.path": {
           "type": "string",
           "default": "",
           "description": "Path to the git repo to watch. Supports ${workspaceFolder}, ${userHome}, and ${env:VAR} substitution. Empty falls back to the first IDE workspace folder. Tip: commit \".vscode/settings.json\" in the repo with path set to \"${workspaceFolder}\" so every device auto-resolves to its own absolute path."
+        },
+        "claudeCodeLauncher.repoSync.autoCommit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically run `git add -A && commit && push` after a debounce window of inactivity. Requires repoSync.enabled. On first use you'll be asked to set a device name (used in commit messages)."
+        },
+        "claudeCodeLauncher.repoSync.deviceName": {
+          "type": "string",
+          "default": "",
+          "description": "Device name embedded in auto-commit messages, e.g. `[Mac] auto-sync: 2026-05-02 19:42 (3 changes)`. Leave blank to be prompted on first sync. Each device should set this in its own user settings.json (not workspace settings)."
+        },
+        "claudeCodeLauncher.repoSync.debounceMs": {
+          "type": "integer",
+          "default": 300000,
+          "minimum": 10000,
+          "description": "Idle window (ms) after the last file change before auto-commit fires. Default 300000 (5 min)."
         }
       }
     },
