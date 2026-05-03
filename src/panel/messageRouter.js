@@ -111,6 +111,11 @@ function routeWebviewMessage(msg, ctx) {
       const key = String(msg.key || '').trim();
       if (!key) return;
       try { writePtyChunked(entry, key + '\r'); } catch (_) {}
+      // Clear dedupe key so a legitimate follow-up prompt right after this
+      // response (e.g., script that asks two y/n questions in a row with the
+      // same wording) can re-fire instead of being suppressed.
+      entry._lastPromptKey = null;
+      entry._lastPromptAt = 0;
       return;
     }
 

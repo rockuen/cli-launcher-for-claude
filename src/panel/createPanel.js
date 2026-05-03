@@ -63,22 +63,27 @@ function detectBinaryPrompt(data) {
   const raw = String(data || '');
   // ANSI strip — same minimal regex used elsewhere in this codebase.
   const stripped = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  // Anchor matching to the chunk tail where the cursor parks waiting for
+  // input. Earlier chunks (scrollback redraws, command echoes after a
+  // response) often replay the prompt text but the cursor is no longer
+  // there — matching globally produced false re-fires after the user
+  // already answered. 400 chars is enough for any realistic prompt line.
+  const tailWindow = stripped.length > 400 ? stripped.slice(-400) : stripped;
   let kind = null, approveKey = null, rejectKey = null, defaultSide = null;
-  if (/\[Y\/n\]/.test(stripped)) {
+  if (/\[Y\/n\]/.test(tailWindow)) {
     kind = 'Y/n'; approveKey = 'y'; rejectKey = 'n'; defaultSide = 'approve';
-  } else if (/\[y\/N\]/.test(stripped)) {
+  } else if (/\[y\/N\]/.test(tailWindow)) {
     kind = 'y/N'; approveKey = 'y'; rejectKey = 'n'; defaultSide = 'reject';
-  } else if (/\(y\/n\)/i.test(stripped)) {
+  } else if (/\(y\/n\)/i.test(tailWindow)) {
     kind = 'y/n'; approveKey = 'y'; rejectKey = 'n'; defaultSide = null;
-  } else if (/\(yes\/no\)/i.test(stripped)) {
+  } else if (/\(yes\/no\)/i.test(tailWindow)) {
     kind = 'yes/no'; approveKey = 'yes'; rejectKey = 'no'; defaultSide = null;
   } else {
     return null;
   }
-  // Take the last non-empty line (or two trailing lines) of the stripped
-  // output so the snippet shows the actual question text. Cap so a giant
-  // PTY chunk doesn't produce an unwieldy bar.
-  const lines = stripped.split(/\r?\n/).map(l => l.replace(/\s+$/, ''));
+  // Take the last non-empty line (or two trailing lines) of the tail
+  // window so the snippet shows the actual question text.
+  const lines = tailWindow.split(/\r?\n/).map(l => l.replace(/\s+$/, ''));
   const tail = lines.filter(l => l.trim()).slice(-2).join(' · ');
   const snippet = tail.length > 240 ? tail.slice(-240) : tail;
   return { kind, approveKey, rejectKey, defaultSide, snippet };
@@ -395,9 +400,21 @@ function createPanel(context, extensionPath, session, opts) {
     // buttons inside the reader area. Independent of the needs-attention
     // fast-path below — even when state is already 'needs-attention' from a
     // previous prompt, we still want the new bar to show.
+    // Dedupe: terminal redraws and post-response command echoes can replay
+    // the same prompt text in subsequent PTY chunks. Suppress an identical
+    // snippet within a short window. messageRouter clears _lastPromptKey on
+    // user response so a legitimate repeat prompt right after still fires.
     const binaryPrompt = detectBinaryPrompt(data);
     if (binaryPrompt) {
-      try { panel.webview.postMessage({ type: 'prompt-detected', prompt: binaryPrompt }); } catch (_) {}
+      const now = Date.now();
+      const key = binaryPrompt.kind + '|' + binaryPrompt.snippet;
+      const sameAsLast = entry._lastPromptKey === key;
+      const withinWindow = entry._lastPromptAt && (now - entry._lastPromptAt) < 5000;
+      if (!(sameAsLast && withinWindow)) {
+        entry._lastPromptKey = key;
+        entry._lastPromptAt = now;
+        try { panel.webview.postMessage({ type: 'prompt-detected', prompt: binaryPrompt }); } catch (_) {}
+      }
     }
 
     // v2.6.6: interactive prompt fast-path. Skip the 7-second running
