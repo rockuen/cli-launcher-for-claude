@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.0] - 2026-05-03
+
+### Added
+- **Open Link from selection** — drag-select any URL or domain in the xterm or split-layout reader, right-click → "링크 열기 / Open Link" → opens in the external browser. Accepts `http(s)://…` as-is, `www.…` and `domain.tld[/path]` get an automatic `https://` prefix. Wrapping punctuation (quotes, parens, angle brackets) and trailing punctuation are stripped before matching. Selections that don't look like a URL (plain words, emails, unsupported schemes) show a "유효한 URL이 아닙니다" toast instead of dispatching. The extension-side `open-link` handler keeps its `^https?://` guard, so client-side normalization can never bypass scheme safety.
+
+### Internal
+- New `normalizeUrlFromSelection` helper in `webviewClient.js` — stage A (whitespace/newline collapse + outer punctuation strip), stage B (scheme detection), stage C (domain-shape regex with TLD 2–24). 19 input cases verified (http/https, www, deep paths, country TLDs, wrapping punctuation, emails rejected, foreign schemes rejected).
+- `messageRouter.js` unchanged — the existing `case 'open-link'` keeps `vscode.env.openExternal` gated to `^https?://`. Reader-side `setupReaderLinks` and ctxMenu both feed through the same single sink.
+
 ## [3.2.1] - 2026-05-03
 
 ### Added

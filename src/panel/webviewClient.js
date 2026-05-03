@@ -302,6 +302,47 @@ function getClientScript(ctx) {
       showToast(T.openFolderToast + cleaned);
     }
 
+    // v3.3: drag-selected text → open in external browser. Accepts:
+    //   - http(s)://… (passes through)
+    //   - www.example.com[/path]    (auto-prefix https://)
+    //   - example.com[/path]        (domain-like, auto-prefix https://)
+    // Rejects emails, plain words, and selections without a TLD-shaped tail.
+    // The router only allows http(s)://, so any malformed string we hand off
+    // is silently dropped there too — this client check is the UX layer
+    // (toast feedback + scheme prefix) on top of that hard guard.
+    function normalizeUrlFromSelection(raw) {
+      if (!raw) return null;
+      let t = String(raw).replace(/[\\r\\n]+/g, '').trim();
+      // strip wrapping punctuation: quotes, brackets, parens, then trailing punctuation
+      t = t.replace(/^['"\\\`<(\\[]+|['"\\\`>)\\].,;:!?]+$/g, '').trim();
+      if (!t) return null;
+      if (/^https?:\\/\\//i.test(t)) return t;
+      if (/^www\\./i.test(t)) return 'https://' + t;
+      if (t.includes('@')) return null; // email, not URL
+      // domain-like: label(.label)+ TLD(2-24) (path)
+      // examples: example.com, sub.example.co.kr, example.io/foo?bar=1
+      if (/^[a-z0-9][a-z0-9.\\-]*\\.[a-z]{2,24}(?:\\/[^\\s]*)?$/i.test(t)) {
+        return 'https://' + t;
+      }
+      return null;
+    }
+
+    function openSelectedAsLink() {
+      const sel = readSelection();
+      if (!sel) {
+        showToast(T.selectTextFirst);
+        return;
+      }
+      const url = normalizeUrlFromSelection(sel);
+      if (!url) {
+        const preview = sel.length > 60 ? sel.slice(0, 60) + '…' : sel;
+        showToast(T.notValidUrl + preview);
+        return;
+      }
+      vscode.postMessage({ type: 'open-link', url: url });
+      showToast(T.openLinkToast + url);
+    }
+
     // Context usage indicator
     const ctxIndicator = document.getElementById('context-indicator');
     const ctxBarFill = document.getElementById('ctx-bar-fill');
@@ -1473,6 +1514,9 @@ function getClientScript(ctx) {
           break;
         case 'open-folder':
           openSelectedAsFolder();
+          break;
+        case 'open-link':
+          openSelectedAsLink();
           break;
         case 'paste':
           navigator.clipboard.readText().then(text => {

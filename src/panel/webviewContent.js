@@ -248,6 +248,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div class="ctx-item" data-action="copy">${T.ctxCopy}<span class="shortcut">Ctrl+C</span></div>
       <div class="ctx-item" data-action="open-file">${T.ctxOpenFile}<span class="shortcut">${T.ctxSelectedText}</span></div>
       <div class="ctx-item" data-action="open-folder">${T.ctxOpenFolder}<span class="shortcut">${T.ctxSelectedText}</span></div>
+      <div class="ctx-item" data-action="open-link">${T.ctxOpenLink}<span class="shortcut">${T.ctxSelectedText}</span></div>
       <div class="ctx-item" data-action="paste">${T.ctxPaste}<span class="shortcut">Ctrl+V</span></div>
       <div class="ctx-item" data-action="paste-image">${T.ctxPasteImage}<span class="shortcut">&#x1F4CE;</span></div>
       <div class="ctx-sep"></div>
