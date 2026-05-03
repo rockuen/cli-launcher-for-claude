@@ -447,6 +447,8 @@ function getClientScript(ctx) {
     const setTheme = document.getElementById('set-theme');
     const setFontsize = document.getElementById('set-fontsize');
     const setFontsizeLabel = document.getElementById('set-fontsize-label');
+    const setReaderFontsize = document.getElementById('set-reader-fontsize');
+    const setReaderFontsizeLabel = document.getElementById('set-reader-fontsize-label');
     const setFontfamily = document.getElementById('set-fontfamily');
     const setSound = document.getElementById('set-sound');
     const setParticles = document.getElementById('set-particles');
@@ -464,6 +466,11 @@ function getClientScript(ctx) {
         setTheme.value = SETTINGS.defaultTheme || 'default';
         setFontsize.value = currentFontSize;
         setFontsizeLabel.textContent = currentFontSize + 'px';
+        if (setReaderFontsize) {
+          const rfs = SETTINGS.readerFontSize || 12;
+          setReaderFontsize.value = rfs;
+          if (setReaderFontsizeLabel) setReaderFontsizeLabel.textContent = rfs + 'px';
+        }
         if (setDefaultBackend) setDefaultBackend.value = SETTINGS.defaultBackend || 'webview';
         if (setMuxLifecycle) setMuxLifecycle.value = SETTINGS.multiplexerLifecycle || 'kill-on-close';
       }
@@ -508,6 +515,21 @@ function getClientScript(ctx) {
       setFontSize(v);
       vscode.postMessage({ type: 'save-setting', key: 'defaultFontSize', value: v });
     });
+
+    // Reader font size — applies the CSS var --reader-font-size on
+    // #reader-area so child elements (msg-head, ts, reader-meta, code) all
+    // scale proportionally via em. Persisted as a user setting so it
+    // re-applies across panels and reloads.
+    if (setReaderFontsize) {
+      setReaderFontsize.addEventListener('input', () => {
+        const v = parseInt(setReaderFontsize.value);
+        if (setReaderFontsizeLabel) setReaderFontsizeLabel.textContent = v + 'px';
+        const reader = document.getElementById('reader-area');
+        if (reader) reader.style.setProperty('--reader-font-size', v + 'px');
+        SETTINGS.readerFontSize = v;
+        vscode.postMessage({ type: 'save-setting', key: 'readerFontSize', value: v });
+      });
+    }
 
     let fontFamilyTimer = null;
     setFontfamily.addEventListener('input', () => {

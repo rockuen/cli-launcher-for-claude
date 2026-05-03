@@ -71,7 +71,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
           <button class="reader-prompt-btn reader-prompt-dismiss" title="Dismiss">&#x2715;</button>
         </span>
       </div>
-      <div id="reader-area" style="flex-basis: ${(splitRatio != null ? splitRatio : 0.85) * 100}%;${splitLayoutOn ? '' : 'display:none;'}">
+      <div id="reader-area" style="flex-basis: ${(splitRatio != null ? splitRatio : 0.85) * 100}%;--reader-font-size: ${settings.readerFontSize || 12}px;${splitLayoutOn ? '' : 'display:none;'}">
         <span class="reader-live-dot" id="reader-live-dot" title="Watching session for new messages">&#x25CF;</span>
         <div id="reader-meta"></div>
         <div id="reader-blocks">${initialReaderBlocks || '<div class="reader-empty">Waiting for session output…</div>'}</div>
@@ -149,6 +149,13 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div class="settings-row">
         <label title="Show the markdown reader pane above the terminal by default in new tabs. Each tab has a 👁 toggle in the toolbar that flips this for that tab only.">Split Layout (Default)</label>
         <div class="settings-toggle ${settings.splitLayoutDefault === true ? 'on' : ''}" id="set-split-layout"></div>
+      </div>
+      <div class="settings-row">
+        <label title="Font size (px) for the reader pane in split layout. Code blocks, timestamps, and metadata scale proportionally. Range: 10–24.">Reader Font Size</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="range" id="set-reader-fontsize" min="10" max="24" step="1" value="${settings.readerFontSize || 12}" style="width:80px;">
+          <span id="set-reader-fontsize-label" style="font-size:11px;min-width:30px;">${settings.readerFontSize || 12}px</span>
+        </div>
       </div>
       <div class="settings-row">
         <label title="Sprint 0 — chokidar file watcher on the repo path. Reload Window after toggling to apply.">Repo Sync (Sprint 0)</label>

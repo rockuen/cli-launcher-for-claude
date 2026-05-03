@@ -209,6 +209,7 @@ function createPanel(context, extensionPath, session, opts) {
 
   const config = vscode.workspace.getConfiguration('claudeCodeLauncher');
   const fontSize = config.get('defaultFontSize', 11);
+  const readerFontSize = config.get('readerFontSize', 12);
   const fontFamily = config.get('defaultFontFamily', '"D2Coding", "D2Coding ligature", Consolas, monospace');
   const defaultTheme = config.get('defaultTheme', 'default');
   const soundEnabled = config.get('soundEnabled', true);
@@ -246,7 +247,7 @@ function createPanel(context, extensionPath, session, opts) {
   const customSlashCommands = config.get('customSlashCommands', []);
   const fileAssociations = config.get('fileAssociations', {});
   const T = getTranslations();
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
   // Split layout: reader area / terminal ratio is per-user, persisted across reloads.
   // Clamp to [0.15, 0.85] so neither pane ever collapses to zero (xterm fit needs
   // at least a few rows, reader needs at least a header's worth of height).

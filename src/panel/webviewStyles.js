@@ -357,7 +357,7 @@ function getStyles(ctx) {
       color: ${fg};
       position: relative;
       font-family: -apple-system, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
-      font-size: 12px;
+      font-size: var(--reader-font-size, 12px);
       line-height: 1.6;
       box-sizing: border-box;
     }
@@ -373,7 +373,7 @@ function getStyles(ctx) {
       text-align: center;
     }
     #reader-meta {
-      font-size: 10px;
+      font-size: 0.85em;
       color: ${statusGray};
       border-bottom: 1px solid ${border};
       padding-bottom: 6px;
@@ -408,7 +408,7 @@ function getStyles(ctx) {
     #reader-area .msg { margin-bottom: 18px; }
     #reader-area .msg-head {
       display: flex; align-items: baseline; gap: 8px;
-      margin-bottom: 4px; font-size: 10px;
+      margin-bottom: 4px; font-size: 0.85em;
     }
     #reader-area .msg-head .role {
       text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;
@@ -418,7 +418,7 @@ function getStyles(ctx) {
     #reader-area .msg-head .ts {
       color: ${statusGray};
       font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
-      font-size: 10px;
+      font-size: 1em;
     }
     #reader-area .msg-body {
       padding-left: 12px;

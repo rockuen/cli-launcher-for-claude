@@ -376,6 +376,13 @@
           "maximum": 22,
           "description": "Default font size (px) for the terminal. Range: 8–22."
         },
+        "claudeCodeLauncher.readerFontSize": {
+          "type": "number",
+          "default": 12,
+          "minimum": 10,
+          "maximum": 24,
+          "description": "Font size (px) for the reader pane (split layout). Child elements (timestamps, metadata, code blocks) scale proportionally via em. Range: 10–24."
+        },
         "claudeCodeLauncher.defaultFontFamily": {
           "type": "string",
           "default": "\"D2Coding\", \"D2Coding ligature\", Consolas, monospace",
