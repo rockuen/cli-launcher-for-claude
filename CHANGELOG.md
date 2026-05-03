@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.2.1] - 2026-05-03
+
+### Added
+- **Inline binary prompt approval (Phase 4-extra)** — PTY output is matched against `[Y/n]`, `[y/N]`, `(y/n)`, `(yes/no)` patterns at the chunk tail. When detected, a small bar above the reader shows Approve / Reject buttons; click writes `key + CR` back into the PTY. `[Y/n]` highlights Approve as default; `[y/N]` highlights Reject. `(yes/no)` writes the full word. Auto-hides after 30s; dismiss (×) clears without sending input. Hides when split layout is off.
+- **Reader Font Size slider** — Settings → "Reader Font Size" range (10–24px, default 12). The reader pane uses a CSS variable `--reader-font-size`, so timestamps, message headers, code blocks, and the meta header all scale proportionally via em. Live applies on drag without reload; persisted as a global user setting.
+
+### Changed
+- **Default split ratio 0.7 → 0.85** — new tabs reserve 85% for the reader, ~15% for the xterm TUI, matching the design intent of "TUI ~4 lines small, reader prominent". Existing per-tab ratios in `globalState` are preserved.
+- **Slash command translations expanded** — Korean and English labels added for `/resume`, `/export`, `/usage`, `/effort`, `/fast`, `/output-style`, `/statusline`, `/security-review`, `/agents`, `/mcp`, `/hooks`, `/permissions`, `/ide`, `/add-dir`, `/vim`, `/bug`, `/install-github-app`, `/upgrade`, `/migrate-installer`, `/release-notes`.
+
+### Fixed
+- **Binary prompt re-fire after response** — terminal redraws and post-response command echoes that replayed the original prompt text were re-triggering the inline bar. `detectBinaryPrompt` now anchors matching to the trailing 400 chars (where the cursor parks waiting for input), and `createPanel` tracks `_lastPromptKey` / `_lastPromptAt` to suppress an identical kind+snippet within a 5-second window. The dedupe key is cleared on `prompt-respond` so a legitimate follow-up prompt right after the response can still fire.
+
+### Settings (new)
+- `claudeCodeLauncher.readerFontSize` (default `12`, range 10–24) — font size in pixels for the reader pane. Children scale via em.
+
 ## [3.2.0] - 2026-05-03
 
 ### Added
