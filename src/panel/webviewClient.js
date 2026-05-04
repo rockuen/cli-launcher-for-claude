@@ -3,7 +3,7 @@
 // v2.6.0 plan: convert to real static client.js with __CLAUDE_INIT__ JSON injection.
 
 function getClientScript(ctx) {
-  const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn } = ctx;
+  const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes } = ctx;
   const initialSplitRatio = (splitRatio != null && Number.isFinite(Number(splitRatio))) ? Number(splitRatio) : 0.85;
   const initialSplitOn = splitLayoutOn === true;
   return `
@@ -716,6 +716,12 @@ function getClientScript(ctx) {
 
     // Custom Slash Commands management
     const CUSTOM_SLASH = ${JSON.stringify(customSlashCommands || [])};
+    // Built-in extras + PKM + OMC slashes resolved server-side from
+    // src/lib/slashRegistry.js. Locale-resolved into flat { cmd, desc } pairs
+    // and gated by claudeCodeLauncher.slashRegistry.{includeBuiltinExtras,
+    // includePkm, includeOmc}. Not user-editable from settings UI; user-owned
+    // slashes still go through CUSTOM_SLASH.
+    const EXTRA_SLASH = ${JSON.stringify(extraSlashes || [])};
     let localSlash = CUSTOM_SLASH.slice();
     const slashListEl = document.getElementById('set-slash-list');
 
@@ -1774,6 +1780,7 @@ function getClientScript(ctx) {
       { cmd: '/logout', desc: T.slashLogout },
       { cmd: '/terminal-setup', desc: T.slashTerminalSetup },
       ...CUSTOM_SLASH,
+      ...EXTRA_SLASH,
     ];
     let slashActiveIndex = 0;
     let slashFiltered = [];

@@ -14,6 +14,10 @@
   <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code CLI</a>.</em>
 </p>
 
+<p align="center">
+  <a href="./README.ko.md">한국어 README</a>
+</p>
+
 ---
 
 ## Why this exists
@@ -72,7 +76,12 @@ official standalone install).
 - Click the bar to manually refresh via `/context`.
 
 ### Input panel
-- Slash command autocomplete (type `/` → suggestions).
+- Slash command autocomplete (type `/` → suggestions). Ships with the full
+  Claude Code built-in catalog (`/compact`, `/clear`, `/resume`, `/usage`,
+  `/effort`, `/output-style`, `/statusline`, `/security-review`, `/agents`,
+  `/mcp`, `/hooks`, `/permissions`, …). User-defined entries via
+  `customSlashCommands` are merged in; personal PKM/OMC catalogs can be
+  wired in via the gitignored override file (see §_Registering your own slashes_).
 - Task queue (queue multiple prompts, run sequentially).
 - Custom buttons (label + slash command), configurable in Settings.
 - Ctrl/Cmd+Up/Down input history.
@@ -138,6 +147,84 @@ For external attach workflows, switch *Multiplexer Lifecycle* to `Leave detached
 If `tmux` / `psmux` isn't on `PATH`, the multiplexer setting silently falls back to the
 Webview backend with a one-time info message; no broken UI surfaces.
 
+## Registering your own slashes
+
+The autocomplete dropdown ships with the full Claude Code built-in catalog,
+plus the user-editable `customSlashCommands` list in Settings. For a fixed
+personal catalog (your own `.claude/commands/*.md` PKM project slashes, an
+oh-my-claudecode skills set, or any other shared collection) you can drop an
+**override file** that the extension picks up at startup.
+
+### Quick setup — paste this into Claude Code
+
+If you run cli-launcher inside the source repo (or a fork), open a Claude
+Code session in that repo and paste the prompt below. Claude will scan your
+local environment and produce `src/lib/slashRegistry.local.js` with PKM +
+OMC catalogs filled in:
+
+```
+Generate src/lib/slashRegistry.local.js for cli-launcher-for-claude.
+
+Scan:
+1. The current Obsidian vault / project at `~/path/to/your/vault` for
+   `.claude/commands/*.md`. For each file extract `name` and `description`
+   from the frontmatter (fall back to a humanized form of the filename
+   when the description is empty). These become PKM_COMMANDS — cmd
+   `/<name>`, desc { ko, en }.
+2. The installed oh-my-claudecode skills at
+   `~/.claude/plugins/cache/omc/oh-my-claudecode/<version>/skills/*/SKILL.md`.
+   For each skill take the `description` line. These become OMC_SKILLS —
+   cmd `/oh-my-claudecode:<skill>`, desc { ko, en }.
+3. From CLAUDE.md (or memory), pick out the short OMC aliases the user
+   actually types (e.g. `/ccg`, `/team`, `/ralplan`, `/deep-interview`,
+   `/omc-setup`, `/omc-doctor`). These become OMC_ALIASES.
+
+Schema for every entry: `{ cmd: '/foo', desc: { ko: '한국어', en: 'English' } }`.
+Translate Korean ↔ English where one side is missing. Export
+`module.exports = { PKM_COMMANDS, OMC_ALIASES, OMC_SKILLS }`.
+
+Don't change `src/lib/slashRegistry.js` — only create the .local.js sibling.
+```
+
+Reload the extension (`Developer: Reload Window`) and the autocomplete
+dropdown picks up the new entries automatically. Each catalog is tagged in
+the description: `[PKM] …`, `[OMC alias] …`, `[OMC] …`, so you can filter
+by typing the tag.
+
+### Manual override
+
+If you'd rather hand-edit, create `src/lib/slashRegistry.local.js`:
+
+```js
+const PKM_COMMANDS = [
+  { cmd: '/blog', desc: { ko: '블로그 글', en: 'Blog post' } },
+  { cmd: '/idea', desc: { ko: '아이디어 추출', en: 'Capture idea' } },
+];
+
+const OMC_ALIASES = [
+  { cmd: '/ccg', desc: { ko: 'Codex+Gemini 리뷰', en: 'Codex+Gemini review' } },
+];
+
+const OMC_SKILLS = [
+  { cmd: '/oh-my-claudecode:autopilot',
+    desc: { ko: '자율 실행', en: 'Autopilot full autonomous run' } },
+];
+
+module.exports = { PKM_COMMANDS, OMC_ALIASES, OMC_SKILLS };
+```
+
+The file is in `.gitignore` so it never lands in the published vsix.
+Toggle each catalog independently:
+
+| Setting | Default | Effect |
+|---|---|---|
+| `claudeCodeLauncher.slashRegistry.includeBuiltinExtras` | `true` | Show the extra Claude Code built-ins (`/resume`, `/usage`, `/effort`, …) |
+| `claudeCodeLauncher.slashRegistry.includePkm` | `true` | Show `[PKM]`-tagged entries from your override |
+| `claudeCodeLauncher.slashRegistry.includeOmc` | `true` | Show `[OMC]` / `[OMC alias]` entries from your override |
+
+When no override file is present, the public build only contributes the
+built-in extras toggle — your dropdown stays clean.
+
 ## Settings reference
 
 All settings live under `claudeCodeLauncher.*`. The most relevant ones:
@@ -154,6 +241,9 @@ All settings live under `claudeCodeLauncher.*`. The most relevant ones:
 | `autoEffortMax` | auto-promote to /effort max | `false` |
 | `customButtons` | extra slash-command shortcuts | `[]` |
 | `customSlashCommands` | autocomplete additions | `[]` |
+| `slashRegistry.includeBuiltinExtras` | extra Claude Code built-ins in autocomplete | `true` |
+| `slashRegistry.includePkm` | `[PKM]`-tagged entries from override file | `true` |
+| `slashRegistry.includeOmc` | `[OMC]`-tagged entries from override file | `true` |
 | `fileAssociations` | per-extension open method | sensible defaults |
 | `pasteToFileThreshold` | paste size that auto-creates a file | `2000` |
 

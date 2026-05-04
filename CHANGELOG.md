@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.4.0] - 2026-05-04
+
+### Added
+- **Slash registry — extra Claude Code built-ins in autocomplete.** Every Claude Code built-in slash that already had a translation in v3.2.1 but was never spread into the live menu now appears in the autocomplete dropdown by default: `/resume`, `/export`, `/usage`, `/effort`, `/fast`, `/output-style`, `/statusline`, `/security-review`, `/agents`, `/mcp`, `/hooks`, `/permissions`, `/ide`, `/add-dir`, `/vim`, `/bug`, `/install-github-app`, `/upgrade`, `/migrate-installer`, `/release-notes`.
+- **Personal catalog override (opt-in).** A maintainer can drop a `src/lib/slashRegistry.local.js` sibling file to wire in their own `.claude/commands/*.md` project slashes (tagged `[PKM]`) and `/oh-my-claudecode:<skill>` catalog (tagged `[OMC]` / `[OMC alias]`) without publishing them. The local file is `.gitignore`d, so personal slashes never land in the published vsix. See **README §"Registering your own slashes"** for a Claude Code prompt that builds the file from your local environment.
+
+### Settings (new)
+- `claudeCodeLauncher.slashRegistry.includeBuiltinExtras` (default `true`) — include the extra Claude Code built-ins in the dropdown.
+- `claudeCodeLauncher.slashRegistry.includePkm` (default `true`) — include `[PKM]`-tagged project slashes loaded from the personal override (no-op for users without `slashRegistry.local.js`).
+- `claudeCodeLauncher.slashRegistry.includeOmc` (default `true`) — include `[OMC]`-tagged oh-my-claudecode slashes loaded from the personal override (no-op for users without `slashRegistry.local.js`).
+
+### Internal
+- New `src/lib/slashRegistry.js` — public-build catalog (BUILTIN_EXTRAS only) plus a `try { require('./slashRegistry.local') } catch` shim that loads personal catalogs when present. Each entry stores `desc` as `{ ko, en }`; `resolveExtraSlashes(locale, options, T)` flattens to `{ cmd, desc }[]` server-side so the webview client only handles the rendered shape. Display order: PKM → OMC alias → OMC namespaced → built-in extras (built-ins last so the long alphabetical tail doesn't bury custom commands).
+- `createPanel.js` resolves the registry once per panel and forwards it through `getWebviewContent` → `getClientScript` to the webview as the new `EXTRA_SLASH` array. The existing `customSlashCommands` user-editable list is preserved verbatim (still spread before `EXTRA_SLASH`).
+- New `test/unit/slashRegistry.test.ts` — 18 unit tests cover the public-build empty-catalog path, `setLocalOverride()` test seam, group toggles, locale picking, prefix tagging, T fallback, partial-override semantics, and reset behavior. `tsconfig.test.json` opts the JS module in via `allowJs: true` + explicit include.
+
 ## [3.3.0] - 2026-05-03
 
 ### Added

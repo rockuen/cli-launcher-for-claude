@@ -8,3 +8,8 @@ out/
 
 # Phase 0 — local agent state (plans, runtime state, drafts)
 .omc/
+
+# Personal slash registry override (PKM project commands, OMC skills, etc.)
+# Public builds ship only the built-in extras catalog. See README §"Registering
+# your own slashes" for the prompt that builds this file from your environment.
+src/lib/slashRegistry.local.js

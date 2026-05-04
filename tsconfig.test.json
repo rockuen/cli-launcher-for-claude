@@ -5,8 +5,10 @@
     "outDir": "./.test-out",
     "sourceMap": true,
     "declaration": false,
+    "allowJs": true,
+    "checkJs": false,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "src/lib/slashRegistry.js", "test/**/*.ts"],
   "exclude": ["node_modules", "out", "scripts", "src/orchestration/webview"]
 }

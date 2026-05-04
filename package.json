@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -435,6 +435,21 @@
             ]
           },
           "description": "Custom slash commands for the autocomplete dropdown. Shareable as JSON."
+        },
+        "claudeCodeLauncher.slashRegistry.includeBuiltinExtras": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include extra Claude Code built-in slashes (/resume, /usage, /effort, /output-style, /statusline, /security-review, /agents, /mcp, /hooks, /permissions, /ide, /add-dir, /vim, /bug, /install-github-app, /upgrade, /migrate-installer, /release-notes) in the autocomplete dropdown."
+        },
+        "claudeCodeLauncher.slashRegistry.includePkm": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include PKM project slashes (/blog, /idea, /thinking-partner, /daily-note, /todo, etc., tagged [PKM]) in the autocomplete dropdown. Useful when working inside an Obsidian vault with a .claude/commands folder."
+        },
+        "claudeCodeLauncher.slashRegistry.includeOmc": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include oh-my-claudecode slashes (/ccg, /team, /ralplan, /deep-interview alias plus /oh-my-claudecode:<skill> namespaced full names, tagged [OMC]) in the autocomplete dropdown."
         },
         "claudeCodeLauncher.customButtons": {
           "type": "array",

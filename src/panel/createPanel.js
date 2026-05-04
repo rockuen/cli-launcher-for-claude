@@ -16,7 +16,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const chokidar = require('chokidar');
 const state = require('../state');
-const { t, getTranslations } = require('../i18n');
+const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
 const { resolveClaudeCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
@@ -27,6 +27,7 @@ const { setTabIcon, setStatusBar, updateStatusBar } = require('./statusIndicator
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib/sessionJsonl');
 const { buildMeta, renderBlocks } = require('../lib/readerRender');
+const { resolveExtraSlashes } = require('../lib/slashRegistry');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -247,6 +248,12 @@ function createPanel(context, extensionPath, session, opts) {
   const customSlashCommands = config.get('customSlashCommands', []);
   const fileAssociations = config.get('fileAssociations', {});
   const T = getTranslations();
+  const slashRegistryOpts = {
+    includeBuiltinExtras: config.get('slashRegistry.includeBuiltinExtras', true),
+    includePkm: config.get('slashRegistry.includePkm', true),
+    includeOmc: config.get('slashRegistry.includeOmc', true),
+  };
+  const extraSlashes = resolveExtraSlashes(getLocale(), slashRegistryOpts, T);
   const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
   // Split layout: reader area / terminal ratio is per-user, persisted across reloads.
   // Clamp to [0.15, 0.85] so neither pane ever collapses to zero (xterm fit needs
@@ -255,7 +262,7 @@ function createPanel(context, extensionPath, session, opts) {
   // bottom (matches the design target of "TUI ~4 lines small, reader prominent").
   const splitRatioRaw = context.globalState.get('claudeCodeLauncher.splitRatio', 0.85);
   const splitRatio = Math.max(0.15, Math.min(0.85, Number(splitRatioRaw) || 0.85));
-  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, null, splitLayoutDefault);
+  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, null, splitLayoutDefault, extraSlashes);
 
   // Spawn claude CLI
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
