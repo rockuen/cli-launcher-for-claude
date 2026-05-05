@@ -9,6 +9,6 @@
     "checkJs": false,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "src/lib/slashRegistry.js", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "src/lib/*.js", "test/**/*.ts"],
   "exclude": ["node_modules", "out", "scripts", "src/orchestration/webview"]
 }

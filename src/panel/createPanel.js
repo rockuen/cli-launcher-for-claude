@@ -254,7 +254,8 @@ function createPanel(context, extensionPath, session, opts) {
     includeOmc: config.get('slashRegistry.includeOmc', true),
   };
   const extraSlashes = resolveExtraSlashes(getLocale(), slashRegistryOpts, T);
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
+  const terminalMinRows = Math.max(3, Math.min(30, Number(config.get('terminalMinRows', 8)) || 8));
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
   // Split layout: reader area / terminal ratio is per-user, persisted across reloads.
   // Clamp to [0.15, 0.85] so neither pane ever collapses to zero (xterm fit needs
   // at least a few rows, reader needs at least a header's worth of height).

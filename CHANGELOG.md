@@ -1,5 +1,50 @@
 # Changelog
 
+## [3.4.6] - 2026-05-04
+
+### Fixed
+- **Bare-filename anchor click no longer falls into the noop branch.** v3.4.5 added bare-filename matching in `linkifyHtml` and cwd resolution in `messageRouter.open-path`, but the webview-side `setupReaderLinks` only dispatched `open-path` for hrefs starting with `/`, `~`, `file://`, or a Windows drive letter. Bare hrefs like `README.md` matched none of those branches, fell through, and the click silently no-op'd — so the router's new cwd resolution never ran. The handler now treats any anchor with `class="auto-link"` (i.e. anything `linkifyHtml` itself produced) as a path candidate and dispatches `open-path`, leaving absolute-prefix paths and existing markdown-form `[txt](/path)` links on their previous routing.
+
+## [3.4.5] - 2026-05-04
+
+### Added
+- **Bare-filename autolink + cwd-relative resolution.** Plain `README.md`, `src/foo.ts`, `package.json` style references now turn into clickable anchors in the reader (previously only absolute paths and tilde / drive-prefixed paths matched). The `open-path` router resolves any non-absolute click against the active Claude session's `entry.cwd` before stat, so `README.md` clicked inside a `cli-launcher-for-claude` session opens `/Users/.../cli-launcher-for-claude/README.md` — and `handleOpenFile`'s existing `fileAssociations` honors the user's `.md → Obsidian` mapping (with IDE fallback when Obsidian isn't installed). Right-click "Open File" already worked this way; left-click now matches.
+
+### Internal
+- New `BARE_FILE_RE` in `src/lib/readerRender.js` — known-extension match with a negative lookahead that excludes paths already covered by `FILE_PATH_RE` (absolute / tilde / Windows drive). Anchor href stays as the bare token; resolution lives entirely in the router so the rendered HTML is portable.
+- 6 new `linkifyHtml.test.ts` cases — bare filename, bare relative path with directory, bare filename in inline `<code>`, coexistence with absolute paths, unknown-extension rejection, `:LINE` suffix preservation.
+
+## [3.4.4] - 2026-05-04
+
+### Changed
+- **Inline `<code>` no longer blocks reader autolink.** Claude Code answers commonly backtick-quote paths (`` `/Users/foo/bar.md` ``) — under v3.4.3's protection list those landed inside an `<code>` element and `linkifyHtml` skipped them, so the rendered token wasn't clickable. Inline `<code>` is now linkified just like surrounding paragraph text. Multi-line `<pre>` code blocks remain protected so a 200-line snippet doesn't sprout dozens of stray anchors.
+
+## [3.4.3] - 2026-05-04
+
+### Added
+- **Plain-text autolink in the reader.** Reader-area now turns plain-text URLs, known-extension file paths (`.md`, `.ts`, `.json`, `.png`, `.pdf`, …), and folder paths (anything ending with `/`) into clickable anchors automatically — no markdown link syntax required. The existing reader anchor click handler routes them through the same `open-link` / `open-path` flow that already powered markdown-form links: URLs go to the system browser, files open in the IDE (with `:LINE` suffix honored), folders open in Finder/Explorer.
+
+### Internal
+- New `linkifyHtml(html)` in `src/lib/readerRender.js`. Three-stage protection: stash existing `<pre>` / `<code>` / `<a>` / `<script>` / `<style>` regions as placeholders → run URL / file-path / folder-path regex sweeps (each new anchor also stashed so subsequent passes can't double-wrap) → restore all stashes. Trailing sentence punctuation (`.,;:!?)]`) is excluded from anchor matches via lookahead so URLs/paths preserve readable surrounding text.
+- New `LINKIFY_EXTENSIONS` (60+ entries: code, config, docs, images, archives, media). Conservative list — only triggers on filenames ending with these so generic dotted phrases stay plain text.
+- New `test/unit/linkifyHtml.test.ts` — 20 unit tests cover URL wrapping, deep paths, trailing punctuation, `<code>`/`<pre>`/`<script>` protection, existing `<a>` non-double-wrap, tilde + drive-letter paths, `:LINE` suffix preservation, mixed URL+path+folder paragraphs, and unknown-extension rejection.
+
+## [3.4.2] - 2026-05-04
+
+### Changed
+- **`terminalMinRows` default 8 → 14.** v3.4.1's 8-row floor was enough for the legacy Claude Code TUI but not for v2.1+ — the new layout reserves more rows for the prompt header (`Claude Code v2.x.x`), the model line, the cwd line, the bypass-permissions hint, and the input prompt itself, pushing the ctx status line out of frame on tall reader / short terminal splits. 14 covers the v2.1+ idle layout with a one-line margin. Users on smaller fonts can still lower it via settings; users seeing the ctx line clipped can raise it.
+
+## [3.4.1] - 2026-05-04
+
+### Fixed
+- **Split layout no longer hides the Claude Code TUI status line.** With the v3.2.1 default ratio of 0.85 (reader 85% / terminal 15%), tall fonts or shorter window heights could shrink the xterm pane below the row that draws `ctx:XX%` / `Claude idle` info. Because Claude redraws based on the current row count, the ctx line stopped appearing in PTY chunks, which in turn broke the launcher's toolbar `ctx` indicator. The splitter now enforces a configurable minimum xterm row count: drag clamping uses a dynamic max ratio derived from the live cell height, and a saved ratio that violates the guard is corrected on startup (and re-corrected on window resize).
+
+### Settings (new)
+- `claudeCodeLauncher.terminalMinRows` (default `8`, range 3–30) — minimum xterm rows the terminal pane is guaranteed when split layout is on. Increase if you use a larger reader font; decrease if you intentionally want a tiny terminal.
+
+### Internal
+- `setupSplitter` (`src/panel/webviewClient.js`) gained `getCharHeight()` (measures cell height from the live terminal element instead of poking xterm internals), `computeMaxRatio()` (translates the row-count guard into a per-frame ratio cap), and `enforceMinRows()` (re-applies the cap on startup + window resize, and persists the corrected ratio so future panels start inside the guard).
+
 ## [3.4.0] - 2026-05-04
 
 ### Added

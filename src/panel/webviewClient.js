@@ -2182,7 +2182,13 @@ function getClientScript(ctx) {
           vscode.postMessage({ type: 'open-link', url: href });
           return;
         }
-        if (/^file:\\/\\//i.test(href)
+        // v3.4.6: any auto-link anchor (made by linkifyHtml) is by definition
+        // a path candidate — bare README.md, src/foo.ts, etc. The router
+        // resolves non-absolute paths against entry.cwd before stat, so a
+        // relative href without a leading slash still reaches handleOpenFile.
+        const isAutoLink = a.classList && a.classList.contains('auto-link');
+        if (isAutoLink
+            || /^file:\\/\\//i.test(href)
             || href.startsWith('/')
             || href.startsWith('~')
             || /^[A-Za-z]:[\\\\/]/.test(href)) {
@@ -2198,15 +2204,72 @@ function getClientScript(ctx) {
     // ratio on mouseup (one write per drag, not per pixel). Calls fitAddon
     // during drag so xterm reflows visibly while the user resizes; the final
     // resize message lands on mouseup.
+    //
+    // v3.4.1 minRows guard: clamp the reader's max share so the terminal pane
+    // always has at least \`terminalMinRows\` xterm rows. Without this guard,
+    // a saved 0.85 ratio (or aggressive splitter drag) can shrink the terminal
+    // below the Claude Code TUI status line — at which point ctx info stops
+    // arriving at the launcher's PTY parser.
     (function setupSplitter() {
       const split = document.getElementById('content-split');
       const reader = document.getElementById('reader-area');
       const splitter = document.getElementById('splitter');
+      const terminalEl = document.getElementById('terminal');
       if (!split || !reader || !splitter) return;
+
+      const TERMINAL_MIN_ROWS = ${JSON.stringify(Number(settings.terminalMinRows) || 8)};
 
       let dragging = false;
       let lastRatio = ${initialSplitRatio};
       let pendingFit = null;
+
+      // Measure xterm cell height from the live terminal element. Avoids
+      // poking into xterm._core internals (whose shape changes between
+      // versions). Falls back to 17px if measurement fails (term not laid
+      // out yet, or we're called before the first fit).
+      const getCharHeight = () => {
+        try {
+          if (terminalEl && term && term.rows && term.rows > 0) {
+            const h = terminalEl.clientHeight;
+            if (h > 0) {
+              const cell = h / term.rows;
+              if (cell >= 8 && cell <= 60) return cell;
+            }
+          }
+        } catch (_) {}
+        return 17;
+      };
+
+      // Highest reader ratio that still leaves >= TERMINAL_MIN_ROWS for xterm.
+      // Subtracts splitter height + a few px breathing room. Returns null when
+      // the split area isn't laid out yet so callers can skip clamping.
+      const computeMaxRatio = () => {
+        const splitH = split.getBoundingClientRect().height;
+        if (!splitH || splitH <= 0) return null;
+        const splitterH = splitter.getBoundingClientRect().height || 6;
+        const minTermH = (TERMINAL_MIN_ROWS * getCharHeight()) + 4;
+        const dynamicMax = 1 - (minTermH + splitterH) / splitH;
+        return Math.max(0.15, Math.min(0.85, dynamicMax));
+      };
+
+      // Re-applies a ratio under the current minRows guard and refits xterm.
+      // Used both at startup (to correct a saved 0.85 that violates the guard)
+      // and after window resize.
+      const enforceMinRows = () => {
+        const max = computeMaxRatio();
+        if (max == null) return;
+        const current = parseFloat(reader.style.flexBasis) || (lastRatio * 100);
+        const currentRatio = current / 100;
+        if (currentRatio > max) {
+          reader.style.flexBasis = (max * 100) + '%';
+          lastRatio = max;
+          try { fitAddon.fit(); } catch (_) {}
+          try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
+          // Persist the corrected ratio so future tabs / sessions also start
+          // inside the guard.
+          try { vscode.postMessage({ type: 'save-split-ratio', ratio: max }); } catch (_) {}
+        }
+      };
 
       const fitTerm = () => {
         if (pendingFit) cancelAnimationFrame(pendingFit);
@@ -2230,7 +2293,9 @@ function getClientScript(ctx) {
         const rect = split.getBoundingClientRect();
         if (rect.height <= 0) return;
         const raw = (e.clientY - rect.top) / rect.height;
-        const ratio = Math.max(0.15, Math.min(0.85, raw));
+        const dynamicMax = computeMaxRatio();
+        const upperBound = (dynamicMax != null) ? Math.min(0.85, dynamicMax) : 0.85;
+        const ratio = Math.max(0.15, Math.min(upperBound, raw));
         reader.style.flexBasis = (ratio * 100) + '%';
         lastRatio = ratio;
         fitTerm();
@@ -2244,6 +2309,17 @@ function getClientScript(ctx) {
         document.body.style.userSelect = '';
         fitTerm();
         vscode.postMessage({ type: 'save-split-ratio', ratio: lastRatio });
+      });
+
+      // Window resize: when the panel changes height, the previously valid
+      // ratio may now violate minRows. Re-enforce.
+      window.addEventListener('resize', enforceMinRows);
+
+      // Startup: defer until xterm has laid out (term.rows reflects real cell
+      // height), then correct the saved ratio if it violates the guard.
+      // Two-phase wait — one frame for layout, then a microtask for measurement.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(enforceMinRows);
       });
     })();
 

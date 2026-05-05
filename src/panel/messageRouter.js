@@ -238,6 +238,16 @@ function routeWebviewMessage(msg, ctx) {
       if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) {
         p = path.join(os.homedir(), p.slice(1));
       }
+      // v3.4.5: bare filenames (`README.md`, `src/foo.ts`) and other relative
+      // paths from the reader autolink resolve against the Claude session's
+      // cwd. Without this, fs.statSync uses the extension host's cwd and
+      // almost always returns ENOENT. handleOpenFile / handleOpenFolder both
+      // honor fileAssociations once we hand them an absolute path, so a `.md`
+      // resolved this way still routes to Obsidian (or whatever the user
+      // configured) instead of the IDE.
+      if (!path.isAbsolute(p) && entry && entry.cwd) {
+        try { p = path.resolve(entry.cwd, p); } catch (_) {}
+      }
       let isDir = false;
       try {
         const stat = fs.statSync(p);

@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.4.0",
+  "version": "3.4.6",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -450,6 +450,13 @@
           "type": "boolean",
           "default": true,
           "description": "Include oh-my-claudecode slashes (/ccg, /team, /ralplan, /deep-interview alias plus /oh-my-claudecode:<skill> namespaced full names, tagged [OMC]) in the autocomplete dropdown."
+        },
+        "claudeCodeLauncher.terminalMinRows": {
+          "type": "number",
+          "default": 14,
+          "minimum": 3,
+          "maximum": 30,
+          "description": "Minimum xterm rows guaranteed in split layout. The reader pane cannot grow large enough to shrink the terminal below this row count, so the Claude Code TUI always has room to draw the ctx status line. Default 14 covers Claude Code v2.1+ idle layout (header + prompt + bypass-permissions hint + footer). Splitter drag and saved per-tab ratios both honor this guard. Increase if your TUI still hides the ctx line; decrease if you intentionally want a tiny terminal."
         },
         "claudeCodeLauncher.customButtons": {
           "type": "array",
