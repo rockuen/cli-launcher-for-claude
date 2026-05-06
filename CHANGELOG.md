@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.5.1] - 2026-05-06
+
+### Fixed
+- **Restore platform-specific Open VSX publish.** v3.5.0 was published to Open VSX as a single universal VSIX (the v3.5.0 git tag was never pushed, so the GitHub Actions matrix build did not run). The universal package only ships one ABI build of `node-pty`, so on platforms whose Electron ABI does not match the build host the extension fails on session start with `node-pty native module incompatible`. v3.5.1 republishes through the existing matrix workflow (`win32-x64`, `darwin-arm64`, `linux-x64`) so each platform receives its own correctly rebuilt `node-pty`. No code changes vs v3.5.0.
+
 ## [3.5.0] - 2026-05-06
 
 ### Changed
