@@ -255,14 +255,19 @@ function createPanel(context, extensionPath, session, opts) {
   };
   const extraSlashes = resolveExtraSlashes(getLocale(), slashRegistryOpts, T);
   const terminalMinRows = Math.max(3, Math.min(30, Number(config.get('terminalMinRows', 8)) || 8));
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle };
-  // Split layout: reader area / terminal ratio is per-user, persisted across reloads.
-  // Clamp to [0.15, 0.85] so neither pane ever collapses to zero (xterm fit needs
-  // at least a few rows, reader needs at least a header's worth of height).
-  // Default 0.85 = reader takes most of the space, terminal stays compact at the
-  // bottom (matches the design target of "TUI ~4 lines small, reader prominent").
+  // Split layout: reader area / terminal ratio is per-user, persisted across
+  // reloads. Clamp to [0.15, 0.92] so neither pane ever collapses to zero
+  // (xterm fit needs at least a few rows, reader needs at least a header's
+  // worth of height). v3.4.7 raised the upper cap from 0.85 to 0.92 so the
+  // settings slider + drag handle can both reach an intentionally narrow
+  // terminal for long-text reading. Default 0.85 = reader takes most of the
+  // space, terminal stays compact at the bottom.
   const splitRatioRaw = context.globalState.get('claudeCodeLauncher.splitRatio', 0.85);
-  const splitRatio = Math.max(0.15, Math.min(0.85, Number(splitRatioRaw) || 0.85));
+  const splitRatio = Math.max(0.15, Math.min(0.92, Number(splitRatioRaw) || 0.85));
+  // settings carries splitRatio so the in-panel settings modal slider can
+  // read its initial value and re-sync when the user reopens the modal
+  // after a drag/keyboard adjustment.
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle, splitRatio };
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, null, splitLayoutDefault, extraSlashes);
 
   // Spawn claude CLI

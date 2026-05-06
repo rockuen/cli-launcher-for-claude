@@ -151,6 +151,13 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <div class="settings-toggle ${settings.splitLayoutDefault === true ? 'on' : ''}" id="set-split-layout"></div>
       </div>
       <div class="settings-row">
+        <label title="Default reader/terminal split ratio. Slider value = reader pane height (%). Drag the splitter inside the panel for the same effect. Range: 15–92%.">Reader Default Height</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input type="range" id="set-split-ratio" min="15" max="92" step="1" value="${Math.round((splitRatio != null ? splitRatio : 0.85)*100)}" style="width:80px;">
+          <span id="set-split-ratio-label" style="font-size:11px;min-width:30px;">${Math.round((splitRatio != null ? splitRatio : 0.85)*100)}%</span>
+        </div>
+      </div>
+      <div class="settings-row">
         <label title="Font size (px) for the reader pane in split layout. Code blocks, timestamps, and metadata scale proportionally. Range: 10–24.">Reader Font Size</label>
         <div style="display:flex;align-items:center;gap:6px;">
           <input type="range" id="set-reader-fontsize" min="10" max="24" step="1" value="${settings.readerFontSize || 12}" style="width:80px;">

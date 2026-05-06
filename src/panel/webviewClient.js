@@ -497,6 +497,8 @@ function getClientScript(ctx) {
     const setRepoSyncEnabled = document.getElementById('set-repo-sync-enabled');
     const setRepoSyncPath = document.getElementById('set-repo-sync-path');
     const setSplitLayout = document.getElementById('set-split-layout');
+    const setSplitRatio = document.getElementById('set-split-ratio');
+    const setSplitRatioLabel = document.getElementById('set-split-ratio-label');
     const setDefaultBackend = document.getElementById('set-default-backend');
     const setMuxLifecycle = document.getElementById('set-mux-lifecycle');
 
@@ -511,6 +513,23 @@ function getClientScript(ctx) {
           const rfs = SETTINGS.readerFontSize || 12;
           setReaderFontsize.value = rfs;
           if (setReaderFontsizeLabel) setReaderFontsizeLabel.textContent = rfs + 'px';
+        }
+        // Resync the split-ratio slider — drags / keyboard adjustments since
+        // the modal was last opened persisted to globalState but SETTINGS in
+        // this webview holds the value at panel-open time. Pull the freshest
+        // ratio from the live reader-area flexBasis so the slider reflects
+        // what the user actually sees, falling back to SETTINGS if the
+        // reader is hidden.
+        if (setSplitRatio) {
+          const reader = document.getElementById('reader-area');
+          let live = null;
+          if (reader && reader.style.flexBasis) {
+            const fb = parseFloat(reader.style.flexBasis);
+            if (Number.isFinite(fb) && fb > 0) live = fb;
+          }
+          const pct = Math.max(15, Math.min(92, Math.round(live != null ? live : ((SETTINGS.splitRatio || 0.85) * 100))));
+          setSplitRatio.value = pct;
+          if (setSplitRatioLabel) setSplitRatioLabel.textContent = pct + '%';
         }
         if (setDefaultBackend) setDefaultBackend.value = SETTINGS.defaultBackend || 'webview';
         if (setMuxLifecycle) setMuxLifecycle.value = SETTINGS.multiplexerLifecycle || 'kill-on-close';
@@ -603,6 +622,26 @@ function getClientScript(ctx) {
         const next = !setSplitLayout.classList.contains('on');
         setSplitLayout.classList.toggle('on', next);
         vscode.postMessage({ type: 'save-setting', key: 'splitLayoutDefault', value: next });
+      });
+    }
+
+    // v3.4.7: settings-modal slider for the default split ratio. Mirrors the
+    // splitter drag handle — both write to the same globalState key via
+    // 'save-split-ratio'. Live-applies the new ratio to the current panel so
+    // the user sees the layout shift while sliding (no Apply button needed).
+    if (setSplitRatio) {
+      setSplitRatio.addEventListener('input', () => {
+        const v = parseInt(setSplitRatio.value);
+        if (setSplitRatioLabel) setSplitRatioLabel.textContent = v + '%';
+        const ratio = Math.max(0.15, Math.min(0.92, v / 100));
+        const reader = document.getElementById('reader-area');
+        if (reader) {
+          reader.style.flexBasis = (ratio * 100) + '%';
+          try { fitAddon.fit(); } catch (_) {}
+          try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
+        }
+        SETTINGS.splitRatio = ratio;
+        vscode.postMessage({ type: 'save-split-ratio', ratio });
       });
     }
 
@@ -2240,16 +2279,19 @@ function getClientScript(ctx) {
         return 17;
       };
 
-      // Highest reader ratio that still leaves >= TERMINAL_MIN_ROWS for xterm.
-      // Subtracts splitter height + a few px breathing room. Returns null when
+      // v3.4.7: simplified from a dynamic minRows guard back to a flat
+      // absolute cap. The previous formula (1 - terminalMinRows*charHeight/
+      // splitH) pinned the reader's max ratio at ~0.5-0.6 on typical heights,
+      // which users felt as "the terminal is stuck too wide and I can't make
+      // it smaller." Restoring a flat 0.92 cap (terminal >= 8%) gives users
+      // the full drag range for long-text reading; the CSS min-height on
+      // #terminal plus xterm scrollback keep the bottom pane usable, and
+      // anyone who clips the ctx line can drag back. Returns null only when
       // the split area isn't laid out yet so callers can skip clamping.
       const computeMaxRatio = () => {
         const splitH = split.getBoundingClientRect().height;
         if (!splitH || splitH <= 0) return null;
-        const splitterH = splitter.getBoundingClientRect().height || 6;
-        const minTermH = (TERMINAL_MIN_ROWS * getCharHeight()) + 4;
-        const dynamicMax = 1 - (minTermH + splitterH) / splitH;
-        return Math.max(0.15, Math.min(0.85, dynamicMax));
+        return 0.92;
       };
 
       // Re-applies a ratio under the current minRows guard and refits xterm.
@@ -2294,7 +2336,7 @@ function getClientScript(ctx) {
         if (rect.height <= 0) return;
         const raw = (e.clientY - rect.top) / rect.height;
         const dynamicMax = computeMaxRatio();
-        const upperBound = (dynamicMax != null) ? Math.min(0.85, dynamicMax) : 0.85;
+        const upperBound = (dynamicMax != null) ? dynamicMax : 0.92;
         const ratio = Math.max(0.15, Math.min(upperBound, raw));
         reader.style.flexBasis = (ratio * 100) + '%';
         lastRatio = ratio;

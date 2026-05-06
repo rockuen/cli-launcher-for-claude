@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.4.7] - 2026-05-06
+
+### Fixed
+- **In-panel reader on Windows now actually receives session output.** The split-layout reader stayed pinned at "Waiting for session output…" on Windows even after Claude Code wrote the first turn to its jsonl. Root cause: `lib/sessionJsonl.getSessionJsonlPath()` folded `[/\\' ]` to `-` but did **not** include `:`, so a Windows cwd like `C:\Users\foo\proj` encoded to `C:-Users-foo-proj` and the watcher tailed a path that doesn't exist — Claude Code's actual folder is `C--Users-foo-proj` (both `:` and `\` collapsed to `-`). macOS paths never contain `:`, so the bug never surfaced on Mac. The strip set now includes `:`.
+
+### Changed
+- **Splitter drag now reaches reader=92% (terminal=8%).** v3.4.1 introduced a dynamic minRows guard (`1 − terminalMinRows×charHeight/splitH`) that pinned reader's max at ~0.55–0.60 on typical heights, so users couldn't make the terminal narrow when reading a long answer. The cap is back to a flat 0.92 — `#terminal`'s CSS `min-height` + xterm scrollback keep the pane usable, and anyone who clips the Claude TUI ctx line can simply drag back. `terminalMinRows` setting is kept for forward compatibility but no longer feeds the drag clamp.
+
+### Added
+- **"Reader Default Height" slider in the settings modal.** Settings → Split Layout (Default) now has a sibling slider that controls the default reader/terminal ratio (15–92%, in 1% steps). Mirrors the in-panel splitter drag — both write the same `claudeCodeLauncher.splitRatio` globalState — so users can either drag the handle or set a precise value from the modal, and changes live-preview into the active panel as the slider moves. The slider re-syncs from the live `flexBasis` whenever the modal reopens, so a recent drag isn't shown as stale.
+
+### Internal
+- New `test/unit/sessionJsonl.test.ts` — 8 cases covering macOS leading-slash, Windows backslash, Windows forward-slash, apostrophe (`Won's 2nd Brain`), space, drive-letter casing preservation, missing-arg null-return, and the full `~/.claude/projects/` anchoring.
+
 ## [3.4.6] - 2026-05-04
 
 ### Fixed

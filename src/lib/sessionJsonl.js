@@ -2,8 +2,9 @@
 //
 // Claude Code stores each conversation as a line-delimited JSON file under
 // ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl. The cwd is rewritten
-// by replacing [/\\' ] with '-' (verified empirically for paths containing
-// spaces and apostrophes).
+// by replacing [/\\:' ] with '-' (verified empirically for paths containing
+// spaces, apostrophes, and Windows drive letters — `C:\Users\foo` becomes
+// `C--Users-foo`, with both ':' and '\' folded to '-').
 //
 // Shared between the sidebar tree (label fallback) and the reader panel so
 // both speak the same JSONL dialect.
@@ -14,7 +15,13 @@ const fs = require('fs');
 
 function getSessionJsonlPath(sessionId, cwd) {
   if (!sessionId || !cwd) return null;
-  const encoded = String(cwd).replace(/[\/\\' ]/g, '-');
+  // v3.4.7: include ':' in the strip set. Without it, Windows cwds like
+  // 'C:\\Users\\foo\\proj' encoded to 'C:-Users-foo-proj' (colon kept), which
+  // never matched Claude Code's actual 'C--Users-foo-proj' folder — so the
+  // reader watcher tailed a non-existent path and the split-pane stayed at
+  // "Waiting for session output…" forever. macOS paths lack ':', so this
+  // regression only ever bit Windows users.
+  const encoded = String(cwd).replace(/[\/\\:' ]/g, '-');
   return path.join(os.homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`);
 }
 
