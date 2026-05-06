@@ -122,9 +122,36 @@ function extractMessages(filePath) {
   return out;
 }
 
+// User + assistant turn count, matching extractMessages()'s filter so the
+// number on the metadata row equals the rendered reader transcript length.
+function extractMessageCount(filePath) {
+  let n = 0;
+  try {
+    const lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
+    for (const d of lines) {
+      if (d.isSidechain) continue;
+      if (d.type === 'assistant') {
+        const c = d.message && d.message.content;
+        if (Array.isArray(c) && c.some(blk => blk && blk.type === 'text' && typeof blk.text === 'string' && blk.text.trim())) {
+          n++;
+        }
+      } else if (d.type === 'user' && !d.isMeta) {
+        const msg = d.message;
+        if (!msg || msg.role !== 'user') continue;
+        if (typeof msg.content !== 'string') continue;
+        if (SYS_TAG_RE.test(msg.content)) continue;
+        if (!msg.content.trim()) continue;
+        n++;
+      }
+    }
+  } catch {}
+  return n;
+}
+
 module.exports = {
   getSessionJsonlPath,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,
+  extractMessageCount,
 };

@@ -1,5 +1,57 @@
 # Changelog
 
+## [3.5.0] - 2026-05-06
+
+### Changed
+- **Every session is rendered as `Collapsed`.** Sibling rows always reserve VSCode's caret column now, which fixes the v3.4.8–v3.4.15 "leaf-only sub-group children look flush with the sub-group header" bug at its root cause. The TreeView's column-reservation rule is what holds the hierarchy together — not label-prefix or padded-SVG hacks.
+- **Session expand reveals a stat row** (`N turns · relative time`). Previously the caret expanded into nothing, which felt off. The metadata row both anchors the column hierarchy and gives the expand a real payload. Sub-sessions, when present, follow the metadata row. Trash entries get the same treatment.
+
+### Removed
+- **U+3000 ideographic-space label prefix workaround** (v3.4.13) and **padded-SVG icon assets** (v3.4.14, `icons/comment-discussion-padded.svg`, `icons/comment-draft-padded.svg`). Both replaced by the structural fix above.
+
+### Fixed
+- **Leaf-only sub-group children visibly nest under their sub-group header.** Seven prior iterations (v3.4.8 ASCII space, v3.4.9 NBSP, v3.4.10 `│` glyph, v3.4.11 phantom row, v3.4.13 ideographic-space prefix, v3.4.14 padded SVG, v3.4.15 thin prefix) attempted cosmetic fixes; v3.5.0 fixes it structurally by promoting all leaf sessions to `Collapsed` so VSCode's tree renderer reserves the same caret column for every sibling.
+
+## [3.4.15] - 2026-05-06
+
+### Reverted
+- **Padded-SVG icon experiment (v3.4.14) reverted.** VSCode's tree view enforces a 16×16 icon column and `fill="currentColor"` is not applied to file/dataUri icons, so the 32×16 padded SVG rendered as a tiny black square instead of an icon shifted right. Returned to v3.4.13's thin label prefix (`　` × 1) for leaf-only sub-group children. Users wanting a more pronounced hierarchy depth should raise `workbench.tree.indent` in their `settings.json` — that's the only knob VSCode exposes for tree row indent. The padded SVG assets remain on disk in case a future approach can use them.
+
+## [3.4.14] - 2026-05-06
+
+### Changed
+- **Leaf-only sub-group children: icon physically moves inward, not just the label.** Earlier attempts (NBSP/em-space prefix v3.4.8/9, visible `│` glyph v3.4.10, phantom row v3.4.11, ideographic-space prefix v3.4.13) all relied on label tricks, leaving the bubble icon glued to the same X as the sub-group folder. v3.4.14 swaps the codicon for a 32×16 SVG variant whose left half is transparent and right half carries the bubble path — the icon column itself slides 16px right, the label follows it, and the result reads as a true deeper hierarchy level. Two new assets (`icons/comment-discussion-padded.svg`, `icons/comment-draft-padded.svg`) ship with the extension; only leaf-only-sub-group children get the swap, so Recent Sessions and mixed groups remain untouched.
+
+## [3.4.13] - 2026-05-06
+
+### Fixed
+- **Leaf-only sub-group children now visibly indent below the sub-group header.** When a custom group holds only leaf sessions (no sub-sub-groups), VSCode's tree skips the `▷` column and the children sit flush with their parent header — making "CLI 런처" look like a sibling of "서브 개인" instead of its child. Mixed groups (those with at least one sub-group) keep VSCode's native indent because the column is already reserved. Leaf-only groups now prefix each child label with U+3000 IDEOGRAPHIC SPACE × 4, the only practical way to add visible horizontal space inside a TreeItem (NBSP and EM SPACE both get collapsed by the renderer). The prefix is applied only on the leaf-only path, so groups with sub-groups remain untouched and identical to Recent Sessions.
+
+## [3.4.12] - 2026-05-06
+
+### Reverted
+- **Phantom row removed.** v3.4.11's phantom collapsible sibling reserved the `▷` column at the cost of an empty extra row that users found visually noisy. Reverted to VSCode's native tree indent, which already nests sub-groups and their children correctly. The remaining "leaf-only sub-group children look flush with the sub-group header" case is a workbench tree quirk; users wanting a more pronounced hierarchy can raise `workbench.tree.indent` in their `settings.json` (default 8 → e.g. 16) — that affects every tree, not just this one, but is the only knob VSCode exposes for indent depth.
+
+## [3.4.11] - 2026-05-06
+
+### Fixed
+- **Group children now align exactly like Recent Sessions.** v3.4.8/v3.4.9 (NBSP prefix) failed silently — VSCode tree label collapses non-breaking spaces. v3.4.10 (`│` glyph prefix) worked but added a printable artifact in front of every row. The new approach mirrors why Recent Sessions itself indents: it has a collapsible sibling somewhere in the list, so VSCode reserves a `▷` column for the whole group. Custom leaf-only groups now insert one phantom collapsible sibling (empty label, empty children, `contextValue='phantom'`) at the bottom — the column appears, every real child snaps to the same indent, and no labels are touched. Sub-group cases skip the phantom because sub-groups already provide the column.
+
+## [3.4.10] - 2026-05-06
+
+### Fixed
+- **Group child indent now uses a visible tree-line glyph.** v3.4.8/v3.4.9 tried 4×NBSP and 8×NBSP prefixes, but VSCode's tree label renderer collapses leading non-breaking spaces too — the prefix never made it to screen. Switched to `│` (U+2502 BOX DRAWINGS LIGHT VERTICAL) + 2×NBSP, which renders the way scope guides do in editor gutters and finally makes the hierarchy obvious for leaf-only groups. The clone path is otherwise unchanged.
+
+## [3.4.9] - 2026-05-06
+
+### Fixed
+- **Group child indent now actually shows.** v3.4.8's 4×NBSP prefix wasn't visible — either VSCodium normalized leading non-breaking spaces too, or the same-version vsix re-install short-circuited cache reload. Bumped to v3.4.9 (forces a real activation cycle) and widened the prefix to 8×NBSP. If this still reads flush against the group header, the next iteration switches to a visible tree-line glyph (e.g. `│`).
+
+## [3.4.8] - 2026-05-06
+
+### Fixed
+- **Custom group children now visibly indent under the folder header.** Sessions inside a custom group sat flush against the group's own indent, so the hierarchy read as a single block. The cause was VSCode's TreeView only reserving a `▷` collapse column when at least one sibling is collapsible — Recent Sessions usually has a sub-session in the mix, so its children auto-align, but a leaf-only custom group skipped that column entirely. The tree provider now clones each direct child with a thin two-space label indent (preserving `_sessionId`, `command`, `iconPath`, sub-session `_children`, etc.) so leaf-only groups read with the same visual nesting users expect from Recent Sessions.
+
 ## [3.4.7] - 2026-05-06
 
 ### Fixed

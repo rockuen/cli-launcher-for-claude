@@ -12,7 +12,23 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
-const { extractAiTitle, extractFirstUserMessage } = require('../lib/sessionJsonl');
+const { extractAiTitle, extractFirstUserMessage, extractMessageCount } = require('../lib/sessionJsonl');
+
+// Korean/English short relative time. Falls back to a locale date string
+// once the gap exceeds a week.
+function _relTime(mtime) {
+  const diff = Date.now() - mtime;
+  const min = Math.floor(diff / 60000);
+  const isKo = (vscode.env.language || '').startsWith('ko');
+  if (min < 1) return isKo ? '방금 전' : 'just now';
+  if (min < 60) return isKo ? `${min}분 전` : `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return isKo ? `${hr}시간 전` : `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return isKo ? '어제' : 'yesterday';
+  if (day < 7) return isKo ? `${day}일 전` : `${day}d ago`;
+  return new Date(mtime).toLocaleDateString();
+}
 
 const DND_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.sessions';
 const DND_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.groups';
@@ -67,9 +83,13 @@ class SessionTreeDataProvider {
     return null;
   }
 
-  // Sort comparator: honors claudeSessionSortOrder, falls back to mtime DESC
+  // Sort comparator: honors claudeSessionSortOrder, falls back to mtime DESC.
+  // Metadata rows (contextValue === 'sessionMeta') always lead their parent's
+  // child list so the stat row stays on top of any sub-sessions.
   _cmp(sortMap, mtimeMap) {
     return (a, b) => {
+      if (a.contextValue === 'sessionMeta') return -1;
+      if (b.contextValue === 'sessionMeta') return 1;
       const oa = sortMap[a._sessionId];
       const ob = sortMap[b._sessionId];
       if (oa != null && ob != null) return oa - ob;
@@ -125,7 +145,6 @@ class SessionTreeDataProvider {
     }
     for (const item of allItems) {
       if (item._children && item._children.length > 0) {
-        item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
         item._children.sort(cmp);
       }
     }
@@ -169,6 +188,11 @@ class SessionTreeDataProvider {
         .filter(Boolean)
         .filter(it => !isSubSession(it._sessionId));
       directItems.sort(cmp);
+      // v3.4.12: trust VSCode's native tree indent. Earlier attempts at
+      // forcing an indent column (NBSP/em-space prefix, visible glyphs,
+      // phantom collapsible sibling) all introduced their own artefacts.
+      // Users who want a more pronounced hierarchy can set
+      // "workbench.tree.indent": 16 (or higher) in their settings.json.
 
       // Immediate child group paths (depth+1, same prefix)
       const myDepth = pathDepth(name);
@@ -247,10 +271,19 @@ class SessionTreeDataProvider {
             if (!savedTitle && !aiTitle && !firstMsg) continue;
             const displayText = savedTitle || aiTitle || firstMsg;
             const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
-            const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+            // Same caret-column reservation reason as live sessions.
+            const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
             item.description = dateStr;
             item.iconPath = new vscode.ThemeIcon('trash');
             item.contextValue = 'trashed';
+            const trashMeta = new vscode.TreeItem(
+              `trashed · ${_relTime(mtime)}`,
+              vscode.TreeItemCollapsibleState.None,
+            );
+            trashMeta.iconPath = new vscode.ThemeIcon('info');
+            trashMeta.contextValue = 'sessionMeta';
+            trashMeta.tooltip = `Session: ${sid}\n${date.toLocaleString()}`;
+            item._children = [trashMeta];
             item._sessionId = sid;
             item.command = { command: 'claudeCodeLauncher.resumeSession', title: 'Resume', arguments: [sid] };
             trashItems.push(item);
@@ -303,7 +336,9 @@ class SessionTreeDataProvider {
       const displayText = savedTitle || aiTitle || firstMsg;
       const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
 
-      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      // Forced Collapsed reserves a caret column on every sibling row;
+      // without it, leaf-only sub-group children render flush with their header.
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
       item.description = dateStr;
       const tooltipHead = savedTitle || aiTitle;
       const tooltipBody = firstMsg && firstMsg !== tooltipHead ? firstMsg : '';
@@ -321,6 +356,20 @@ class SessionTreeDataProvider {
       item.contextValue = 'session';
       item._sessionId = sessionId;
       item._mtime = file.mtime;
+
+      // Metadata child — turn count + relative mtime. Anchors the caret-column
+      // hierarchy (so leaf-only sub-groups indent correctly) AND fills the row
+      // that ▷ expand exposes, so opening a session shows real info instead
+      // of a blank panel. Sub-sessions, when present, are appended after this
+      // row in the parent-attachment loop in _buildGroups.
+      const msgCount = extractMessageCount(file.path);
+      const metaLabel = `${msgCount} turn${msgCount === 1 ? '' : 's'} · ${_relTime(file.mtime)}`;
+      const metaRow = new vscode.TreeItem(metaLabel, vscode.TreeItemCollapsibleState.None);
+      metaRow.iconPath = new vscode.ThemeIcon('info');
+      metaRow.contextValue = 'sessionMeta';
+      metaRow.tooltip = `Session: ${sessionId}\n${date.toLocaleString()}`;
+      item._children = [metaRow];
+
       items.push(item);
     }
     return items;
