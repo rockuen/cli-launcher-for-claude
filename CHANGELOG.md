@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.2] - 2026-05-06
+
+### Added
+- **Blue tab dot when a background shell is keeping a session warm.** When Claude Code prints `* Baked for … · N shell still running` after a turn, the panel now repaints the tab icon blue (`#2196F3`) instead of falling back to the gray idle dot. Reads at a glance: gray = nothing happening, yellow = thinking, blue = idle but a `Bash` shell is still running in the background, green = done, red = error. The tab icon is the only thing that changes — `entry.state` and the status bar are untouched, so existing automations keep working.
+- New tab-icon state `shell-running` (asset `icons/claude-shell.svg`) and a `setIdleIcon(panel, entry, …)` helper in `statusIndicator.js` that picks between gray and blue based on a 30-second freshness window, with a self-rescheduling timer so the dot fades back to gray when the shell genuinely finishes (Claude Code does not always re-emit the line, so we cannot rely on a negative match).
+- `src/lib/shellRunningDetect.js` — the regex extraction (`/(\d+)\s+shells?\s+still\s+running/i`) lives in its own helper so PTY detection works the same way from `createPanel` and `restartPty`. ANSI escape sequences are stripped before matching.
+- 8 new unit tests in `test/unit/shellRunningDetect.test.ts` covering the canonical sentence, plurals, ANSI-coloured output, the chunk-tail trim, and the false-positive guards (no count, zero count, "1 shell" footer, plain "Bash shell exited"). Suite is now 153/153 passing.
+
 ## [3.5.1] - 2026-05-06
 
 ### Fixed

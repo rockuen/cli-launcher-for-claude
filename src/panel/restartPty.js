@@ -8,7 +8,8 @@ const { resolveClaudeCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
-const { setTabIcon, updateStatusBar } = require('./statusIndicator');
+const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
+const { detectShellRunning } = require('../lib/shellRunningDetect');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -74,6 +75,13 @@ function restartPty(entry, panel, context, extensionPath) {
         try { panel.webview.postMessage({ type: 'context-usage', ...usage }); } catch (_) {}
       }
 
+      // v3.5.2: mirror createPanel — record background-shell hint for blue dot.
+      const bgShells = detectShellRunning(data);
+      if (bgShells != null) {
+        entry._bgShells = bgShells;
+        entry._bgShellsAt = Date.now();
+      }
+
       if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
         entry.state = 'running';
         setTabIcon(panel, 'running', extensionPath);
@@ -87,7 +95,7 @@ function restartPty(entry, panel, context, extensionPath) {
         if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
         if (panel.active) {
           entry.state = 'waiting';
-          setTabIcon(panel, 'idle', extensionPath);
+          setIdleIcon(panel, entry, extensionPath);
           try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
         } else {
           entry.state = 'needs-attention';

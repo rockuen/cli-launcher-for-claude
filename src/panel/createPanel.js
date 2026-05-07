@@ -23,11 +23,12 @@ const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
-const { setTabIcon, setStatusBar, updateStatusBar } = require('./statusIndicator');
+const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib/sessionJsonl');
 const { buildMeta, renderBlocks } = require('../lib/readerRender');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
+const { detectShellRunning } = require('../lib/shellRunningDetect');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -410,6 +411,15 @@ function createPanel(context, extensionPath, session, opts) {
       try { panel.webview.postMessage({ type: 'context-usage', ...usage }); } catch (_) {}
     }
 
+    // v3.5.2: track Claude Code's "N shells still running" hint so the tab dot
+    // can paint blue when only a background shell is keeping the session warm.
+    // Stays a tab-icon-only signal — entry.state and the status bar are unchanged.
+    const bgShells = detectShellRunning(data);
+    if (bgShells != null) {
+      entry._bgShells = bgShells;
+      entry._bgShellsAt = Date.now();
+    }
+
     // Phase 4-extra: surface binary y/n prompts as inline approve/reject
     // buttons inside the reader area. Independent of the needs-attention
     // fast-path below — even when state is already 'needs-attention' from a
@@ -489,7 +499,7 @@ function createPanel(context, extensionPath, session, opts) {
         }
       } else {
         entry.state = 'waiting';
-        setTabIcon(panel, 'idle', extensionPath);
+        setIdleIcon(panel, entry, extensionPath);
         try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
       }
       updateStatusBar();
@@ -503,7 +513,7 @@ function createPanel(context, extensionPath, session, opts) {
     if (entry._disposed) return;
     if (e.webviewPanel.active && entry.state === 'needs-attention') {
       entry.state = 'waiting';
-      setTabIcon(panel, 'idle', extensionPath);
+      setIdleIcon(panel, entry, extensionPath);
       try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
       updateStatusBar();
     }
@@ -565,6 +575,7 @@ function createPanel(context, extensionPath, session, opts) {
     entry._disposed = true;
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+    if (entry._bgShellsTimer) { clearTimeout(entry._bgShellsTimer); entry._bgShellsTimer = null; }
     if (typeof entry._stopReaderWatch === 'function') {
       try { entry._stopReaderWatch(); } catch (_) {}
       entry._stopReaderWatch = null;
