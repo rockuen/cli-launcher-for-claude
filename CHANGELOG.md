@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.5.3] - 2026-05-07
+
+### Added
+- **`Ctrl+Wheel` zooms the terminal and the reader.** Hover the terminal area and `Ctrl + scroll up/down` resizes the xterm font; hover the reader area and `Ctrl + scroll up/down` resizes the reader font. Each side honors its existing slider's range (terminal 8–22 px, reader 10–24 px) and step (1 px). Without `Ctrl` the wheel still scrolls normally — terminal scrollback in the xterm pane, reader content in the reader pane.
+- Persistence is unchanged: each zoom step fires the same `save-setting` message the sliders use (`defaultFontSize` / `readerFontSize`), so the new size carries to the next panel and stays in sync with the Settings modal sliders.
+
+### Notes
+- `wheel` listeners are registered with `{ passive: false }` and `preventDefault()` only when `Ctrl` is held, so non-zoom scrolling stays at native speed and the webview's outer page never zooms.
+
 ## [3.5.2] - 2026-05-06
 
 ### Added

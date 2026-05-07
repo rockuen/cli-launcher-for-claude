@@ -591,6 +591,45 @@ function getClientScript(ctx) {
       });
     }
 
+    // v3.5.3: Ctrl+Wheel zoom for terminal and reader. Mirrors each slider's
+    // step/range and persists through the same save-setting message, so the
+    // next panel and the slider stay in sync. preventDefault + non-passive
+    // listener is required so the webview's outer page does not also zoom.
+    const READER_FONT_MIN = 10;
+    const READER_FONT_MAX = 24;
+    const termWrapEl = document.getElementById('terminal-wrapper');
+    if (termWrapEl) {
+      termWrapEl.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const delta = e.deltaY < 0 ? FONT_STEP : -FONT_STEP;
+        const next = Math.max(FONT_MIN, Math.min(FONT_MAX, currentFontSize + delta));
+        if (next === currentFontSize) return;
+        setFontSize(next);
+        if (setFontsize) setFontsize.value = next;
+        if (setFontsizeLabel) setFontsizeLabel.textContent = next + 'px';
+        vscode.postMessage({ type: 'save-setting', key: 'defaultFontSize', value: next });
+      }, { passive: false });
+    }
+    const readerEl = document.getElementById('reader-area');
+    if (readerEl) {
+      readerEl.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const cur = parseInt(SETTINGS.readerFontSize) || 12;
+        const delta = e.deltaY < 0 ? 1 : -1;
+        const next = Math.max(READER_FONT_MIN, Math.min(READER_FONT_MAX, cur + delta));
+        if (next === cur) return;
+        readerEl.style.setProperty('--reader-font-size', next + 'px');
+        SETTINGS.readerFontSize = next;
+        if (setReaderFontsize) setReaderFontsize.value = next;
+        if (setReaderFontsizeLabel) setReaderFontsizeLabel.textContent = next + 'px';
+        vscode.postMessage({ type: 'save-setting', key: 'readerFontSize', value: next });
+      }, { passive: false });
+    }
+
     let fontFamilyTimer = null;
     setFontfamily.addEventListener('input', () => {
       clearTimeout(fontFamilyTimer);
