@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.5.4] - 2026-05-07
+
+### Fixed
+- **`Ctrl+Wheel` no longer scrolls while zooming.** v3.5.3 attached the wheel listeners during the bubble phase, but xterm's `.xterm-viewport` and the reader's native overflow scroll both react during the target phase, so the user saw the font resize *and* a simultaneous scroll. Listeners now run in capture phase (`{ capture: true, passive: false }`) and call `stopPropagation()` only when `Ctrl` is held — the inner scroll handlers never see those events, so Ctrl+Wheel is a pure zoom. Without `Ctrl` the early-return path leaves the event untouched, so normal wheel-scroll keeps working at native speed.
+
 ## [3.5.3] - 2026-05-07
 
 ### Added

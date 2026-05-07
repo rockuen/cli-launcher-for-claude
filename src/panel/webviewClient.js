@@ -591,10 +591,16 @@ function getClientScript(ctx) {
       });
     }
 
-    // v3.5.3: Ctrl+Wheel zoom for terminal and reader. Mirrors each slider's
-    // step/range and persists through the same save-setting message, so the
-    // next panel and the slider stay in sync. preventDefault + non-passive
-    // listener is required so the webview's outer page does not also zoom.
+    // v3.5.3 → v3.5.4: Ctrl+Wheel zoom for terminal and reader. Mirrors each
+    // slider's step/range and persists through the same save-setting message,
+    // so the next panel and the slider stay in sync.
+    //
+    // Listeners run in CAPTURE phase: xterm's xterm-viewport and the reader's
+    // native overflow scroll both react to wheel during target/bubble phase.
+    // Catching during capture and calling stopPropagation when Ctrl is held
+    // means the inner scroll handlers never see the event, so zoom does not
+    // double up with a scroll. Without Ctrl we early-return without
+    // stopping anything, so normal wheel scroll remains untouched.
     const READER_FONT_MIN = 10;
     const READER_FONT_MAX = 24;
     const termWrapEl = document.getElementById('terminal-wrapper');
@@ -610,7 +616,7 @@ function getClientScript(ctx) {
         if (setFontsize) setFontsize.value = next;
         if (setFontsizeLabel) setFontsizeLabel.textContent = next + 'px';
         vscode.postMessage({ type: 'save-setting', key: 'defaultFontSize', value: next });
-      }, { passive: false });
+      }, { passive: false, capture: true });
     }
     const readerEl = document.getElementById('reader-area');
     if (readerEl) {
@@ -627,7 +633,7 @@ function getClientScript(ctx) {
         if (setReaderFontsize) setReaderFontsize.value = next;
         if (setReaderFontsizeLabel) setReaderFontsizeLabel.textContent = next + 'px';
         vscode.postMessage({ type: 'save-setting', key: 'readerFontSize', value: next });
-      }, { passive: false });
+      }, { passive: false, capture: true });
     }
 
     let fontFamilyTimer = null;
