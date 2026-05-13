@@ -46,18 +46,60 @@ function _splitJsonLines(text) {
   return out;
 }
 
+// Parsed-lines cache. The split-pane reader and the standalone reader both
+// poll the same jsonl file, and each render used to call extractAiTitle +
+// extractMessages back-to-back — two whole-file reads + parses per render
+// tick for a single visible session. With 5 concurrent sessions that turned
+// into 10 reads/parses per render burst, on a file that grows to several MB
+// over a long session. Caching by {mtime, size} lets repeated reads of the
+// same on-disk snapshot share a single parse. The entry is invalidated
+// automatically the next time the file changes.
+const _lineCache = new Map();
+const _LINE_CACHE_MAX = 20; // ~max active sessions across both readers + the tree provider
+
+function _readLinesCached(filePath) {
+  let stat;
+  try { stat = fs.statSync(filePath); } catch { return null; }
+  const cached = _lineCache.get(filePath);
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+    cached.lastUsed = Date.now();
+    return cached.lines;
+  }
+  let lines;
+  try {
+    lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
+  } catch { return null; }
+  if (_lineCache.size >= _LINE_CACHE_MAX) {
+    let oldestKey = null;
+    let oldestTime = Infinity;
+    for (const [k, v] of _lineCache) {
+      if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldestKey = k; }
+    }
+    if (oldestKey) _lineCache.delete(oldestKey);
+  }
+  _lineCache.set(filePath, {
+    mtimeMs: stat.mtimeMs,
+    size: stat.size,
+    lines,
+    lastUsed: Date.now(),
+  });
+  return lines;
+}
+
+// Test-only: clear the line cache so unit tests can observe fresh reads.
+function _clearLineCache() { _lineCache.clear(); }
+
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
 function extractAiTitle(filePath) {
-  try {
-    const lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
-    let title = null;
-    for (const d of lines) {
-      if (d.type === 'ai-title' && typeof d.aiTitle === 'string' && d.aiTitle.trim()) {
-        title = d.aiTitle.trim();
-      }
+  const lines = _readLinesCached(filePath);
+  if (!lines) return null;
+  let title = null;
+  for (const d of lines) {
+    if (d.type === 'ai-title' && typeof d.aiTitle === 'string' && d.aiTitle.trim()) {
+      title = d.aiTitle.trim();
     }
-    return title;
-  } catch { return null; }
+  }
+  return title;
 }
 
 // First non-meta user message, single-line, XML-stripped — used as a tree label
@@ -92,8 +134,9 @@ const SYS_TAG_RE = /^\s*<(?:command-[a-z-]+|local-command-[a-z-]+|system-reminde
 
 function extractMessages(filePath) {
   const out = [];
+  const lines = _readLinesCached(filePath);
+  if (!lines) return out;
   try {
-    const lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
     for (const d of lines) {
       if (d.isSidechain) continue;
       const ts = d.timestamp || null;
@@ -126,8 +169,9 @@ function extractMessages(filePath) {
 // number on the metadata row equals the rendered reader transcript length.
 function extractMessageCount(filePath) {
   let n = 0;
+  const lines = _readLinesCached(filePath);
+  if (!lines) return n;
   try {
-    const lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
     for (const d of lines) {
       if (d.isSidechain) continue;
       if (d.type === 'assistant') {
@@ -154,4 +198,5 @@ module.exports = {
   extractFirstUserMessage,
   extractMessages,
   extractMessageCount,
+  _clearLineCache,
 };

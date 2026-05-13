@@ -64,13 +64,15 @@ function startLiveWatch(filePath) {
   currentFilePath = filePath;
   try {
     // macOS fsevents misses single-file watches under hidden paths
-    // (~/.claude/projects/...). Polling at 200ms is reliable and the cost
-    // is one stat() per tick on one file — negligible.
+    // (~/.claude/projects/...), so we poll. v3.5.5: 200 → 1000 ms. Claude
+    // Code batch-flushes the jsonl at turn-end (not chunk-by-chunk), so
+    // polling faster than that only adds stat() noise. With sessionJsonl's
+    // mtime/size cache the post-change re-extract is one parse, not two.
     liveWatcher = chokidar.watch(filePath, {
       persistent: true,
       ignoreInitial: true,
       usePolling: true,
-      interval: 200,
+      interval: 1000,
     });
     liveWatcher.on('change', (p) => { console.log('[reader] change ' + p); scheduleLiveRender(); });
     liveWatcher.on('add',    (p) => { console.log('[reader] add ' + p);    scheduleLiveRender(); });

@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.5.4",
+  "version": "3.5.5",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -566,6 +566,14 @@
           "default": 300000,
           "minimum": 10000,
           "description": "Idle window (ms) after the last file change before auto-commit fires. Default 300000 (5 min)."
+        },
+        "claudeCodeLauncher.repoSync.extraIgnore": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional file/folder patterns to ignore on top of the built-in list. Examples: '**/build/**', '*.cache', 'tmp.*'. Built-in defaults already exclude dot files, node_modules, log/, *.log, *.tmp, sed temp files, and vim swap files."
         }
       }
     },

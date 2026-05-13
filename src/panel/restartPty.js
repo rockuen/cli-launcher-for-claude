@@ -10,6 +10,7 @@ const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
 const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
+const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -66,9 +67,7 @@ function restartPty(entry, panel, context, extensionPath) {
     const contextParser = createContextParser();
     ptyProcess.onData(data => {
       if (entry.pty !== thisPty) return; // stale handler guard
-      try {
-        panel.webview.postMessage({ type: 'output', data: data });
-      } catch (_) {}
+      sendPtyChunkPaced(panel, data, entry);
 
       const usage = contextParser.feed(data, entry);
       if (usage) {

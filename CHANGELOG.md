@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.5.5] - 2026-05-13
+
+### Fixed
+- **Extension host freeze when a large PTY chunk meets a chokidar event storm.** A single 51 KB PTY chunk (observed in the wild on session resume with a box-drawing + giant-table redraw) used to be handed to `panel.webview.postMessage` as one payload, serialized + IPC-marshalled + xterm-parsed on a single tick of the main thread. Combined with rapid-fire chokidar events from `repoSync` watching a vault that overlapped with hourly automation (sed temp files, log rotation), the extension host would tip into the `unresponsive` state — *every* session frozen, no key input, no new sessions, and eventually `PTY exited, code: undefined`. v3.5.5 unblocks both contributors.
+- **`src/lib/ptyChunk.js`** — new module. Chunks ≤ 4 KB go through `postMessage` unchanged (no overhead); larger chunks are sliced into 4 KB pieces with `setImmediate` between each, so other pending tasks (other sessions' PTY data, keystrokes, command-palette dispatches) interleave. Slice boundaries avoid splitting in the middle of an ANSI CSI/OSC sequence; xterm.js's parser buffers partial escapes correctly anyway, but respecting boundaries keeps each IPC payload self-contained. `createPanel`, `restartPty`, and the webview-ready buffer-flush all route through the new helper. 14 unit tests cover plain text, ANSI-heavy frames, CSI/OSC boundaries, disposed-mid-flush, and the small/empty/large size matrix.
+
+### Changed
+- **`repoSync` chokidar watcher hardened against event storms.** The previous `ignored: /(^|[\/\\])\../` only excluded dot files, so `node_modules`, log rotation outputs, `*.tmp` files, and short-lived sed temp files (`sedLOvKxk` pattern) all fired add/change/unlink events. Combined with the matching `console.log` per event, this saturated the Extension Host console at 100+ lines/s during automation bursts. v3.5.5 ignores by default: dot files, `node_modules`, `log/`/`logs/` directories, `*.log` + rotated variants, `*.tmp`, `sed***` temp files, and vim swap files. New `claudeCodeLauncher.repoSync.extraIgnore` setting (array of glob/regex strings) lets users append more without forking the defaults.
+- **`awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 100 }`** added to the watcher options. Transient files that are created and deleted within the window emit no event at all — exactly the right behavior for sed-style temp files that are gone before they need to be tracked.
+- **`[sync]` console output throttled to ≤ 10 lines per minute** with a single "(suppressed N more events…)" line summarizing the overflow. Real repo activity stays debuggable; pathological event storms no longer drown out everything else in the host console.
+- **`_pendingChanges` counter capped at 100 000.** `runSync` recomputes the real count from `git status --porcelain` anyway, so further increments past the cap during event storms were pure waste (and a memory smell in the status-bar tooltip).
+
+### Performance
+- **`sessionJsonl` line-cache.** `extractAiTitle`, `extractMessages`, and `extractMessageCount` used to each do a fresh `fs.readFileSync + JSON.parse` per call. A single split-pane reader render tick calls extractAiTitle *and* extractMessages back-to-back, so a 4 MB jsonl turned into 8 MB of disk read + two full parse passes per poll — and with 5 concurrent sessions polling, that compounded badly. v3.5.5 caches parsed lines keyed by `{mtime, size}`; repeat reads of an unchanged snapshot share one parse, and the cache invalidates automatically when the file actually changes. 8 new unit tests in `test/unit/sessionJsonlCache.test.ts` cover the cache reuse path, mtime/size invalidation, `_clearLineCache` semantics, and bounded LRU eviction at the 20-entry cap.
+- **Reader polling interval 250/200 ms → 1000 ms.** Both `createPanel.js`'s split-pane reader and `readerView.js`'s standalone reader used to poll the active session's jsonl every 200–250 ms. Claude Code batch-flushes the jsonl at turn-end (empirically: 5 turn flushes with +35/+39/+15/+40/+7 line jumps, zero mid-stream increments), so polling faster than the actual flush cadence just burns `stat()` calls. 1 s keeps the "live" feel while cutting OS work per active session 4×–5×. Combined with the line-cache above, post-change re-renders also do one parse instead of two.
+
+### Maintenance
+- **GitHub Actions bumped to v5 series** (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, `actions/download-artifact`). Avoids the Node 20 → Node 24 runtime deprecation deadline (2026-06-02). Workflow logic unchanged — same matrix (win32-x64 / darwin-arm64 / linux-x64), same ovsx publish step.
+
 ## [3.5.4] - 2026-05-07
 
 ### Fixed

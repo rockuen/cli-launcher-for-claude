@@ -29,6 +29,7 @@ const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib
 const { buildMeta, renderBlocks } = require('../lib/readerRender');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
+const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -136,7 +137,14 @@ function startReaderWatch(entry, panel) {
       persistent: true,
       ignoreInitial: false,
       usePolling: true,
-      interval: 250,
+      // v3.5.5: 250 → 1000 ms. Claude Code batch-flushes the jsonl at turn-end
+      // rather than streaming chunk-by-chunk (verified empirically: 5 turn
+      // flushes, +35/+39/+15/+40/+7 line jumps, zero mid-stream increments),
+      // so a 250 ms poll spends most of its budget on unchanged stat() calls.
+      // 1 s keeps the reader's "live" feel while cutting OS work per active
+      // session 4×. With sessionJsonl's mtime/size cache the file is read at
+      // most once per turn even when multiple readers poll the same file.
+      interval: 1000,
     });
     watcher.on('add', () => schedule());
     watcher.on('change', () => schedule());
@@ -401,9 +409,7 @@ function createPanel(context, extensionPath, session, opts) {
     if (!webviewReady) {
       outputBuffer.push(data);
     } else {
-      try {
-        panel.webview.postMessage({ type: 'output', data: data });
-      } catch (_) {}
+      sendPtyChunkPaced(panel, data, entry);
     }
 
     const usage = contextParser.feed(data, entry);
@@ -563,7 +569,7 @@ function createPanel(context, extensionPath, session, opts) {
         webviewReady = true;
         console.log('[Claude Launcher] Webview ready, flushing', outputBuffer.length, 'buffered chunks');
         for (const chunk of outputBuffer) {
-          try { panel.webview.postMessage({ type: 'output', data: chunk }); } catch (_) {}
+          sendPtyChunkPaced(panel, chunk, entry);
         }
         outputBuffer.length = 0;
       },

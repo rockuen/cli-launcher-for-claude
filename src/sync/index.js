@@ -35,6 +35,65 @@ let _lastSyncAt = null;
 let _pendingChanges = 0;
 let _repoPath = null;
 
+// Hard cap on the pending-changes counter. Event storms from CI/automation
+// (sed temp files, log rotation, build outputs) used to push this to runaway
+// numbers — the visible status bar tooltip stayed at a sane upper bound and
+// `runSync` recomputes the real count from `git status --porcelain` anyway,
+// so further increments past this cap are pure waste.
+const PENDING_CHANGES_CAP = 100000;
+
+// Default ignore patterns applied on top of the user's `extraIgnore` list.
+// Covers the worst freeze trigger seen in the wild: matricies of fast-churn
+// files (sed temp + run_hourly.bat-style rotated logs) firing thousands of
+// add/change/unlink events per minute. `.git` is already excluded by the
+// dotfile pattern so we don't double-list it.
+const DEFAULT_IGNORED = [
+  /(^|[\/\\])\../,                       // dot files (.git, .DS_Store, .swp)
+  /[\/\\]node_modules([\/\\]|$)/,        // node_modules anywhere in the tree
+  /[\/\\]logs?([\/\\]|$)/,               // log/ or logs/ directories
+  /\.log(\.\d+)?$/i,                     // *.log, *.log.1, *.log.2
+  /\.tmp$/i,                             // *.tmp
+  /[\/\\]sed[A-Za-z0-9]{5,}$/,           // sed*** temp files (sedLOvKxk)
+  /\.swp$/i,                             // vim swap files
+  /\.swx$/i,
+];
+
+function buildIgnoredPatterns() {
+  const cfg = getCfg();
+  const extra = cfg.get('extraIgnore', []);
+  const extraOk = Array.isArray(extra)
+    ? extra.filter((s) => typeof s === 'string' && s.trim().length > 0)
+    : [];
+  return [...DEFAULT_IGNORED, ...extraOk];
+}
+
+// Throttled event logger. Event storms used to flood the Extension Host
+// console — 100+ lines per second compounded with chokidar's own work to
+// push the host into unresponsive territory. Cap visible lines at 10 per
+// minute and aggregate the rest into a single summary so debugging real
+// repo activity still works without drowning in noise.
+let _eventLogCount = 0;
+let _eventLogSuppressed = 0;
+let _eventLogResetTimer = null;
+function logSyncEvent(kind, p) {
+  if (_eventLogCount < 10) {
+    _eventLogCount++;
+    console.log(`[sync] ${kind} ${p}`);
+  } else {
+    _eventLogSuppressed++;
+  }
+  if (!_eventLogResetTimer) {
+    _eventLogResetTimer = setTimeout(() => {
+      if (_eventLogSuppressed > 0) {
+        console.log(`[sync] (suppressed ${_eventLogSuppressed} more events in the last minute)`);
+      }
+      _eventLogCount = 0;
+      _eventLogSuppressed = 0;
+      _eventLogResetTimer = null;
+    }, 60000);
+  }
+}
+
 const STATE_TEXT = {
   disabled: '$(circle-slash) Repo',
   idle:     '$(check) Repo',
@@ -164,7 +223,7 @@ function scheduleSync() {
   const cfg = getCfg();
   if (!cfg.get('autoCommit', false)) return;
   if (debounceTimer) clearTimeout(debounceTimer);
-  _pendingChanges += 1;
+  if (_pendingChanges < PENDING_CHANGES_CAP) _pendingChanges += 1;
   setStatus('pending');
   const wait = Math.max(10000, cfg.get('debounceMs', 300000));
   debounceTimer = setTimeout(() => { debounceTimer = null; runSync(); }, wait);
@@ -193,13 +252,20 @@ function flushSyncSync() {
 
 function buildWatcher(repoPath) {
   const w = chokidar.watch(repoPath, {
-    ignored: /(^|[\/\\])\../,
+    ignored: buildIgnoredPatterns(),
     persistent: true,
     ignoreInitial: true,
+    // Coalesce rapid create+delete bursts (sed temp files, log rotation).
+    // Files that never stabilize within the window emit no event at all —
+    // exactly what we want for transient artifacts of external automation.
+    awaitWriteFinish: {
+      stabilityThreshold: 1000,
+      pollInterval: 100,
+    },
   });
-  w.on('add',    (p) => { console.log(`[sync] add ${p}`);    scheduleSync(); })
-   .on('change', (p) => { console.log(`[sync] change ${p}`); scheduleSync(); })
-   .on('unlink', (p) => { console.log(`[sync] unlink ${p}`); scheduleSync(); });
+  w.on('add',    (p) => { logSyncEvent('add', p);    scheduleSync(); })
+   .on('change', (p) => { logSyncEvent('change', p); scheduleSync(); })
+   .on('unlink', (p) => { logSyncEvent('unlink', p); scheduleSync(); });
   return w;
 }
 
