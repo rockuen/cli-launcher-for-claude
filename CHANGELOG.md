@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.6] - 2026-05-13
+
+### Added
+- **Session metadata row shows the jsonl file size.** Expanding a session in the sidebar now reads `N turns · relative time · X MB` (or `KB`/`B` for small sessions). Makes it visible at a glance which sessions are growing into multi-MB territory and which can stay collapsed. Trash rows get the same treatment (`trashed · relative time · X MB`). Reuses the single `fs.statSync` call that was already happening for the mtime, so the extra information costs zero new syscalls. New `src/lib/sizeFormat.js` with `formatBytes()` helper kept module-pure for unit testing.
+
+### Fixed
+- **Cache size cap so tree refresh on a vault with huge sessions stops accumulating memory.** v3.5.5's line cache assumed jsonls would all be small. In the wild (iloom-workspace inspection: 656 files / 868 MB, with a 54 MB single jsonl and seven 13–48 MB scm-pdca sessions), a tree refresh — which calls `extractAiTitle` + `extractMessageCount` on every session in the project — used to land the biggest files in the LRU 20-slot cache, pinning **500–700 MB** of parsed JSON arrays in resident memory until they aged out. v3.5.6 adds `MAX_CACHEABLE_BYTES = 2 MB`: oversized files still get fully read + parsed (callers see no behavior change), they just skip the cache, so the next call re-parses from disk like in v3.5.4. The active-reader / split-pane render path is unaffected for typical session sizes (≈ 1.3 MB average); only the rare giants pay the re-parse cost they would have paid pre-v3.5.5 anyway.
+
 ## [3.5.5] - 2026-05-13
 
 ### Fixed

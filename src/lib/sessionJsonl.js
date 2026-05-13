@@ -57,6 +57,16 @@ function _splitJsonLines(text) {
 const _lineCache = new Map();
 const _LINE_CACHE_MAX = 20; // ~max active sessions across both readers + the tree provider
 
+// v3.5.6: don't cache parsed lines for very large jsonls. Tree refresh touches
+// every session file in the project; on vaults with multiple 20-50 MB sessions
+// (scm-pdca pattern observed in iloom-workspace: 7 files totalling 130 MB+),
+// caching parsed lines used to accumulate 500+ MB of resident memory because
+// the LRU happened to land on those big files. Large files still get fully
+// read + parsed (callers see no behavior change), they just don't persist in
+// the cache — so the next call re-parses from disk. Sized to comfortably fit
+// the average jsonl (≈ 1.3 MB in the wild) while excluding extreme outliers.
+const MAX_CACHEABLE_BYTES = 2 * 1024 * 1024; // 2 MB
+
 function _readLinesCached(filePath) {
   let stat;
   try { stat = fs.statSync(filePath); } catch { return null; }
@@ -69,6 +79,10 @@ function _readLinesCached(filePath) {
   try {
     lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
   } catch { return null; }
+  // v3.5.6: skip cache insertion for oversized files. Callers still receive
+  // the parsed result, but the next call will re-parse from disk rather than
+  // pinning a multi-MB array in memory across tree refreshes.
+  if (stat.size > MAX_CACHEABLE_BYTES) return lines;
   if (_lineCache.size >= _LINE_CACHE_MAX) {
     let oldestKey = null;
     let oldestTime = Infinity;

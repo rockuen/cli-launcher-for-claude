@@ -13,6 +13,7 @@ const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
 const { extractAiTitle, extractFirstUserMessage, extractMessageCount } = require('../lib/sessionJsonl');
+const { formatBytes } = require('../lib/sizeFormat');
 
 // Korean/English short relative time. Falls back to a locale date string
 // once the gap exceeds a week.
@@ -262,7 +263,8 @@ class SessionTreeDataProvider {
           for (const f of trashFiles) {
             const sid = f.replace('.jsonl', '');
             const fullPath = path.join(trashDir, f);
-            const mtime = fs.statSync(fullPath).mtimeMs;
+            const st = fs.statSync(fullPath);
+            const mtime = st.mtimeMs;
             const date = new Date(mtime);
             const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
             const savedTitle = titleMap[sid];
@@ -276,8 +278,9 @@ class SessionTreeDataProvider {
             item.description = dateStr;
             item.iconPath = new vscode.ThemeIcon('trash');
             item.contextValue = 'trashed';
+            const trashSizeStr = formatBytes(st.size);
             const trashMeta = new vscode.TreeItem(
-              `trashed · ${_relTime(mtime)}`,
+              `trashed · ${_relTime(mtime)}${trashSizeStr ? ' · ' + trashSizeStr : ''}`,
               vscode.TreeItemCollapsibleState.None,
             );
             trashMeta.iconPath = new vscode.ThemeIcon('info');
@@ -312,7 +315,8 @@ class SessionTreeDataProvider {
         .filter(f => f.endsWith('.jsonl'))
         .map(f => {
           const fullPath = path.join(projDir, f);
-          return { name: f, path: fullPath, mtime: fs.statSync(fullPath).mtimeMs };
+          const st = fs.statSync(fullPath);
+          return { name: f, path: fullPath, mtime: st.mtimeMs, size: st.size };
         })
         .sort((a, b) => b.mtime - a.mtime)
         .slice(0, 30);
@@ -363,7 +367,8 @@ class SessionTreeDataProvider {
       // of a blank panel. Sub-sessions, when present, are appended after this
       // row in the parent-attachment loop in _buildGroups.
       const msgCount = extractMessageCount(file.path);
-      const metaLabel = `${msgCount} turn${msgCount === 1 ? '' : 's'} · ${_relTime(file.mtime)}`;
+      const sizeStr = formatBytes(file.size);
+      const metaLabel = `${msgCount} turn${msgCount === 1 ? '' : 's'} · ${_relTime(file.mtime)}${sizeStr ? ' · ' + sizeStr : ''}`;
       const metaRow = new vscode.TreeItem(metaLabel, vscode.TreeItemCollapsibleState.None);
       metaRow.iconPath = new vscode.ThemeIcon('info');
       metaRow.contextValue = 'sessionMeta';

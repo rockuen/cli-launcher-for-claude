@@ -123,6 +123,58 @@ test('extractMessageCount uses the cache consistently with extractMessages', () 
   } finally { cleanup(p); }
 });
 
+test('v3.5.6 cap: files over MAX_CACHEABLE_BYTES are read but not cached', () => {
+  _clearLineCache();
+  // Build a jsonl just over the 2 MB cache cap. Each line is small but we
+  // pad with a comment line of plain text so the file size crosses the
+  // threshold without inflating the parsed-object count too much. (Lines
+  // that fail JSON.parse are silently dropped by _splitJsonLines, so the
+  // padding is invisible to extractMessages output.)
+  const lines: string[] = ['{"type":"ai-title","aiTitle":"giant"}'];
+  const padding = 'x'.repeat(2048);
+  // Need > 2 MB total bytes. 2048-char padding × ~1100 lines = ~2.25 MB.
+  for (let i = 0; i < 1100; i++) lines.push(padding);
+  const p = makeJsonl(lines);
+  try {
+    // First call: read + parse, returns 'giant'. NOT cached because oversize.
+    assert.equal(extractAiTitle(p), 'giant');
+    // Second call: should also work (re-parsed from disk, cache miss again).
+    // We can't directly observe the lack of caching from inside the public
+    // API, but we can at least confirm correctness is preserved.
+    assert.equal(extractAiTitle(p), 'giant');
+    // Now add several small files that SHOULD cache — verify they slot in
+    // alongside the oversized one without the giant pinning a slot.
+    const smallPaths: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const sp = makeJsonl([`{"type":"ai-title","aiTitle":"small-${i}"}`]);
+      smallPaths.push(sp);
+      assert.equal(extractAiTitle(sp), `small-${i}`);
+    }
+    // After clearing & re-reading the small files, the giant's absence from
+    // the cache means there's no LRU pressure to evict.
+    for (const sp of smallPaths) {
+      assert.match(String(extractAiTitle(sp)), /^small-\d$/);
+    }
+    for (const sp of smallPaths) cleanup(sp);
+  } finally { cleanup(p); }
+});
+
+test('v3.5.6 cap: oversized file behavior matches v3.5.4 (no caching, always reads)', () => {
+  _clearLineCache();
+  const lines = ['{"type":"ai-title","aiTitle":"v1"}'];
+  for (let i = 0; i < 1100; i++) lines.push('y'.repeat(2048));
+  const p = makeJsonl(lines);
+  try {
+    assert.equal(extractAiTitle(p), 'v1');
+    // File mutates AT SAME SIZE — would normally hit cache because size
+    // unchanged. But oversize files aren't cached, so we get the new value.
+    const newLines = ['{"type":"ai-title","aiTitle":"v2"}'];
+    for (let i = 0; i < 1100; i++) newLines.push('y'.repeat(2048));
+    fs.writeFileSync(p, newLines.join('\n'));
+    assert.equal(extractAiTitle(p), 'v2');
+  } finally { cleanup(p); }
+});
+
 test('LRU eviction: cache size stays bounded under many distinct paths', () => {
   _clearLineCache();
   const paths: string[] = [];
