@@ -32,7 +32,7 @@ Claude Code 자체가 좋아서 매일 쓴다. 그런데 좋아할수록 자꾸 
 
 이걸 다 풀고 싶어서, **cli-launcher-for-claude** 라는 VSCode/VSCodium 익스텐션을 만들었다.
 
-![cli-launcher-for-claude TUI 패널 — VSCode 안에서 Claude Code 세션이 진행 중인 모습](https://bywon.kr/wp-content/uploads/2026/05/cli-launcher-tui.png)
+![cli-launcher-for-claude TUI 패널 — VSCode 안에서 Claude Code 세션이 진행 중인 모습](https://raw.githubusercontent.com/rockuen/cli-launcher-for-claude/main/docs/images/02-cli-launcher-tui.png)
 
 이런 모양이다. VSCode 안에 Claude Code 세션을 띄우고 하단에 입력란이 있다. 상단 탭으로 여러 세션을 동시에 굴리고, HUD가 사용량을 알려준다.
 
@@ -60,7 +60,7 @@ Claude Code 자체가 좋아서 매일 쓴다. 그런데 좋아할수록 자꾸 
 
 세션 자체의 식별도 같은 결로 풀었다. Claude Code의 세션은 내부적으로 ID로만 식별돼서, 한참 지나면 어떤 세션이 무엇이었는지 알아보기 어렵다. cli-launcher는 세션마다 **제목을 직접 붙이고**, 관련 세션끼리 **그룹/폴더로 묶어 보관**할 수 있다. 좌측 트리에서 보관해둔 세션을 골라 다시 불러와 이어 작업할 수도 있다. 제목을 안 붙이면 첫 메시지 기반으로 AI가 자동 제목을 달아줘서 식별은 항상 살아있다.
 
-![cli-launcher-for-claude Reader-Live — 위쪽 markdown 채팅 + 아래쪽 xterm 터미널 split layout](https://bywon.kr/wp-content/uploads/2026/05/cli-launcher-reader.png)
+![cli-launcher-for-claude Reader-Live — 위쪽 markdown 채팅 + 아래쪽 xterm 터미널 split layout](https://raw.githubusercontent.com/rockuen/cli-launcher-for-claude/main/docs/images/03-cli-launcher-reader.png)
 
 같은 세션을 위에서는 markdown 결로, 아래에서는 진짜 터미널로 동시에 본다. 위 화면은 read-only가 아니어서 화면 맨 아래 입력란으로 메시지를 보낼 수도 있다. 비율은 가운데 splitter를 드래그해서 조절.
 
@@ -80,7 +80,7 @@ Claude Code 자체가 좋아서 매일 쓴다. 그런데 좋아할수록 자꾸 
 
 paste도 마찬가지다. 클립보드에 이미지가 있으면 그대로 `Cmd+V` — cli-launcher가 자동으로 temp 파일로 저장하고, 입력란에는 그 경로(`@/tmp/...png`)만 박는다. 동시에 작은 미리보기 팝업도 떠서 "내가 어떤 이미지를 붙였는지" 한눈에 확인된다. 대량 텍스트(수백 줄짜리 로그나 코드)를 붙여넣을 때도 같은 원리 — 자동으로 `.txt` 파일로 변환되고 경로만 박힌다. **입력란이 막히지 않고**, Claude는 똑같은 내용을 본다.
 
-![cli-launcher-for-claude HUD status bar — Claude Running + 5h 29% + 7d 53% + 다음 리셋 시각](https://bywon.kr/wp-content/uploads/2026/05/cli-launcher-hud.png)
+![cli-launcher-for-claude HUD status bar — Claude Running + 5h 29% + 7d 53% + 다음 리셋 시각](https://raw.githubusercontent.com/rockuen/cli-launcher-for-claude/main/docs/images/05-cli-launcher-hud.png)
 
 5시간 윈도우와 7일 윈도우의 사용률을 동시에 보여준다. 다음 리셋 시각까지 옆에 박혀 있어서 "지금 멈출지 더 갈지" 같은 사소한 결정이 빨라진다.
 
@@ -116,7 +116,7 @@ paste도 마찬가지다. 클립보드에 이미지가 있으면 그대로 `Cmd+
 
 설정은 두 가지 경로 — 패널 안 ⚙ Settings modal에서 토글로, 또는 워크스페이스 `.vscode/settings.json`에 박는다.
 
-![cli-launcher-for-claude Settings modal — 폰트, 테마, Split Layout, Repo Sync 등 옵션 토글](https://bywon.kr/wp-content/uploads/2026/05/cli-launcher-settings.png)
+![cli-launcher-for-claude Settings modal — 폰트, 테마, Split Layout, Repo Sync 등 옵션 토글](https://raw.githubusercontent.com/rockuen/cli-launcher-for-claude/main/docs/images/04-cli-launcher-settings.png)
 
 코드로 박을 때:
 
@@ -142,7 +142,7 @@ paste도 마찬가지다. 클립보드에 이미지가 있으면 그대로 `Cmd+
 
 - **Open VSX**: [open-vsx.org/extension/rockuen/cli-launcher-for-claude](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude)
 - **GitHub**: [github.com/rockuen/cli-launcher-for-claude](https://github.com/rockuen/cli-launcher-for-claude)
-- 현재 v3.2.0 (Reader-Live + Repo Sync + Settings UI 다 들어감)
+- 현재 v3.5.4 (Reader-Live + Repo Sync + Settings UI + 자동 링크 + 세션 트리/그룹 + Ctrl+Wheel 줌 다 들어감)
 
 ## 한 가지 솔직한 노트
 
