@@ -14,6 +14,23 @@ const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore')
 const { pathDepth, getDescendants } = require('../util/groupPath');
 const { extractAiTitle, extractFirstUserMessage, extractMessageCount } = require('../lib/sessionJsonl');
 const { formatBytes } = require('../lib/sizeFormat');
+const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_THRESHOLD: SIZE_ERROR, formatMB } = require('./SessionDecorationProvider');
+
+// v3.5.8: size-warning tooltip suffix appended to a session's hover text so
+// the recommendation shows even on VSCode versions where FileDecorationProvider
+// tooltips render only on a secondary hover. Returns '' for sessions under
+// the warning threshold so the suffix doesn't crowd small-session tooltips.
+function _sizeWarningSuffix(size, trashed) {
+  if (typeof size !== 'number' || !isFinite(size) || size <= SIZE_WARN) return '';
+  if (size > SIZE_ERROR) {
+    return trashed
+      ? `\n\n⚠ 매우 큰 세션 (${formatMB(size)} MB) — 휴지통에서도 비우기 권장`
+      : `\n\n⚠ 매우 큰 세션 (${formatMB(size)} MB) — 즉시 새 세션으로 분할 권장`;
+  }
+  return trashed
+    ? `\n\n⚠ 큰 세션 (${formatMB(size)} MB) — 휴지통에서 정리 권장`
+    : `\n\n⚠ 큰 세션 (${formatMB(size)} MB) — 새 세션으로 분할 권장`;
+}
 
 // Korean/English short relative time. Falls back to a locale date string
 // once the gap exceeds a week.
@@ -278,6 +295,11 @@ class SessionTreeDataProvider {
             item.description = dateStr;
             item.iconPath = new vscode.ThemeIcon('trash');
             item.contextValue = 'trashed';
+            // v3.5.8: size-based decoration for trash items too — the size
+            // recommendation in the tooltip flips to "휴지통에서 정리 권장".
+            item.resourceUri = buildSessionDecorationUri(sid, st.size, true);
+            const tooltipHead = savedTitle || aiTitle || firstMsg;
+            item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}Session: ${sid}\n${date.toLocaleString()}${_sizeWarningSuffix(st.size, true)}`;
             const trashSizeStr = formatBytes(st.size);
             const trashMeta = new vscode.TreeItem(
               `trashed · ${_relTime(mtime)}${trashSizeStr ? ' · ' + trashSizeStr : ''}`,
@@ -344,9 +366,13 @@ class SessionTreeDataProvider {
       // without it, leaf-only sub-group children render flush with their header.
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
       item.description = dateStr;
+      // v3.5.8: resourceUri carries size into the FileDecorationProvider so
+      // the label gets a yellow/red tint at 5/10 MB. The query also encodes
+      // trashed=0 so the recommendation tooltip differentiates from trash.
+      item.resourceUri = buildSessionDecorationUri(sessionId, file.size, false);
       const tooltipHead = savedTitle || aiTitle;
       const tooltipBody = firstMsg && firstMsg !== tooltipHead ? firstMsg : '';
-      item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}${tooltipBody ? tooltipBody + '\n\n' : ''}Session: ${sessionId}\n${date.toLocaleString()}`;
+      item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}${tooltipBody ? tooltipBody + '\n\n' : ''}Session: ${sessionId}\n${date.toLocaleString()}${_sizeWarningSuffix(file.size, false)}`;
       // v2.6.0: conversation-style icons. Titled sessions get a "discussion"
       // (two overlapping speech bubbles) icon; untitled get "comment-draft"
       // (dashed-border bubble) so the two are visually distinguishable.

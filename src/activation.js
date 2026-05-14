@@ -20,6 +20,7 @@ const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = requi
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
 const { killPtyProcess } = require('./pty/kill');
 const { SessionTreeDataProvider } = require('./tree/SessionTreeDataProvider');
+const { SessionDecorationProvider } = require('./tree/SessionDecorationProvider');
 const { setStatusBar } = require('./panel/statusIndicator');
 const { createPanel } = require('./panel/createPanel');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
@@ -74,6 +75,17 @@ function activate(context) {
     canSelectMany: true
   });
   context.subscriptions.push(treeView);
+
+  // v3.5.8: size-based decoration. Yellows 5+ MB session labels, reds 10+ MB
+  // ones. SessionTreeDataProvider tags each session item with a custom
+  // resourceUri whose query carries size + trashed flag; the decoration
+  // provider reads those back to compute color + tooltip. Tree refresh and
+  // size growth on an existing session both call refresh() on the provider
+  // to invalidate the cached decoration.
+  state.sessionDecorationProvider = new SessionDecorationProvider();
+  context.subscriptions.push(
+    vscode.window.registerFileDecorationProvider(state.sessionDecorationProvider)
+  );
 
   // Track expanded groups. For custom groups use _groupName (full path) so
   // nested groups at the same leaf name are distinguished. Fall back to the

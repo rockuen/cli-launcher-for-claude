@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.5.8] - 2026-05-14
+
+### Added
+- **Size-based session decoration: yellow for 5+ MB, red for 10+ MB.** v3.5.6 surfaced the per-session size on the expanded metadata row, but the row only appears when expanded — a glance at the collapsed tree gave no hint that a session had grown into the freeze-prone zone. v3.5.8 colors the session label itself: yellow (`editorWarning.foreground`) over 5 MB, red (`errorForeground`) over 10 MB. Hovering a colored session shows a recommendation in the tooltip — `⚠ 큰 세션 (X MB) — 새 세션으로 분할 권장` at 5 MB, `⚠ 매우 큰 세션 (X MB) — 즉시 새 세션으로 분할 권장` at 10 MB. Trash entries get the same color treatment with `휴지통에서 정리 권장` / `휴지통에서도 비우기 권장` wording so users know which trashed sessions are taking up the most disk too.
+- **Thresholds are empirical, matching the v3.5.7 risk table:** under 5 MB sessions are entirely safe; 5–10 MB sessions trigger the v3.5.6 cache miss + heavier per-poll work; 10+ MB sessions are the iloom-workspace `a00cfa9a` (18 MB) class that actually started showing the multi-session freeze pattern. Coloring at exactly those thresholds means the visible warning aligns with the practical recommendation: re-split when you see yellow, definitely re-split when you see red.
+
+### Implementation
+- New `src/tree/SessionDecorationProvider.js` implementing `vscode.FileDecorationProvider`. Custom URI scheme `claudeCodeLauncher-session://<sessionId>?size=<bytes>&trashed=<0|1>` carries the metadata into the provider so the existing `SessionTreeDataProvider` only has to tag each `TreeItem.resourceUri` and the decoration follows automatically. Registered in `activation.js` next to the tree view.
+- `_sizeWarningSuffix()` in `SessionTreeDataProvider` appends the recommendation to the regular hover tooltip too — VSCode renders the file-decoration tooltip on a secondary hover, but the main TreeItem tooltip is more discoverable, so we duplicate the message where users will actually see it.
+- 14 unit tests in `test/unit/sessionDecoration.test.ts` cover the threshold boundaries (5/10 MB exact, 18 MB iloom case), trash-vs-active wording, invalid input handling, and URI round-trip.
+
 ## [3.5.7] - 2026-05-13
 
 ### Fixed
