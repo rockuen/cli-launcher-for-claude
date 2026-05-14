@@ -57,6 +57,11 @@ function getClientScript(ctx) {
       // Only affects xterm.js's native scroll API path — has no effect in
       // alternate-screen/TUI mode where Claude CLI drives partial redraws.
       smoothScrollDuration: 120,
+      // v3.5.7: explicit scrollback. Default is 1000 lines which fills up in
+      // minutes on a long task; once full, xterm.js drops oldest lines,
+      // breaking history navigation on background sessions. 5000 covers most
+      // real-world sessions while keeping the per-line memory cost bounded.
+      scrollback: 5000,
       allowProposedApi: true
     });
 

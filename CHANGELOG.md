@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.5.7] - 2026-05-13
+
+### Fixed
+- **Background-task freeze on vaults with many concurrent active sessions.** User pattern: open VSCode on an Obsidian vault with 5 long-running Claude Code sessions (one ~18 MB, several smaller), kick off background tasks, walk away for hours. Coming back, the foreground session's xterm has gone unresponsive — typing produces nothing, output stops updating — and in the worst case VSCode itself locks up and needs a reboot. Root cause: Chromium throttles hidden webview tabs (`requestAnimationFrame` to ~1 Hz, `setTimeout` slow-down), so `panel.webview.postMessage` payloads queue up in the IPC pipe faster than the throttled webview can drain them. With 5 sessions × hours of background output, the queue grows to hundreds of MB, eventually OOM'ing the extension host or the whole window. v3.5.7 holds the data extension-side while a panel is inactive and batch-flushes through the pacer on visibility return.
+- **PTY output gating for inactive panels** — `createPanel.js`'s PTY `onData` handler now treats `!panel.active` the same as `!webviewReady`: append to an extension-side buffer, drop oldest chunks past a 1 MB cap (xterm.js's own scrollback is authoritative for visual continuity after the catch-up). `onDidChangeViewState`'s active transition drains the buffer through `sendPtyChunkPaced`, so the catch-up never re-creates the v3.5.5 single-huge-chunk freeze.
+- **Reader-Live pauses on hidden panels** — `renderBlocks()` on a multi-MB jsonl produces a multi-MB HTML payload; sending one to a throttled webview every poll was a major piece of the same queue-flooding pattern. Hidden panels now mark a `pendingRender` flag instead of posting; the panel's `onDidChangeViewState` calls `entry._readerCatchUp()` on activation to do a single batched render. The split-pane reader catches up to the current transcript the moment you re-focus a tab.
+
+### Added
+- **PTY heartbeat for stuck-session detection.** Some patterns (OS sleep/wake, ConPTY pipe broken, Claude Code child zombied without emitting an exit event) leave an entry stuck in `running` forever — typing goes nowhere because the dead child never reads it, and PTY output never comes back. The classic symptom: closing the tab and resuming the same session restores it. v3.5.7 probes the child pid every 5 minutes with `process.kill(pid, 0)` (no signal sent, just an aliveness check); if the pid is gone but `onExit` never fired, the entry transitions to a new `stuck` state, the tab gets a ⚠ prefix, the icon turns red, and the tree refreshes — so the user knows to restart rather than wait. Slow cadence is deliberate: the goal is post-long-idle recovery hints, not real-time process supervision.
+- **`scrollback: 5000` explicit on xterm.** The default 1000 lines fills in minutes on a long task; once full, xterm drops oldest lines and breaks history navigation on background sessions. 5000 covers most real-world session lengths while keeping the per-line memory cost bounded.
+
 ## [3.5.6] - 2026-05-13
 
 ### Added

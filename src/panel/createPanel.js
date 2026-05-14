@@ -104,10 +104,17 @@ function startReaderWatch(entry, panel) {
   if (!jsonlPath) return null;
 
   let debounceTimer = null;
+  // v3.5.7: defer renders on hidden panels. renderBlocks() on a multi-MB
+  // jsonl produces a multi-MB HTML payload; sending that to a Chromium-
+  // throttled webview every poll is one of the biggest contributors to the
+  // background-task freeze pattern. Mark pending instead and catch up when
+  // the panel becomes active again (handled by panel.onDidChangeViewState).
+  let pendingRender = false;
   const render = () => {
     debounceTimer = null;
     if (entry._disposed) return;
     if (!fs.existsSync(jsonlPath)) return;
+    if (!panel.active) { pendingRender = true; return; }
     let messages, aiTitle;
     try {
       aiTitle = extractAiTitle(jsonlPath);
@@ -125,7 +132,11 @@ function startReaderWatch(entry, panel) {
         lastRole,
       });
     } catch (_) {}
+    pendingRender = false;
   };
+  // Expose a catch-up trigger so the panel's onDidChangeViewState handler can
+  // force a render after the user re-focuses a tab whose reader was paused.
+  entry._readerCatchUp = () => { if (pendingRender) render(); };
   const schedule = () => {
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(render, 200);
@@ -400,14 +411,33 @@ function createPanel(context, extensionPath, session, opts) {
   const contextParser = createContextParser();
   let webviewReady = false;
   const outputBuffer = [];
+  // v3.5.7: track buffered bytes for inactive-panel gating. Chromium throttles
+  // hidden webview tabs (rAF 1Hz, setTimeout slowdown), so postMessage payloads
+  // queue up faster than the webview can consume them. After hours of background
+  // long-running tasks across multiple sessions, the queue accumulates into
+  // hundreds of MB, eventually OOM'ing the extension host or the whole window.
+  // We hold the data extension-side instead, with a hard cap so our own buffer
+  // can't OOM us either. On visibility return we batch-flush through the PTY
+  // chunk pacer so the catch-up doesn't re-trigger the v3.5.5 freeze condition.
+  let bufferedBytes = 0;
+  const OUTPUT_BUFFER_CAP = 1024 * 1024; // 1 MB — long background tasks past this drop earliest chunks
   const initialPty = ptyProcess;
 
   ptyProcess.onData(data => {
     if (entry.pty !== initialPty) return; // stale handler guard
     dataCount++;
     if (dataCount <= 3) console.log('[Claude Launcher] PTY data #' + dataCount + ' (' + data.length + ' bytes):', data.substring(0, 100));
-    if (!webviewReady) {
+    if (!webviewReady || !panel.active) {
+      // v3.5.7: buffer for inactive panels so Chromium-throttled webviews
+      // don't accumulate IPC payloads in their message queue. Trim oldest
+      // entries past the cap — xterm.js's own scrollback is authoritative
+      // for visual continuity once we flush on visibility return.
       outputBuffer.push(data);
+      bufferedBytes += data.length;
+      while (bufferedBytes > OUTPUT_BUFFER_CAP && outputBuffer.length > 1) {
+        const removed = outputBuffer.shift();
+        bufferedBytes -= removed.length;
+      }
     } else {
       sendPtyChunkPaced(panel, data, entry);
     }
@@ -513,7 +543,8 @@ function createPanel(context, extensionPath, session, opts) {
     }, IDLE_DELAY_MS);
   });
 
-  // Tab focus → clears needs-attention; saves viewColumn on move
+  // Tab focus → clears needs-attention; saves viewColumn on move; flushes
+  // any PTY output buffered while the panel was inactive (v3.5.7).
   let lastViewColumn = panel.viewColumn;
   panel.onDidChangeViewState(e => {
     if (entry._disposed) return;
@@ -523,11 +554,60 @@ function createPanel(context, extensionPath, session, opts) {
       try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
       updateStatusBar();
     }
+    // v3.5.7: visibility return → flush buffered PTY output through the pacer
+    // so the webview catches up smoothly instead of being hit with one huge
+    // postMessage burst (which is what re-introduced the v3.5.5 freeze on
+    // initial buffer drains during webview ready).
+    if (e.webviewPanel.active && webviewReady && outputBuffer.length > 0) {
+      const drained = outputBuffer.splice(0, outputBuffer.length);
+      bufferedBytes = 0;
+      for (const chunk of drained) {
+        sendPtyChunkPaced(panel, chunk, entry);
+      }
+      // v3.5.7: reader is paused on hidden panels too; trigger a catch-up
+      // render so the in-pane transcript reflects all the turns that fired
+      // while the user was looking at another tab.
+      if (typeof entry._readerCatchUp === 'function') {
+        try { entry._readerCatchUp(); } catch (_) {}
+      }
+    }
     if (panel.viewColumn !== lastViewColumn) {
       lastViewColumn = panel.viewColumn;
       saveSessions();
     }
   }, undefined, context.subscriptions);
+
+  // v3.5.7: PTY heartbeat. Some patterns (OS sleep/wake, ConPTY pipe broken,
+  // child process zombied without emitting exit) leave the launcher's entry
+  // stuck in 'running' state forever — user types, but the dead child never
+  // reads it; PTY data never comes back. The classic symptom user reported:
+  // "closing the tab and resuming the session unblocks it." We probe the
+  // child pid with `kill(pid, 0)` (no signal sent, just an aliveness check)
+  // every 5 minutes. If the pid is gone, we transition to a stuck UI state
+  // and prefix the tab title with ⚠ so the user knows to restart instead of
+  // waiting indefinitely. Slow cadence is deliberate — the goal is recovery
+  // hint after long idle, not real-time process supervision.
+  const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
+  entry._heartbeat = setInterval(() => {
+    if (entry._disposed || entry.pty !== initialPty) return;
+    const pid = ptyProcess && ptyProcess.pid;
+    if (!pid) return;
+    let alive = true;
+    try {
+      process.kill(pid, 0);
+    } catch (e) {
+      alive = e && e.code === 'EPERM'; // EPERM means the process exists but we can't signal — still alive
+    }
+    if (!alive && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'stuck') {
+      entry.state = 'stuck';
+      try { panel.title = '⚠ ' + entry.title; } catch (_) {}
+      try { panel.webview.postMessage({ type: 'state', state: 'stuck' }); } catch (_) {}
+      setTabIcon(panel, 'error', extensionPath);
+      updateStatusBar();
+      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      console.warn('[Claude Launcher] heartbeat: PTY child', pid, 'is gone but onExit never fired — marking stuck');
+    }
+  }, HEARTBEAT_INTERVAL_MS);
 
   // PTY exit
   ptyProcess.onExit(({ exitCode }) => {
@@ -582,6 +662,8 @@ function createPanel(context, extensionPath, session, opts) {
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
     if (entry._bgShellsTimer) { clearTimeout(entry._bgShellsTimer); entry._bgShellsTimer = null; }
+    if (entry._heartbeat) { clearInterval(entry._heartbeat); entry._heartbeat = null; }
+    entry._readerCatchUp = null;
     if (typeof entry._stopReaderWatch === 'function') {
       try { entry._stopReaderWatch(); } catch (_) {}
       entry._stopReaderWatch = null;
