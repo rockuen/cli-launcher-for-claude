@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.5.9] - 2026-05-14
+
+### Fixed
+- **Tree refresh fan-out: extractMessageCount made lazy, file meta cached, refresh debounced.** User report: even after v3.5.5–v3.5.8, idle-period freezes still occur on iloom-workspace. Investigation found three sources of repeated work that previous fixes left untouched, all compounding hard when (a) several multi-MB sessions sit in the most-recent 30 and (b) the tree is asked to refresh several times a minute because each of 5 active sessions cycles state during background work.
+- **`extractMessageCount` now runs only on expand**, not on every tree refresh. The metadata row (`N turns · relative time · size`) used to be pre-built inside `_loadSessions` for every one of the 30 most-recent jsonls. On iloom, that meant a refresh re-parsed 7 multi-MB scm-pdca sessions every single time even though the user wasn't looking at them. Session items now carry just `_jsonlPath` / `_fileSize` / `_mtime`; `getChildren(element)` composes the metadata row on first expand and caches the result in `_composedChildren`, so re-expand after collapse doesn't re-run anything. Trash items skip `extractMessageCount` entirely — their meta row says "trashed · …" with no turn count.
+- **`SessionTreeDataProvider.refresh()` debounced at 500 ms.** PTY state transitions (running → waiting → needs-attention → running) on a busy session can fire `refresh()` a dozen times in a few seconds; 5 sessions doing this concurrently was rebuilding the whole tree at the rate the host could barely keep up with. The debounce coalesces the burst into a single `fire()`. 500 ms is short enough that the user perceives the tree as live but long enough to absorb the common state-change cascade.
+- **`extractAiTitle` + `extractFirstUserMessage` results cached by `{mtime, size}`** in a tree-level `_fileMetaCache` (LRU, 100 entries). `extractAiTitle` parses the whole file with no per-line cap (Claude Code rewrites the title as a session grows, so the latest occurrence wins), and that's the worst case on a 48 MB scm-pdca jsonl. Combined with the `_readLinesCached` 2 MB cap from v3.5.6 that excludes big files from sessionJsonl's own cache, the same 48 MB file was being read + parsed top-to-bottom on every refresh. The new cache keys by `{mtime, size}` so unchanged files cost only a `stat()`.
+- **Sub-sessions moved from `_children` to `_subSessions`** so the lazy `getChildren` can compose `[metaRow, ...subSessions]` on demand without conflating the always-present metadata row with the sub-session list. Group containers (Resume Later, Custom Groups, Recent Sessions, Trash) still use `_children` — only session items got the new field.
+
 ## [3.5.8] - 2026-05-14
 
 ### Added

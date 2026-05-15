@@ -58,6 +58,24 @@ class SessionTreeDataProvider {
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this._cache = null;
     this._expandedGroups = new Set([t('resumeLaterGroup')]);
+    // v3.5.9: refresh() is called from many places (PTY state changes, exit,
+    // restoreSessions, command handlers, heartbeat) — easily dozens of times
+    // per minute on iloom-workspace with 5 active sessions. Debounce coalesces
+    // a burst into a single fire so _buildGroups + _loadSessions runs once
+    // instead of per event. 500 ms is short enough that the user perceives
+    // the tree as live but long enough to absorb common cascades (PTY data
+    // → state transition → status bar → tree refresh).
+    this._refreshTimer = null;
+    this._REFRESH_DEBOUNCE_MS = 500;
+    // v3.5.9: file-level cache for extractAiTitle + extractFirstUserMessage.
+    // Tree refresh used to call both on each of the top 30 jsonls every time;
+    // extractAiTitle parses the whole file (no per-line cap), which compounds
+    // hard with the iloom pattern (multiple 13-48 MB scm-pdca sessions in the
+    // top 30). Cache key is {mtime, size}; an LRU cap of 100 entries keeps
+    // memory bounded while comfortably covering the 30 top recent + tree
+    // children across normal usage.
+    this._fileMetaCache = new Map();
+    this._FILE_META_CACHE_MAX = 100;
 
     // TreeDragAndDropController interface (read by createTreeView(options))
     this.dropMimeTypes = [DND_SESSION_MIME, DND_GROUP_MIME];
@@ -65,8 +83,39 @@ class SessionTreeDataProvider {
   }
 
   refresh() {
-    this._cache = null;
-    this._onDidChangeTreeData.fire();
+    if (this._refreshTimer) return; // a fire is already queued; coalesce
+    this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = null;
+      this._cache = null;
+      this._onDidChangeTreeData.fire();
+    }, this._REFRESH_DEBOUNCE_MS);
+  }
+
+  // v3.5.9: hit/miss the file-level meta cache. Returns the cached entry
+  // when {mtime, size} match the current stat; otherwise extracts fresh and
+  // stores. Returns null only when the file can't be read.
+  _getFileMeta(filePath, mtime, size) {
+    if (!filePath) return null;
+    const cached = this._fileMetaCache.get(filePath);
+    if (cached && cached.mtime === mtime && cached.size === size) {
+      // Refresh LRU order: re-set the key
+      this._fileMetaCache.delete(filePath);
+      this._fileMetaCache.set(filePath, cached);
+      return cached;
+    }
+    const meta = {
+      mtime,
+      size,
+      aiTitle: extractAiTitle(filePath),
+      firstMsg: extractFirstUserMessage(filePath),
+    };
+    // Evict oldest before insert if at cap
+    if (this._fileMetaCache.size >= this._FILE_META_CACHE_MAX) {
+      const oldest = this._fileMetaCache.keys().next().value;
+      if (oldest) this._fileMetaCache.delete(oldest);
+    }
+    this._fileMetaCache.set(filePath, meta);
+    return meta;
   }
 
   getTreeItem(element) {
@@ -78,6 +127,38 @@ class SessionTreeDataProvider {
       if (this._cache) return this._cache;
       this._cache = this._buildGroups();
       return this._cache;
+    }
+    // v3.5.9: lazy metadata row. Session items carry _jsonlPath + _mtime +
+    // _fileSize but no pre-built metadata child — extractMessageCount runs
+    // here on first expand, not on every tree refresh. Combined with the
+    // sub-session list attached as _subSessions, the children we return on
+    // expand are [metaRow, ...subSessions]. _composedChildren memoizes the
+    // result so re-expand after collapse doesn't re-run extract.
+    if (element._jsonlPath && element.contextValue !== 'sessionMeta') {
+      if (element._composedChildren) return element._composedChildren;
+      const children = [];
+      const trashed = element.contextValue === 'trashed';
+      const sizeStr = formatBytes(element._fileSize);
+      // Skip extractMessageCount entirely for trash items — they only show
+      // "trashed · <relTime> · <size>" which has no turn count component.
+      // For active sessions, extractMessageCount still runs but ONLY on the
+      // session the user just expanded (no longer fired on every refresh).
+      const metaLabel = trashed
+        ? `trashed · ${_relTime(element._mtime)}${sizeStr ? ' · ' + sizeStr : ''}`
+        : (function() {
+            const msgCount = extractMessageCount(element._jsonlPath);
+            return `${msgCount} turn${msgCount === 1 ? '' : 's'} · ${_relTime(element._mtime)}${sizeStr ? ' · ' + sizeStr : ''}`;
+          })();
+      const metaRow = new vscode.TreeItem(metaLabel, vscode.TreeItemCollapsibleState.None);
+      metaRow.iconPath = new vscode.ThemeIcon('info');
+      metaRow.contextValue = 'sessionMeta';
+      metaRow.tooltip = `Session: ${element._sessionId}\n${new Date(element._mtime).toLocaleString()}`;
+      children.push(metaRow);
+      if (Array.isArray(element._subSessions) && element._subSessions.length > 0) {
+        children.push(...element._subSessions);
+      }
+      element._composedChildren = children;
+      return children;
     }
     return element._children || [];
   }
@@ -147,6 +228,9 @@ class SessionTreeDataProvider {
     // Attach sub-sessions to their parent items. An item is a sub-session if
     // its parent exists in itemMap (otherwise the parent was deleted/trashed
     // and the child falls back to top level).
+    // v3.5.9: store sub-sessions on _subSessions (not _children) so the lazy
+    // getChildren can compose [metaRow, ...subSessions] on first expand
+    // without running extractMessageCount on every tree refresh.
     const isSubSession = (sid) => {
       const pid = parents[sid];
       return pid && itemMap.has(pid);
@@ -155,15 +239,15 @@ class SessionTreeDataProvider {
       const pid = parents[item._sessionId];
       if (pid && itemMap.has(pid)) {
         const parentItem = itemMap.get(pid);
-        parentItem._children = parentItem._children || [];
-        parentItem._children.push(item);
+        parentItem._subSessions = parentItem._subSessions || [];
+        parentItem._subSessions.push(item);
         // Mark sub-session for context menu targeting
         item.contextValue = 'subSession';
       }
     }
     for (const item of allItems) {
-      if (item._children && item._children.length > 0) {
-        item._children.sort(cmp);
+      if (item._subSessions && item._subSessions.length > 0) {
+        item._subSessions.sort(cmp);
       }
     }
 
@@ -285,8 +369,11 @@ class SessionTreeDataProvider {
             const date = new Date(mtime);
             const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
             const savedTitle = titleMap[sid];
-            const aiTitle = extractAiTitle(fullPath);
-            const firstMsg = extractFirstUserMessage(fullPath);
+            // v3.5.9: cache aiTitle + firstMsg so the same trash dir doesn't
+            // re-parse every huge file on each tree refresh.
+            const meta = this._getFileMeta(fullPath, mtime, st.size) || { aiTitle: null, firstMsg: null };
+            const aiTitle = meta.aiTitle;
+            const firstMsg = meta.firstMsg;
             if (!savedTitle && !aiTitle && !firstMsg) continue;
             const displayText = savedTitle || aiTitle || firstMsg;
             const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
@@ -300,16 +387,13 @@ class SessionTreeDataProvider {
             item.resourceUri = buildSessionDecorationUri(sid, st.size, true);
             const tooltipHead = savedTitle || aiTitle || firstMsg;
             item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}Session: ${sid}\n${date.toLocaleString()}${_sizeWarningSuffix(st.size, true)}`;
-            const trashSizeStr = formatBytes(st.size);
-            const trashMeta = new vscode.TreeItem(
-              `trashed · ${_relTime(mtime)}${trashSizeStr ? ' · ' + trashSizeStr : ''}`,
-              vscode.TreeItemCollapsibleState.None,
-            );
-            trashMeta.iconPath = new vscode.ThemeIcon('info');
-            trashMeta.contextValue = 'sessionMeta';
-            trashMeta.tooltip = `Session: ${sid}\n${date.toLocaleString()}`;
-            item._children = [trashMeta];
+            // v3.5.9: metadata row deferred until expand — see getChildren.
+            // Trash items skip extractMessageCount entirely; the lazy label
+            // is just "trashed · <relTime> · <size>".
             item._sessionId = sid;
+            item._mtime = mtime;
+            item._fileSize = st.size;
+            item._jsonlPath = fullPath;
             item.command = { command: 'claudeCodeLauncher.resumeSession', title: 'Resume', arguments: [sid] };
             trashItems.push(item);
           }
@@ -352,8 +436,13 @@ class SessionTreeDataProvider {
     for (const file of files) {
       const sessionId = file.name.replace('.jsonl', '');
       const savedTitle = titleMap[sessionId];
-      const aiTitle = extractAiTitle(file.path);
-      const firstMsg = extractFirstUserMessage(file.path);
+      // v3.5.9: cached extract. With ~30 top files and several multi-MB
+      // sessions in iloom's recent list, this used to re-read + re-parse the
+      // same file every refresh (12+ per minute on a live workspace). The
+      // {mtime, size}-keyed cache makes repeat refreshes hit local memory.
+      const meta = this._getFileMeta(file.path, file.mtime, file.size) || { aiTitle: null, firstMsg: null };
+      const aiTitle = meta.aiTitle;
+      const firstMsg = meta.firstMsg;
       if (!savedTitle && !aiTitle && !firstMsg) continue;
 
       const date = new Date(file.mtime);
@@ -386,20 +475,14 @@ class SessionTreeDataProvider {
       item.contextValue = 'session';
       item._sessionId = sessionId;
       item._mtime = file.mtime;
-
-      // Metadata child — turn count + relative mtime. Anchors the caret-column
-      // hierarchy (so leaf-only sub-groups indent correctly) AND fills the row
-      // that ▷ expand exposes, so opening a session shows real info instead
-      // of a blank panel. Sub-sessions, when present, are appended after this
-      // row in the parent-attachment loop in _buildGroups.
-      const msgCount = extractMessageCount(file.path);
-      const sizeStr = formatBytes(file.size);
-      const metaLabel = `${msgCount} turn${msgCount === 1 ? '' : 's'} · ${_relTime(file.mtime)}${sizeStr ? ' · ' + sizeStr : ''}`;
-      const metaRow = new vscode.TreeItem(metaLabel, vscode.TreeItemCollapsibleState.None);
-      metaRow.iconPath = new vscode.ThemeIcon('info');
-      metaRow.contextValue = 'sessionMeta';
-      metaRow.tooltip = `Session: ${sessionId}\n${date.toLocaleString()}`;
-      item._children = [metaRow];
+      // v3.5.9: stash the path + size on the item so getChildren can build
+      // the metadata row lazily on expand. extractMessageCount is the most
+      // expensive call in this loop on huge sessions — deferring it cuts the
+      // per-refresh fan-out from O(30 × file size) to O(30 × stat) on first
+      // render, with extractMessageCount only ever running on items the user
+      // has actively expanded.
+      item._jsonlPath = file.path;
+      item._fileSize = file.size;
 
       items.push(item);
     }

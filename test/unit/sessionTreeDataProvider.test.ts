@@ -53,17 +53,66 @@ test('Trash item TreeItem uses CollapsibleState.Collapsed', () => {
   );
 });
 
-test('Live session attaches a sessionMeta child row', () => {
-  assert.match(
-    treeSrc,
-    /const metaRow = new vscode\.TreeItem\(metaLabel,[\s\S]*?contextValue = 'sessionMeta'[\s\S]*?item\._children = \[metaRow\]/,
-  );
+test('v3.5.9: live session stashes _jsonlPath + _fileSize for lazy metadata', () => {
+  // The pre-built metaRow (which called extractMessageCount on every refresh)
+  // is gone. Session items now carry just the path + size so getChildren can
+  // build the row on first expand.
+  assert.match(treeSrc, /item\._jsonlPath\s*=\s*file\.path/);
+  assert.match(treeSrc, /item\._fileSize\s*=\s*file\.size/);
 });
 
-test('Trash session attaches a sessionMeta child row', () => {
-  assert.match(
-    treeSrc,
-    /const trashMeta = new vscode\.TreeItem\([\s\S]*?contextValue = 'sessionMeta'[\s\S]*?item\._children = \[trashMeta\]/,
+test('v3.5.9: trash session stashes _jsonlPath + _fileSize for lazy metadata', () => {
+  // Trash items also defer to getChildren — but the lazy path skips
+  // extractMessageCount entirely for trash, so even on expand the cost is
+  // a single stat + relTime format.
+  assert.match(treeSrc, /item\._jsonlPath\s*=\s*fullPath/);
+  assert.match(treeSrc, /item\._fileSize\s*=\s*st\.size/);
+});
+
+test('v3.5.9: getChildren composes metaRow lazily on first expand', () => {
+  // The lazy composition lives inside getChildren and memoizes on
+  // _composedChildren so re-expand after collapse doesn't re-run extract.
+  assert.match(treeSrc, /element\._jsonlPath\s*&&\s*element\.contextValue\s*!==\s*['"]sessionMeta['"]/);
+  assert.match(treeSrc, /element\._composedChildren/);
+  assert.match(treeSrc, /contextValue\s*=\s*['"]sessionMeta['"]/);
+});
+
+test('v3.5.9: trash branch in getChildren skips extractMessageCount', () => {
+  // The metaLabel ternary must use `trashed` as the test, with the trashed
+  // arm producing a "trashed · " label WITHOUT calling extractMessageCount.
+  // We check structurally: extractMessageCount only appears in the non-
+  // trashed branch (inside the IIFE).
+  assert.match(treeSrc, /trashed[\s\S]{0,200}?\?\s*`trashed · [\s\S]*?:\s*\(function\(\)[\s\S]*?extractMessageCount/);
+});
+
+test('v3.5.9: refresh() is debounced via _refreshTimer', () => {
+  assert.match(treeSrc, /this\._refreshTimer/);
+  assert.match(treeSrc, /this\._REFRESH_DEBOUNCE_MS/);
+  // The debounce body must clear and re-fire onDidChange.
+  assert.match(treeSrc, /if \(this\._refreshTimer\) return;[\s\S]*?setTimeout\([\s\S]*?this\._onDidChangeTreeData\.fire\(\)/);
+});
+
+test('v3.5.9: _getFileMeta caches extractAiTitle + extractFirstUserMessage by {mtime, size}', () => {
+  assert.match(treeSrc, /_getFileMeta\s*\(\s*filePath\s*,\s*mtime\s*,\s*size\s*\)/);
+  assert.match(treeSrc, /this\._fileMetaCache/);
+  assert.match(treeSrc, /this\._FILE_META_CACHE_MAX/);
+  // Cache hit path: mtime + size both match
+  assert.match(treeSrc, /cached\.mtime === mtime\s*&&\s*cached\.size === size/);
+  // Miss path: extract + store
+  assert.match(treeSrc, /aiTitle:\s*extractAiTitle\(filePath\),\s*firstMsg:\s*extractFirstUserMessage\(filePath\)/);
+});
+
+test('v3.5.9: sub-sessions attach to _subSessions (not _children)', () => {
+  // The lazy getChildren composes [metaRow, ...subSessions]; mixing them
+  // into _children would conflate metadata with siblings and break the
+  // sort logic.
+  assert.match(treeSrc, /parentItem\._subSessions\s*=\s*parentItem\._subSessions\s*\|\|\s*\[\]/);
+  assert.match(treeSrc, /parentItem\._subSessions\.push\(item\)/);
+  // No leftover sub-session attachment using _children
+  assert.equal(
+    /parentItem\._children\s*=\s*parentItem\._children\s*\|\|\s*\[\];\s*parentItem\._children\.push/.test(treeSrc),
+    false,
+    'sub-session attach should no longer use _children',
   );
 });
 
