@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.6.1] - 2026-05-15
+
+### Added
+- **Account status bar item.** A left-aligned status bar entry now shows the active Claude account — `$(account) <organizationName>` when the live account belongs to an org, otherwise the full email. Click it to open the same QuickPick that `Switch Claude Account…` runs (save current, swap, update, delete). The tooltip carries email, organization, plan, and whether the account is saved as a profile. Hides itself entirely when no Claude credentials exist (Claude CLI hasn't been logged in), so users without a `/login` see no stub label. Auto-refreshes after every save/swap/update/delete — no file watcher needed because Claude CLI's background token rotation never changes identity, only credential bytes.
+
 ## [3.6.0] - 2026-05-15
 
 ### Added

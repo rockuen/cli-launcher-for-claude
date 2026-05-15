@@ -502,6 +502,12 @@ function activate(context) {
       account.promptSaveCurrentAccount(context)
     ),
   );
+
+  // v3.6.1: left-aligned status bar item showing the active Claude
+  // account. Click → switchAccount QuickPick. Hides itself when no
+  // credentials exist; refreshes automatically after every save/swap
+  // via switcher.ts:refreshActiveProfile().
+  account.createAccountStatusBar(context);
 }
 
 function deactivate() {

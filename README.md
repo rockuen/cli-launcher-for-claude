@@ -103,9 +103,11 @@ official standalone install).
   `~/.claude/account-switcher/<slug>/`. Active-profile detection cascades through
   credentials hash → `accountUuid` → `userID + email` → email, so Anthropic's background
   token rotation doesn't silently "unsave" the active profile.
-- Open the switcher: **command palette → *Switch Claude Account…*** or the
-  *Switch Account…* button in the settings modal (⚙). First save asks once for
-  consent (OAuth tokens are copied in plain text — same format Claude CLI uses on disk).
+- Open the switcher: **left status bar** (`$(account) <org or email>` — click it),
+  **command palette → *Switch Claude Account…***, or the *Switch Account…* button in
+  the settings modal (⚙). First save asks once for consent (OAuth tokens are copied
+  in plain text — same format Claude CLI uses on disk). The status bar entry hides
+  itself when no Claude credentials exist and auto-refreshes after every save/swap.
 - Lifted from [`rockuen/claude-account-switcher`](https://github.com/rockuen/claude-account-switcher)
   v0.1.1, which forks the snapshot mechanism from
   [`vishalguptax/claude-manager`](https://github.com/vishalguptax/claude-manager). Both
