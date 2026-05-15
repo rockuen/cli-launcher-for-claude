@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [3.6.0] - 2026-05-15
 
 ### Added
 - **Multi-account profile switcher.** New `claudeCodeLauncher.switchAccount` and `claudeCodeLauncher.saveAccount` commands plus a "Switch Account…" button in the settings modal (⚙) let you save a Claude Code login and swap between accounts without going through the full `/logout` + `/login` browser dance each time. Saved profiles live under `~/.claude/account-switcher/<slug>/` (separate from upstream `vishalguptax/claude-manager`'s `manager-accounts/` to avoid data conflicts). A one-time consent modal explains that OAuth tokens are copied in plain text — same format Claude CLI already uses on disk — before the first save. The switcher is a native QuickPick: active profile pinned to the top, duplicates flagged, inline Update/Delete buttons. Switching is two-file atomic (claude.json + .credentials.json) with rollback if either rename fails partway. Active-profile detection cascades through four matchers (credentials hash → `accountUuid` → `userID + email` → email) so Anthropic's background token rotation doesn't silently "unsave" the active profile.
