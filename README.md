@@ -97,6 +97,20 @@ official standalone install).
 - File/folder click handlers expand `worker-{1,2,3}/answer.md` style patterns (common
   in OMC team artifacts) and open every match at once.
 
+### Multi-account
+- Save the current Claude login as a profile and switch between accounts without going
+  through the full `/logout` + `/login` browser dance each time. Snapshots live under
+  `~/.claude/account-switcher/<slug>/`. Active-profile detection cascades through
+  credentials hash → `accountUuid` → `userID + email` → email, so Anthropic's background
+  token rotation doesn't silently "unsave" the active profile.
+- Open the switcher: **command palette → *Switch Claude Account…*** or the
+  *Switch Account…* button in the settings modal (⚙). First save asks once for
+  consent (OAuth tokens are copied in plain text — same format Claude CLI uses on disk).
+- Lifted from [`rockuen/claude-account-switcher`](https://github.com/rockuen/claude-account-switcher)
+  v0.1.1, which forks the snapshot mechanism from
+  [`vishalguptax/claude-manager`](https://github.com/vishalguptax/claude-manager). Both
+  upstream credits live in the `NOTICE` file (Apache-2.0).
+
 ## OMC mode
 
 OMC-dependent features are **gated behind a single context key**. When you don't have

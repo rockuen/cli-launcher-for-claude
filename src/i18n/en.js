@@ -3,6 +3,9 @@
 
 module.exports = {
   noActiveTab: 'No active Claude Code tab.',
+  settingsAccountLabel: 'Multi-account',
+  settingsAccountBtn: 'Switch Account…',
+  settingsAccountTip: 'Save and switch between Claude account profiles. A one-time consent prompt is shown before the first save (OAuth tokens are copied into ~/.claude/account-switcher/).',
   enterTabName: 'Enter tab name',
   resumeLaterGroup: 'Resume Later',
   recentSessionsGroup: 'Recent Sessions',

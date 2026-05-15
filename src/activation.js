@@ -489,6 +489,19 @@ function activate(context) {
   } catch (err) {
     console.log(`[sync] failed to start: ${err && err.message ? err.message : err}`);
   }
+
+  // Account switcher — multi-account switching, lifted from
+  // rockuen/claude-account-switcher v0.1.1 into src/account/. The
+  // module compiles to out/account/index.js via tsc.
+  const account = require('../out/account');
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.switchAccount', () =>
+      account.openAccountSwitcher(context)
+    ),
+    vscode.commands.registerCommand('claudeCodeLauncher.saveAccount', () =>
+      account.promptSaveCurrentAccount(context)
+    ),
+  );
 }
 
 function deactivate() {

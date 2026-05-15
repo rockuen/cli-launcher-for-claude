@@ -172,6 +172,10 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <label title="Path to the git repo to watch. Empty = current IDE workspace folder. Supports \${workspaceFolder} (commit a workspace settings.json with this for cross-device auto-resolve), \${userHome}, and \${env:VAR}. Reload Window to apply.">Repo Path</label>
         <input type="text" class="settings-input" id="set-repo-sync-path" value="${(settings.repoSyncPath || '').replace(/"/g, '&quot;')}" placeholder="/Users/..." style="width:200px;font-size:10px;">
       </div>
+      <div class="settings-row">
+        <label title="${T.settingsAccountTip}">${T.settingsAccountLabel}</label>
+        <button class="settings-close-btn" id="set-switch-account" style="flex:0 0 auto;width:auto;margin:0;padding:0 12px;height:28px;font-size:11px;border-color:#D97757;color:#D97757;">${T.settingsAccountBtn}</button>
+      </div>
       <div style="border-top:1px solid ${border};margin:12px 0 8px;"></div>
       <details>
         <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">Custom Buttons</summary>

@@ -501,6 +501,7 @@ function getClientScript(ctx) {
     const setAutoEffortMax = document.getElementById('set-autoeffortmax');
     const setRepoSyncEnabled = document.getElementById('set-repo-sync-enabled');
     const setRepoSyncPath = document.getElementById('set-repo-sync-path');
+    const setSwitchAccount = document.getElementById('set-switch-account');
     const setSplitLayout = document.getElementById('set-split-layout');
     const setSplitRatio = document.getElementById('set-split-ratio');
     const setSplitRatioLabel = document.getElementById('set-split-ratio-label');
@@ -664,6 +665,12 @@ function getClientScript(ctx) {
         const next = !setRepoSyncEnabled.classList.contains('on');
         setRepoSyncEnabled.classList.toggle('on', next);
         vscode.postMessage({ type: 'save-setting', key: 'repoSync.enabled', value: next });
+      });
+    }
+
+    if (setSwitchAccount) {
+      setSwitchAccount.addEventListener('click', () => {
+        vscode.postMessage({ type: 'invoke-command', command: 'claudeCodeLauncher.switchAccount' });
       });
     }
 

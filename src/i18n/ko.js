@@ -2,6 +2,9 @@
 
 module.exports = {
   noActiveTab: '활성화된 Claude Code 탭이 없습니다.',
+  settingsAccountLabel: '다중 계정',
+  settingsAccountBtn: '계정 전환…',
+  settingsAccountTip: 'Claude 계정 프로필 저장 · 전환. 첫 저장 시 토큰 복사 동의 안내가 한 번 표시됩니다.',
   enterTabName: '탭 이름을 입력하세요',
   resumeLaterGroup: '나중에 이어서',
   recentSessionsGroup: '최근 세션',

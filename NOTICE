@@ -1,0 +1,27 @@
+CLI Launcher for Claude
+Copyright 2026 rockuen
+
+The multi-account profile switcher under src/account/ and the test suite
+under test/account/profiles.test.ts were lifted with light adaptation
+from:
+
+  rockuen/claude-account-switcher v0.1.1 (Apache License 2.0)
+  https://github.com/rockuen/claude-account-switcher
+
+which in turn forks the account-snapshot mechanism from:
+
+  vishalguptax/claude-manager (Apache License 2.0)
+  https://github.com/vishalguptax/claude-manager
+
+The ported surface includes:
+  - src/account/profiles.ts    (snapshot/swap/sync core, byte-for-byte)
+  - src/account/parser.ts      (profile metadata parser)
+  - src/account/mtimeCache.ts  (mtime+size keyed file cache)
+  - src/account/switcher.ts    (QuickPick + save-current flows,
+                                adapted from viewProvider.ts)
+  - test/account/profiles.test.ts  (90 unit tests, byte-for-byte)
+
+The rest of CLI Launcher for Claude remains under the MIT License (see
+LICENSE). Apache 2.0 obligations from the ported files (attribution,
+notice preservation) are discharged by this NOTICE; downstream consumers
+must keep this file intact.

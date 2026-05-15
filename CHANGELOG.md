@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **Multi-account profile switcher.** New `claudeCodeLauncher.switchAccount` and `claudeCodeLauncher.saveAccount` commands plus a "Switch Account…" button in the settings modal (⚙) let you save a Claude Code login and swap between accounts without going through the full `/logout` + `/login` browser dance each time. Saved profiles live under `~/.claude/account-switcher/<slug>/` (separate from upstream `vishalguptax/claude-manager`'s `manager-accounts/` to avoid data conflicts). A one-time consent modal explains that OAuth tokens are copied in plain text — same format Claude CLI already uses on disk — before the first save. The switcher is a native QuickPick: active profile pinned to the top, duplicates flagged, inline Update/Delete buttons. Switching is two-file atomic (claude.json + .credentials.json) with rollback if either rename fails partway. Active-profile detection cascades through four matchers (credentials hash → `accountUuid` → `userID + email` → email) so Anthropic's background token rotation doesn't silently "unsave" the active profile.
+- **Account module + 36 unit tests** — ported from `rockuen/claude-account-switcher` v0.1.1 under `src/account/` (TypeScript) and `test/account/` (vitest). The 881-line `profiles.ts` snapshot/swap/sync core is carried over byte-for-byte; the QuickPick UI (`switcher.ts`) is adapted to use `vscode.ExtensionContext` directly instead of a webview view-provider host. See `NOTICE` for Apache-2.0 attribution.
+- **vitest as a second test runner** for the account lane. The existing 210-test `node --test` suite is unchanged (`npm run test:node`); `npm run test:vitest` runs the 36 ported tests; `npm test` runs both.
+
 ## [3.5.9] - 2026-05-14
 
 ### Fixed

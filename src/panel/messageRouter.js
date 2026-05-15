@@ -101,6 +101,21 @@ function routeWebviewMessage(msg, ctx) {
       return;
     }
 
+    case 'invoke-command': {
+      // Allowlist gates which commands the webview can trigger so a
+      // compromised message channel can't fire arbitrary vscode commands.
+      // Add command IDs here only when a webview-side surface (settings
+      // modal button, toolbar) needs to invoke them.
+      const ALLOWED_INVOKES = new Set([
+        'claudeCodeLauncher.switchAccount',
+        'claudeCodeLauncher.saveAccount',
+      ]);
+      if (typeof msg.command === 'string' && ALLOWED_INVOKES.has(msg.command)) {
+        vscode.commands.executeCommand(msg.command);
+      }
+      return;
+    }
+
     // Phase 4-extra: reader inline prompt response. Webview detected a
     // binary y/n prompt and the user clicked Approve/Reject — write the
     // chosen key plus CR to the PTY, same as if they typed it into the TUI

@@ -48,6 +48,7 @@ Claude Code 자체가 좋아서 매일 쓴다. 그런데 좋아할수록 자꾸 
 - **Reader-Live** — 진행 중인 대화를 markdown으로 같이 본다. 코드 블록, 인용, 표가 그대로 렌더링. xterm.js 터미널과 split layout으로 동시에.
 - **상태 + 알림** — 응답이 진행 중이면 탭과 패널 테두리가 **노란색으로 글로우**, 끝나면 **초록색**으로 바뀐다. 시스템 알림도 같이 띄워서 다른 일 하다가도 자연스럽게 알아챈다.
 - **Repo Sync** — 워크스페이스 변경을 5분 debounce로 감지해서 자동 commit + push. VSCode 종료 시 마지막 commit. 디바이스 이름이 commit 메시지에 박힘 (`[Mac] auto-sync: ...`).
+- **다중 계정 전환** — 회사 / 개인 Claude 계정을 매번 `/logout` → 브라우저 → `/login` 하지 않고 프로필로 저장해뒀다가 바꿔 끼운다. 스냅샷은 `~/.claude/account-switcher/<slug>/`에 저장. 액티브 프로필 인식은 credentials hash → `accountUuid` → `userID + email` → email 4단 cascade라 백그라운드 토큰 회전이 일어나도 "저장 안 됨"으로 슬며시 빠지지 않는다. 명령 팔레트 *Switch Claude Account…* 또는 설정 모달(⚙) 안의 *Switch Account…* 버튼으로 연다. 첫 저장 때 한 번만 OAuth 토큰 복사 동의 안내가 뜬다.
 - **HUD** — 상단 status bar에 5시간 / 7일 사용률 + 다음 리셋 시각. 클릭 시 상세.
 - **자동 링크 + 컨텍스트 메뉴** — 응답 안의 파일 경로·URL·폴더는 자동으로 클릭 가능. 클릭 한 번에 IDE에서 파일이 열리고, URL은 브라우저로, 폴더는 Finder/탐색기로. 텍스트 선택 후 우클릭하면 "Open File / Open Folder / Copy" 메뉴.
 - **커스텀 버튼** — 자주 쓰는 명령(`/init` 같은 슬래시, 자주 보내는 prompt, 큰 페이스트 payload 등)을 버튼으로 등록. 클릭 한 번에 입력란에 자동 입력.

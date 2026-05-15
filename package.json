@@ -197,6 +197,16 @@
         "command": "claudeCodeLauncher.repoSync.openSettings",
         "title": "Repo Sync: Open Settings",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.switchAccount",
+        "title": "Switch Claude Account…",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.saveAccount",
+        "title": "Save Current Claude Account as Profile…",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -604,13 +614,16 @@
     "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true}); require('fs').rmSync('.test-out',{recursive:true,force:true})\"",
     "lint": "tsc -p ./ --noEmit",
     "build:test": "tsc -p ./tsconfig.test.json",
-    "test": "npm run build:test && node --test .test-out/test/unit/*.test.js"
+    "test:node": "npm run build:test && node --test .test-out/test/unit/*.test.js",
+    "test:vitest": "vitest run",
+    "test": "npm run test:node && npm run test:vitest"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.21.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.9"
   }
 }
