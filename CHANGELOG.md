@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.6.4] - 2026-05-18
+
+### Fixed
+- **Single-panel freezes on Ink redraw storms (SelectInput / spinner screens).** The v3.6.2/v3.6.3 diagnostics confirmed the long-suspected pattern: during a SelectInput or spinner screen, Claude Code's Ink renderer emits **20–30 tiny PTY chunks per second** (cursor blink, status-line partial redraws, selection indicator). One representative 10-minute window logged 15,522 chunks averaging 35B, with **92.6% under 64B and 64% arriving within 33ms of the previous one** — every one of those was firing a separate `panel.webview.postMessage` + `xterm.write` on the webview's main thread, saturating it until a user input keystroke could break through the backlog as a burst, the exact symptom reported. v3.6.4 coalesces small chunks across an 8ms window (half a 60fps frame so input latency is imperceptible) and ships them as one payload through the existing `sendPtyChunkPaced`. Large chunks (≥4KB, the pacer's threshold) still flush immediately so table dumps and session-resume bursts stay paced. Inactive panels keep using the v3.5.7 `outputBuffer` path; coalescing only applies once a panel is active and the webview is ready.
+- **`panel undefined` in diagnostics dumps.** `state.diagnostics.recordChunk()` was called with `entry.tabId`, which was never set on the entry object — every panel's stats collapsed into a single "panel undefined" bucket making per-tab attribution useless. Added `tabId` to the entry constructor so `recordChunk` and `recordWebviewMemory` both attribute per panel correctly.
+
+### Implementation
+- `pendingPayload` string + `pendingFlushTimer` per panel in `createPanel.js`; the onData hot path appends to the buffer and either flushes when it crosses `SMALL_CHUNK` (4 KB) or schedules a single 8 ms timer to drain. `flushPending()` is idempotent and disposal-safe; `panel.onDidDispose` clears the timer + drops any unsent bytes.
+- Parsing (`contextParser.feed`, `detectShellRunning`, `detectBinaryPrompt`, `looksLikePrompt`) **stays per-chunk** so needs-attention recognition remains instant — the coalesce only affects the postMessage path.
+
 ## [3.6.3] - 2026-05-18
 
 ### Added

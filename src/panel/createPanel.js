@@ -367,6 +367,11 @@ function createPanel(context, extensionPath, session, opts) {
 
   const entry = {
     panel,
+    // v3.6.4: tabId on the entry object so messageRouter + diagnostics can
+    // route per-panel without a closure dependency. v3.6.2/v3.6.3 read
+    // entry.tabId which was undefined, collapsing every panel's stats into
+    // a single "panel undefined" bucket in the diagnostics dump.
+    tabId: tabId,
     pty: ptyProcess,
     title: tabTitle,
     memo: session?.memo || '',
@@ -423,6 +428,29 @@ function createPanel(context, extensionPath, session, opts) {
   const OUTPUT_BUFFER_CAP = 1024 * 1024; // 1 MB — long background tasks past this drop earliest chunks
   const initialPty = ptyProcess;
 
+  // v3.6.4: small-chunk coalescing on the active path. Diagnostics dumps
+  // showed 92% of PTY chunks ≤64B during Ink redraw storms (cursor blink,
+  // spinner, SelectInput partial redraws) — every one fired a separate
+  // postMessage + xterm.write, saturating the webview's main thread and
+  // driving the single-panel freezes the user reported. We collect tiny
+  // chunks across an 8ms window and ship them as one payload; the window
+  // is half a 60fps frame so input latency stays imperceptible. Large
+  // chunks (≥ SMALL_CHUNK) flush immediately so big transitions (table
+  // dumps, session resume) still pace through sendPtyChunkPaced.
+  // Inactive panels still go through outputBuffer above — coalescing only
+  // applies once the webview is back to receiving traffic live.
+  const { SMALL_CHUNK } = require('../lib/ptyChunk');
+  const COALESCE_WINDOW_MS = 8;
+  let pendingPayload = '';
+  let pendingFlushTimer = null;
+  function flushPending() {
+    if (pendingFlushTimer) { clearTimeout(pendingFlushTimer); pendingFlushTimer = null; }
+    if (!pendingPayload || entry._disposed) { pendingPayload = ''; return; }
+    const payload = pendingPayload;
+    pendingPayload = '';
+    sendPtyChunkPaced(panel, payload, entry);
+  }
+
   ptyProcess.onData(data => {
     if (entry.pty !== initialPty) return; // stale handler guard
     dataCount++;
@@ -443,7 +471,14 @@ function createPanel(context, extensionPath, session, opts) {
         bufferedBytes -= removed.length;
       }
     } else {
-      sendPtyChunkPaced(panel, data, entry);
+      // v3.6.4: coalesce tiny chunks across an 8ms window (see comment near
+      // pendingPayload above). Large chunks bypass the buffer and ship now.
+      pendingPayload += data;
+      if (pendingPayload.length >= SMALL_CHUNK) {
+        flushPending();
+      } else if (!pendingFlushTimer) {
+        pendingFlushTimer = setTimeout(flushPending, COALESCE_WINDOW_MS);
+      }
     }
 
     const usage = contextParser.feed(data, entry);
@@ -665,6 +700,9 @@ function createPanel(context, extensionPath, session, opts) {
     entry._disposed = true;
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+    // v3.6.4: drop any coalesced bytes that never got flushed.
+    if (pendingFlushTimer) { clearTimeout(pendingFlushTimer); pendingFlushTimer = null; }
+    pendingPayload = '';
     if (entry._bgShellsTimer) { clearTimeout(entry._bgShellsTimer); entry._bgShellsTimer = null; }
     if (entry._heartbeat) { clearInterval(entry._heartbeat); entry._heartbeat = null; }
     entry._readerCatchUp = null;
