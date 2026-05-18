@@ -116,6 +116,18 @@ function routeWebviewMessage(msg, ctx) {
       return;
     }
 
+    case 'webview-memory': {
+      // v3.6.3: webview-side memory probe report. The webview's V8 context
+      // is separate from the extension host's, so its heap usage isn't
+      // visible to process.memoryUsage() — this report fills that gap.
+      // When diagnostics is off the message is dropped here, keeping the
+      // disabled-state cost to one map lookup per minute per panel.
+      if (state.diagnostics) {
+        state.diagnostics.recordWebviewMemory(entry.tabId, msg);
+      }
+      return;
+    }
+
     // Phase 4-extra: reader inline prompt response. Webview detected a
     // binary y/n prompt and the user clicked Approve/Reject — write the
     // chosen key plus CR to the PTY, same as if they typed it into the TUI

@@ -75,6 +75,11 @@ function newPanelStats() {
     sizeBuckets: SIZE_BUCKETS.map(() => 0),
     intervalBuckets: INTERVAL_BUCKETS.map(() => 0),
     lastTs: 0,
+    // v3.6.3: most recent webview-side measurement. Not rolling — the
+    // probe reports a snapshot every minute and we keep the latest value
+    // so each dump shows where the webview's V8 context is right now.
+    // Reset() carries these forward so they survive between dumps.
+    webview: null, // { used, total, limit, xtermScrollback, readerDomCount, readerHtmlSize, reportedAt }
   };
 }
 
@@ -102,6 +107,27 @@ class Diagnostics {
     // the freeze.
     this.dump('startup');
     this.dumpTimer = setInterval(() => this.dump('periodic'), intervalMs);
+  }
+
+  /** Record the latest webview-side memory snapshot for `tabId`. Called
+   *  from messageRouter when the webview probe reports (default cadence
+   *  60s). Stores the snapshot as-is; the next dump shows it under that
+   *  panel. */
+  recordWebviewMemory(tabId, msg) {
+    let s = this.byPanel.get(tabId);
+    if (!s) {
+      s = newPanelStats();
+      this.byPanel.set(tabId, s);
+    }
+    s.webview = {
+      used: msg && msg.mem ? msg.mem.used : null,
+      total: msg && msg.mem ? msg.mem.total : null,
+      limit: msg && msg.mem ? msg.mem.limit : null,
+      xtermScrollback: typeof msg.xtermScrollback === 'number' ? msg.xtermScrollback : null,
+      readerDomCount: typeof msg.readerDomCount === 'number' ? msg.readerDomCount : null,
+      readerHtmlSize: typeof msg.readerHtmlSize === 'number' ? msg.readerHtmlSize : null,
+      reportedAt: Date.now(),
+    };
   }
 
   /** Record a single PTY chunk arriving on `tabId`. Called from createPanel
@@ -141,19 +167,40 @@ class Diagnostics {
       lines.push('  (no PTY traffic in this window)');
     } else {
       for (const [tabId, s] of this.byPanel) {
-        if (s.chunks === 0) continue;
-        const avg = (s.bytes / s.chunks).toFixed(0);
-        const sizeHist = SIZE_BUCKETS.map((b, i) =>
-          `${b.label}=${s.sizeBuckets[i]}`,
-        ).join(' ');
-        const intervalHist = INTERVAL_BUCKETS.map((b, i) =>
-          `${b.label}=${s.intervalBuckets[i]}`,
-        ).join(' ');
-        lines.push(
-          `  panel ${tabId}: chunks=${s.chunks} total=${formatBytes(s.bytes)} avg=${avg}B max=${formatBytes(s.maxChunk)}`,
-        );
-        lines.push(`    size:     ${sizeHist}`);
-        lines.push(`    interval: ${intervalHist}`);
+        // Show the panel block when either PTY traffic happened in this
+        // window OR a webview probe snapshot exists. Silent panels with
+        // nothing to report stay hidden.
+        if (s.chunks === 0 && !s.webview) continue;
+        if (s.chunks > 0) {
+          const avg = (s.bytes / s.chunks).toFixed(0);
+          const sizeHist = SIZE_BUCKETS.map((b, i) =>
+            `${b.label}=${s.sizeBuckets[i]}`,
+          ).join(' ');
+          const intervalHist = INTERVAL_BUCKETS.map((b, i) =>
+            `${b.label}=${s.intervalBuckets[i]}`,
+          ).join(' ');
+          lines.push(
+            `  panel ${tabId}: chunks=${s.chunks} total=${formatBytes(s.bytes)} avg=${avg}B max=${formatBytes(s.maxChunk)}`,
+          );
+          lines.push(`    size:     ${sizeHist}`);
+          lines.push(`    interval: ${intervalHist}`);
+        } else {
+          lines.push(`  panel ${tabId}: (no PTY traffic this window)`);
+        }
+        if (s.webview) {
+          const w = s.webview;
+          const ageS = ((Date.now() - w.reportedAt) / 1000).toFixed(0);
+          const memPart = w.used != null
+            ? `used=${formatBytes(w.used)} total=${formatBytes(w.total)} limit=${formatBytes(w.limit)}`
+            : 'used=(N/A — performance.memory not exposed)';
+          lines.push(`    webview-heap (age ${ageS}s): ${memPart}`);
+          if (w.xtermScrollback != null) {
+            lines.push(`    xterm-scrollback: ${w.xtermScrollback} lines`);
+          }
+          if (w.readerDomCount != null) {
+            lines.push(`    reader: dom-nodes=${w.readerDomCount} html=${formatBytes(w.readerHtmlSize)}`);
+          }
+        }
       }
     }
     for (const line of lines) this.output.appendLine(line);

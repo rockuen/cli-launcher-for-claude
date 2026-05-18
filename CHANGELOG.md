@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.6.3] - 2026-05-18
+
+### Added
+- **Webview-side memory probe for diagnostics.** Each webview is its own V8 context, separate from the extension host's, so a leak that freezes a single panel doesn't show up in `process.memoryUsage()`. v3.6.3 adds a per-tab probe that reports `performance.memory.usedJSHeapSize / totalJSHeapSize / jsHeapSizeLimit` plus `xterm.buffer.active.length` (scrollback line count) and the `#reader-area` DOM node count + HTML byte size every 60 seconds. The diagnostics OutputChannel dump now shows `webview-heap`, `xterm-scrollback`, and `reader: dom-nodes=…/html=…` lines under each panel, so a tab that's drifting toward V8's 2 GB ceiling is visible per-panel before it actually freezes.
+- Panel blocks now print even when no PTY traffic happened in the dump window, as long as a webview snapshot exists — this surfaces idle tabs whose webview is still creeping.
+
+### Implementation
+- New webview-side `__probeWebviewMemory()` in `webviewClient.js` fires immediately (baseline) and then every 60 s via `setInterval`; `window.unload` clears the timer.
+- New `webview-memory` message handled by `messageRouter.js` → `state.diagnostics.recordWebviewMemory(tabId, msg)`. Disabled-state cost is one `if (state.diagnostics)` check per minute per panel.
+- `Diagnostics.recordWebviewMemory` stashes the latest snapshot per panel; the dump renders `webview-heap (age Ns)` so a probe that stopped reporting is identifiable.
+
 ## [3.6.2] - 2026-05-15
 
 ### Added

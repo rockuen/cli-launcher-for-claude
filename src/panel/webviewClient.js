@@ -2426,6 +2426,40 @@ function getClientScript(ctx) {
 
     // Signal extension that webview is ready to receive PTY output
     vscode.postMessage({ type: 'webview-ready' });
+
+    // v3.6.3: webview-side memory probe. Reports the webview's V8 heap +
+    // xterm scrollback line count + reader DOM size every 60s so the
+    // diagnostics OutputChannel can correlate per-tab leaks that the
+    // extension-host process.memoryUsage() can't see (each webview is its
+    // own V8 context). Probe body is cheap: one performance.memory read +
+    // two DOM queries. messageRouter drops the message when the toggle is
+    // off, so the only always-on cost is the setInterval + one postMessage
+    // per minute — well below the freeze threshold we're investigating.
+    function __probeWebviewMemory() {
+      try {
+        const mem = (typeof performance !== 'undefined' && performance.memory) ? {
+          used: performance.memory.usedJSHeapSize,
+          total: performance.memory.totalJSHeapSize,
+          limit: performance.memory.jsHeapSizeLimit,
+        } : null;
+        const xtermScrollback = (typeof term !== 'undefined' && term && term.buffer && term.buffer.active) ? term.buffer.active.length : null;
+        const readerArea = document.getElementById('reader-area');
+        const readerDomCount = readerArea ? readerArea.querySelectorAll('*').length : 0;
+        const readerHtmlSize = readerArea ? readerArea.innerHTML.length : 0;
+        vscode.postMessage({
+          type: 'webview-memory',
+          mem: mem,
+          xtermScrollback: xtermScrollback,
+          readerDomCount: readerDomCount,
+          readerHtmlSize: readerHtmlSize,
+        });
+      } catch (_) { /* probe failures are non-fatal */ }
+    }
+    __probeWebviewMemory();
+    const __webviewMemoryInterval = setInterval(__probeWebviewMemory, 60000);
+    window.addEventListener('unload', function () {
+      try { clearInterval(__webviewMemoryInterval); } catch (_) { /* ignore */ }
+    });
 `;
 }
 
