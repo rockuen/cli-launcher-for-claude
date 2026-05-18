@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.6.2] - 2026-05-15
+
+### Added
+- **Opt-in diagnostics for freeze investigation.** Toggle `claudeCodeLauncher.diagnostics.enabled` and a new `CLI Launcher — Diagnostics` OutputChannel starts receiving a baseline snapshot at startup plus a periodic dump every 10 minutes. Each dump records `process.memoryUsage()` (rss / heapUsed / heapTotal / external) plus, per tab, the number of PTY chunks received, total bytes, average + max chunk size, and **two histograms — chunk size in 7 buckets (≤64B … >64KB) and inter-arrival interval in 5 buckets (≤8ms … >1s).** The histograms make the difference between "many tiny chunks" (Ink redraw storm during a SelectInput / spinner) and "few huge chunks" (initial flush, table dumps) visible at a glance, which is the missing piece for diagnosing the v3.5.5–v3.5.9 freeze fix's residual cases.
+- **`Claude: Diagnostics: Dump Now` command** for on-demand snapshots — useful right after reproducing a freeze so the latest interval gets flushed before the periodic timer fires.
+
+### Implementation
+- New `src/lib/diagnostics.js` (~155 lines). Disabled-state cost in `createPanel.js:onData` is one `if (state.diagnostics)` null check per PTY chunk; when enabled the hot path does three integer increments + one histogram bump + one timestamp diff.
+- Reactive to config changes (`onDidChangeConfiguration`) so toggling on/off doesn't need a window reload.
+- Per-panel counters reset after each dump so successive snapshots describe the most recent window, not the lifetime — easier to correlate with a freeze that just happened.
+- Closed tabs drop their counters on `panel.onDidDispose` so the rolling map doesn't leak entries.
+
 ## [3.6.1] - 2026-05-15
 
 ### Added

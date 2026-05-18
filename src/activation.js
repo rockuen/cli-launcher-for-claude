@@ -508,6 +508,53 @@ function activate(context) {
   // credentials exist; refreshes automatically after every save/swap
   // via switcher.ts:refreshActiveProfile().
   account.createAccountStatusBar(context);
+
+  // v3.6.2: opt-in diagnostics for freeze investigation. The toggle is
+  // off by default — when on, an OutputChannel named "CLI Launcher —
+  // Diagnostics" gets a memory + per-panel chunk-stats dump every 10
+  // minutes (and a baseline at startup). Reactive to config changes so
+  // the user can toggle without reloading the window.
+  const { Diagnostics } = require('./lib/diagnostics');
+  function applyDiagnosticsToggle() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('diagnostics.enabled', false);
+    if (enabled && !state.diagnostics) {
+      state.diagnostics = new Diagnostics();
+      state.diagnostics.start();
+    } else if (!enabled && state.diagnostics) {
+      state.diagnostics.dispose();
+      state.diagnostics = null;
+    }
+  }
+  applyDiagnosticsToggle();
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('claudeCodeLauncher.diagnostics.enabled')) {
+        applyDiagnosticsToggle();
+      }
+    }),
+    vscode.commands.registerCommand(
+      'claudeCodeLauncher.diagnostics.dumpNow',
+      () => {
+        if (!state.diagnostics) {
+          vscode.window.showInformationMessage(
+            'Diagnostics are disabled. Enable claudeCodeLauncher.diagnostics.enabled in settings first.',
+          );
+          return;
+        }
+        state.diagnostics.dumpNow();
+      },
+    ),
+    {
+      dispose: () => {
+        if (state.diagnostics) {
+          state.diagnostics.dispose();
+          state.diagnostics = null;
+        }
+      },
+    },
+  );
 }
 
 function deactivate() {

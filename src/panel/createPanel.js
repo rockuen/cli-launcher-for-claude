@@ -427,6 +427,10 @@ function createPanel(context, extensionPath, session, opts) {
     if (entry.pty !== initialPty) return; // stale handler guard
     dataCount++;
     if (dataCount <= 3) console.log('[Claude Launcher] PTY data #' + dataCount + ' (' + data.length + ' bytes):', data.substring(0, 100));
+    // v3.6.2: opt-in diagnostics. Null-check beats optional chaining for a
+    // hot path called per PTY chunk; the branch predicts well when the
+    // toggle is off (the common case).
+    if (state.diagnostics) state.diagnostics.recordChunk(entry.tabId, data.length);
     if (!webviewReady || !panel.active) {
       // v3.5.7: buffer for inactive panels so Chromium-throttled webviews
       // don't accumulate IPC payloads in their message queue. Trim oldest
@@ -691,6 +695,9 @@ function createPanel(context, extensionPath, session, opts) {
       }
     }
     state.panels.delete(tabId);
+    // v3.6.2: drop this tab's diagnostics counters so closed-and-reopened
+    // tabs don't leak entries in the rolling-stats map.
+    if (state.diagnostics) state.diagnostics.removePanel(tabId);
     if (!state.isDeactivating) {
       saveSessions();
     }

@@ -10,6 +10,11 @@ const state = {
   sessionTreeProvider: null,
   context: null,           // ExtensionContext, injected at activate()
   isDeactivating: false,
+  // v3.6.2: opt-in Diagnostics instance. Null when
+  // claudeCodeLauncher.diagnostics.enabled is false. createPanel.js's
+  // onData hot-path uses optional chaining so the disabled cost is one
+  // null check per PTY chunk.
+  diagnostics: null,
 };
 
 module.exports = state;
