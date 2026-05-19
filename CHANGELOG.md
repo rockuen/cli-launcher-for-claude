@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.6.5] - 2026-05-19
+
+### Fixed
+- **Hour-scale ext-host RSS spike pattern that caused 7–60s main-thread blocks (root cause of remaining freezes).** v3.6.4 coalesced the postMessage path but parsing (`contextParser.feed`, `detectShellRunning`, `detectBinaryPrompt`, `looksLikePrompt`) still ran on every raw PTY chunk. v3.6.3+v3.6.4 diagnostics dumps revealed the consequence: during Ink redraw storms 11,000+ chunks/window × 4 parsers × per-call string allocation produced a recurring `200MB → 1060MB → GC → 200MB` cycle in `process.memoryUsage().rss`, and the periodic-dump timer landed 7–60 seconds late on spike windows — direct evidence the V8 major GC was holding the main thread. The user's symptom ("freeze → wait → keys land in burst → freeze again, every ~hour") matched exactly. v3.6.5 moves all four parser calls into `flushPending` so they run on the coalesced 8ms-window payload (≤8 invocations/sec/panel instead of 100+). Parser outputs stay identical because `contextParser` is incremental via its 300-char rolling buffer; `detectShellRunning` / `detectBinaryPrompt` / `looksLikePrompt` each detect from the tail of the data, and tail-window regex actually become **more accurate** on coalesced payloads because keywords no longer split across chunk boundaries.
+- **Inactive panel parsing now also coalesces (needs-attention still fires on hidden tabs).** Previously inactive panels still ran 4 parsers per raw chunk to keep prompt detection live; that path is now identical to the active path (parse-then-skip-postMessage) so the same RSS reduction applies regardless of which tab is focused.
+
+### Implementation
+- `onData` body is now a 4-line hot path: stale-guard, diagnostics counter, outputBuffer push (inactive), `pendingPayload` append + flush-timer arm.
+- `flushPending` carries the full parser pipeline (contextParser, detectShellRunning, detectBinaryPrompt, looksLikePrompt + v2.6.6 fast-path + idleTimer/runningDelayTimer reset) and only branches on `panel.active` for the final `sendPtyChunkPaced`.
+- 8ms is half a 60fps frame so needs-attention recognition stays well under the 100ms human-perception threshold.
+
 ## [3.6.4] - 2026-05-18
 
 ### Fixed

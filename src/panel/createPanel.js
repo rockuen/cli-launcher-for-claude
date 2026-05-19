@@ -443,67 +443,46 @@ function createPanel(context, extensionPath, session, opts) {
   const COALESCE_WINDOW_MS = 8;
   let pendingPayload = '';
   let pendingFlushTimer = null;
+
+  // v3.6.5: parsing also coalesces on the same 8ms window. Previously
+  // contextParser / detectShellRunning / detectBinaryPrompt / looksLikePrompt
+  // ran on every raw PTY chunk, which during Ink redraw storms (cursor
+  // blink, spinner partial redraws) translated to 125+ parser invocations
+  // per second × 4 parsers × per-call string allocation. The cumulative
+  // string heap pressure produced an hour-scale ext-host RSS spike pattern
+  // (200MB → 1GB → GC pause → 200MB) — diagnostics dumps showed the spike
+  // dumps' setInterval landing 7–60s late, which is direct evidence of a
+  // main-thread block. The same parser calls on a coalesced payload give
+  // identical results (contextParser is incremental via its 300-char
+  // rolling buffer; the other three become MORE accurate because their
+  // tail-window regex no longer split across chunk boundaries) while
+  // cutting the parser invocation rate to ≤8/sec/panel.
   function flushPending() {
     if (pendingFlushTimer) { clearTimeout(pendingFlushTimer); pendingFlushTimer = null; }
     if (!pendingPayload || entry._disposed) { pendingPayload = ''; return; }
     const payload = pendingPayload;
     pendingPayload = '';
-    sendPtyChunkPaced(panel, payload, entry);
-  }
 
-  ptyProcess.onData(data => {
-    if (entry.pty !== initialPty) return; // stale handler guard
-    dataCount++;
-    if (dataCount <= 3) console.log('[Claude Launcher] PTY data #' + dataCount + ' (' + data.length + ' bytes):', data.substring(0, 100));
-    // v3.6.2: opt-in diagnostics. Null-check beats optional chaining for a
-    // hot path called per PTY chunk; the branch predicts well when the
-    // toggle is off (the common case).
-    if (state.diagnostics) state.diagnostics.recordChunk(entry.tabId, data.length);
-    if (!webviewReady || !panel.active) {
-      // v3.5.7: buffer for inactive panels so Chromium-throttled webviews
-      // don't accumulate IPC payloads in their message queue. Trim oldest
-      // entries past the cap — xterm.js's own scrollback is authoritative
-      // for visual continuity once we flush on visibility return.
-      outputBuffer.push(data);
-      bufferedBytes += data.length;
-      while (bufferedBytes > OUTPUT_BUFFER_CAP && outputBuffer.length > 1) {
-        const removed = outputBuffer.shift();
-        bufferedBytes -= removed.length;
-      }
-    } else {
-      // v3.6.4: coalesce tiny chunks across an 8ms window (see comment near
-      // pendingPayload above). Large chunks bypass the buffer and ship now.
-      pendingPayload += data;
-      if (pendingPayload.length >= SMALL_CHUNK) {
-        flushPending();
-      } else if (!pendingFlushTimer) {
-        pendingFlushTimer = setTimeout(flushPending, COALESCE_WINDOW_MS);
-      }
-    }
-
-    const usage = contextParser.feed(data, entry);
+    // ---- parsing (moved out of onData per v3.6.5) ----
+    const usage = contextParser.feed(payload, entry);
     if (usage) {
       try { panel.webview.postMessage({ type: 'context-usage', ...usage }); } catch (_) {}
     }
 
-    // v3.5.2: track Claude Code's "N shells still running" hint so the tab dot
-    // can paint blue when only a background shell is keeping the session warm.
-    // Stays a tab-icon-only signal — entry.state and the status bar are unchanged.
-    const bgShells = detectShellRunning(data);
+    // v3.5.2: track Claude Code's "N shells still running" hint so the tab
+    // dot can paint blue when only a background shell is keeping the
+    // session warm. Stays a tab-icon-only signal — entry.state and the
+    // status bar are unchanged.
+    const bgShells = detectShellRunning(payload);
     if (bgShells != null) {
       entry._bgShells = bgShells;
       entry._bgShellsAt = Date.now();
     }
 
     // Phase 4-extra: surface binary y/n prompts as inline approve/reject
-    // buttons inside the reader area. Independent of the needs-attention
-    // fast-path below — even when state is already 'needs-attention' from a
-    // previous prompt, we still want the new bar to show.
-    // Dedupe: terminal redraws and post-response command echoes can replay
-    // the same prompt text in subsequent PTY chunks. Suppress an identical
-    // snippet within a short window. messageRouter clears _lastPromptKey on
-    // user response so a legitimate repeat prompt right after still fires.
-    const binaryPrompt = detectBinaryPrompt(data);
+    // buttons inside the reader area. Dedupe: terminal redraws and
+    // post-response command echoes can replay the same prompt text.
+    const binaryPrompt = detectBinaryPrompt(payload);
     if (binaryPrompt) {
       const now = Date.now();
       const key = binaryPrompt.kind + '|' + binaryPrompt.snippet;
@@ -516,10 +495,13 @@ function createPanel(context, extensionPath, session, opts) {
       }
     }
 
-    // v2.6.6: interactive prompt fast-path. Skip the 7-second running
-    // threshold when we recognize a "Do you want / [Y/n] / Press Enter"
-    // style prompt — the user needs to act NOW, not after the timer.
-    if (entry.state !== 'needs-attention' && entry.state !== 'done' && entry.state !== 'error' && looksLikePrompt(data)) {
+    // v2.6.6: interactive prompt fast-path. Skip the 7s running threshold
+    // when we recognize a "Do you want / [Y/n] / Press Enter" style
+    // prompt — the user needs to act NOW. Branch out the running
+    // transition + idleTimer reset when we hit this so we don't re-arm
+    // them under needs-attention.
+    let hitPromptFastPath = false;
+    if (entry.state !== 'needs-attention' && entry.state !== 'done' && entry.state !== 'error' && looksLikePrompt(payload)) {
       if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
       if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
       entry.state = 'needs-attention';
@@ -532,54 +514,98 @@ function createPanel(context, extensionPath, session, opts) {
       }
       updateStatusBar();
       if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
-      return;
+      hitPromptFastPath = true;
     }
 
-    // Only transition to 'running' if output persists for 3s+
-    if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
-      if (!runningDelayTimer) {
-        runningDelayTimer = setTimeout(() => {
-          if (entry._disposed) { runningDelayTimer = null; return; }
-          if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
-            entry.state = 'running';
-            entry.runningStartedAt = Date.now();
-            setTabIcon(panel, 'running', extensionPath);
-            try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
-            updateStatusBar();
-          }
-          runningDelayTimer = null;
-        }, IDLE_DELAY_MS);
-      }
-    }
-
-    if (entry.idleTimer) clearTimeout(entry.idleTimer);
-    entry.idleTimer = setTimeout(() => {
-      if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
-      if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
-
-      // Brief outputs (< 3s, never reached 'running') stay as-is
-      if (entry.state !== 'running') return;
-
-      const runningDuration = Date.now() - entry.runningStartedAt;
-
-      if (entry._disposed) return;
-      if (runningDuration >= 7000) {
-        entry.state = 'needs-attention';
-        setTabIcon(panel, 'done', extensionPath);
-        try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
-        showDesktopNotification(entry.title);
-        if (!panel.active) {
-          try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
-          startTitleBlink();
+    if (!hitPromptFastPath) {
+      // Only transition to 'running' if output persists for 3s+
+      if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+        if (!runningDelayTimer) {
+          runningDelayTimer = setTimeout(() => {
+            if (entry._disposed) { runningDelayTimer = null; return; }
+            if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+              entry.state = 'running';
+              entry.runningStartedAt = Date.now();
+              setTabIcon(panel, 'running', extensionPath);
+              try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
+              updateStatusBar();
+            }
+            runningDelayTimer = null;
+          }, IDLE_DELAY_MS);
         }
-      } else {
-        entry.state = 'waiting';
-        setIdleIcon(panel, entry, extensionPath);
-        try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
       }
-      updateStatusBar();
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
-    }, IDLE_DELAY_MS);
+
+      if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      entry.idleTimer = setTimeout(() => {
+        if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+        if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
+        // Brief outputs (< 3s, never reached 'running') stay as-is
+        if (entry.state !== 'running') return;
+        const runningDuration = Date.now() - entry.runningStartedAt;
+        if (entry._disposed) return;
+        if (runningDuration >= 7000) {
+          entry.state = 'needs-attention';
+          setTabIcon(panel, 'done', extensionPath);
+          try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+          showDesktopNotification(entry.title);
+          if (!panel.active) {
+            try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+            startTitleBlink();
+          }
+        } else {
+          entry.state = 'waiting';
+          setIdleIcon(panel, entry, extensionPath);
+          try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+        }
+        updateStatusBar();
+        if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      }, IDLE_DELAY_MS);
+    }
+
+    // postMessage only when active. Inactive panels' chunks are mirrored
+    // into `outputBuffer` (see onData below) and shipped on visibility
+    // return through onDidChangeViewState; the parsing above already ran
+    // so contextParser stays current and prompt detection still fires
+    // even when the user is on another tab.
+    if (webviewReady && panel.active) {
+      sendPtyChunkPaced(panel, payload, entry);
+    }
+  }
+
+  ptyProcess.onData(data => {
+    if (entry.pty !== initialPty) return; // stale handler guard
+    dataCount++;
+    if (dataCount <= 3) console.log('[Claude Launcher] PTY data #' + dataCount + ' (' + data.length + ' bytes):', data.substring(0, 100));
+    // v3.6.2: opt-in diagnostics. Null-check beats optional chaining for a
+    // hot path called per PTY chunk; the branch predicts well when the
+    // toggle is off (the common case).
+    if (state.diagnostics) state.diagnostics.recordChunk(entry.tabId, data.length);
+
+    // v3.5.7: inactive panels still buffer chunks so Chromium-throttled
+    // webviews don't accumulate IPC payloads. The cap drops oldest entries;
+    // xterm scrollback is authoritative for visual continuity post-flush.
+    if (!webviewReady || !panel.active) {
+      outputBuffer.push(data);
+      bufferedBytes += data.length;
+      while (bufferedBytes > OUTPUT_BUFFER_CAP && outputBuffer.length > 1) {
+        const removed = outputBuffer.shift();
+        bufferedBytes -= removed.length;
+      }
+    }
+
+    // v3.6.5: parsing + postMessage both coalesce on an 8ms window. The
+    // onData hot path now does only: stale-guard, diagnostics counter,
+    // outputBuffer push (inactive), pending-payload append. flushPending
+    // runs parsing once per window (active and inactive alike — parsing
+    // stays current in the background so needs-attention notifications
+    // still fire on hidden tabs) and only the postMessage path branches
+    // on panel.active.
+    pendingPayload += data;
+    if (pendingPayload.length >= SMALL_CHUNK) {
+      flushPending();
+    } else if (!pendingFlushTimer) {
+      pendingFlushTimer = setTimeout(flushPending, COALESCE_WINDOW_MS);
+    }
   });
 
   // Tab focus → clears needs-attention; saves viewColumn on move; flushes
