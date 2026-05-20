@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.6.6] - 2026-05-20
+
+### Fixed
+- **Reader DOM auto-prune to keep long sessions bounded.** v3.6.5 cut the per-chunk parser cost but the diagnostics dump from a 17-panel marathon revealed a second leak vector that survived: `#reader-area` grew monotonically as sessions accumulated turns. One panel hit 10,457 DOM nodes / 335KB HTML, others sat at 2,000–4,000 nodes / 70–130KB. Multiply by 17 panels and the webview heap budget went into multi-hundred-MB territory before any Ink storm even happened. v3.6.6 caps the rendered message count in `readerRender.renderBlocks` to the most recent N messages (default 200, configurable via `claudeCodeLauncher.readerMessageCap`, range 20–2000). The cap covers both the split-pane reader (`createPanel.js:startReaderWatch`) and the standalone reader panel (`readerView.js:renderLive` + `renderHtml`) because both funnel through the same `renderBlocks`. A top indicator row (`… N older messages hidden`) appears when truncation kicks in so users see what's happening; the underlying jsonl is untouched. RSS reads per render (no closure-cached cap) so a settings edit takes effect at the next reader refresh without a panel reload.
+
+### Implementation
+- `readerRender.js` exports a new `DEFAULT_READER_MESSAGE_CAP = 200` and `renderBlocks(messages, { cap })` signature. When `messages.length > cap`, the rendered output slices the tail (most recent) and prepends a `<div class="reader-truncated">` indicator with the dropped count + the settings key name.
+- Both reader call sites (createPanel + readerView × 2 paths) read `claudeCodeLauncher.readerMessageCap` from workspace config per render. Config read is cheap; render frequency is 1s polling at worst.
+
 ## [3.6.5] - 2026-05-19
 
 ### Fixed

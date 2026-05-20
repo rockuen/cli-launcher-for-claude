@@ -124,11 +124,17 @@ function startReaderWatch(entry, panel) {
       return;
     }
     const lastRole = messages.length > 0 ? messages[messages.length - 1].role : null;
+    // v3.6.6: cap render to the most recent N messages so long sessions
+    // don't grow reader-area DOM unboundedly. Re-read per render so a
+    // settings.json edit takes effect without a panel reload.
+    const readerCap = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('readerMessageCap', 200);
     try {
       panel.webview.postMessage({
         type: 'reader-update',
         meta: buildMeta(entry, aiTitle, messages),
-        blocksHtml: renderBlocks(messages),
+        blocksHtml: renderBlocks(messages, { cap: readerCap }),
         lastRole,
       });
     } catch (_) {}

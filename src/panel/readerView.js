@@ -116,11 +116,15 @@ function renderLive() {
   currentMessages = messages;
   currentAiTitle = aiTitle;
   const lastRole = messages.length > 0 ? messages[messages.length - 1].role : null;
+  // v3.6.6: cap render count (see readerRender.js + createPanel.js).
+  const readerCap = vscode.workspace
+    .getConfiguration('claudeCodeLauncher')
+    .get('readerMessageCap', 200);
   try {
     activePanel.webview.postMessage({
       type: 'messages-updated',
       meta: buildMeta(currentEntry, aiTitle, messages),
-      blocksHtml: renderBlocks(messages),
+      blocksHtml: renderBlocks(messages, { cap: readerCap }),
       lastRole,
     });
     console.log('[reader] posted messages-updated count=' + messages.length + ' lastRole=' + lastRole);
@@ -321,7 +325,12 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   const csp = `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';`;
 
   const meta = buildMeta(entry, aiTitle, messages);
-  const blocks = renderBlocks(messages);
+  // v3.6.6: cap initial render too (live updates go through renderLive
+  // above with the same cap).
+  const readerCap = vscode.workspace
+    .getConfiguration('claudeCodeLauncher')
+    .get('readerMessageCap', 200);
+  const blocks = renderBlocks(messages, { cap: readerCap });
 
   const toggleIcon = theme === 'dark' ? '☀' : '🌙';
   const toggleTitle = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';

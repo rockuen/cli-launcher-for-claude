@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.6.5",
+  "version": "3.6.6",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -594,6 +594,13 @@
           "type": "boolean",
           "default": false,
           "description": "When on, records per-panel PTY chunk statistics (size + inter-arrival histograms) and dumps a memory + counter summary to the 'CLI Launcher — Diagnostics' OutputChannel every 10 minutes. Use this only when investigating a freeze or memory issue — the hot-path cost when off is one null check per PTY chunk. The 'Claude: Diagnostics: Dump Now' command forces a snapshot on demand."
+        },
+        "claudeCodeLauncher.readerMessageCap": {
+          "type": "integer",
+          "default": 200,
+          "minimum": 20,
+          "maximum": 2000,
+          "description": "Maximum number of user/assistant messages rendered in the reader pane. Older messages are hidden (the underlying jsonl still holds everything) to keep the reader DOM bounded on long sessions — a 17-panel marathon showed reader-area growing to 10,000+ DOM nodes / 300+ KB on a single panel without this cap. A top indicator line shows the dropped count when truncation kicks in. Default 200 covers typical sessions; raise it if you regularly need more in-pane history, lower it (e.g. 50) if you keep many panels open simultaneously."
         }
       }
     },
