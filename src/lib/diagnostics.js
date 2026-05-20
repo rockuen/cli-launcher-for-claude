@@ -22,6 +22,13 @@
 // is enough to copy/paste back into an issue or session memo.
 
 const vscode = require('vscode');
+const { PerformanceObserver, constants: perfConstants } = require('perf_hooks');
+const {
+  newGcStats,
+  newBlockStats,
+  recordGcEntry,
+  recordBlockSample,
+} = require('./diagnosticsStats');
 
 // Chunk size buckets in bytes. Tight on the small end because the gut
 // hypothesis is "many tiny chunks". Last bucket is the catch-all.
@@ -50,6 +57,15 @@ const INTERVAL_BUCKETS = [
 // recovery" timescale — a freeze that started mid-window still shows up
 // in the next dump within the same order of magnitude.
 const DEFAULT_DUMP_INTERVAL_MS = 10 * 60 * 1000;
+
+// v3.6.7: main thread block timer. A 1Hz setInterval that records the
+// drift between its expected and actual fire time — if main thread was
+// blocked for N seconds, the next tick fires N seconds late and we count
+// that as one block sample. 500ms threshold filters out normal scheduler
+// jitter (GC minor pauses, OS context switches) while catching the
+// 7-60s pauses that v3.6.5 diagnostics revealed.
+const DEFAULT_BLOCK_INTERVAL_MS = 1000;
+const DEFAULT_BLOCK_THRESHOLD_MS = 500;
 
 function bucketIndex(buckets, value) {
   for (let i = 0; i < buckets.length; i++) {
@@ -95,6 +111,14 @@ class Diagnostics {
     this.startedAt = Date.now();
     this.lastDumpAt = Date.now();
     this.dumpTimer = null;
+    // v3.6.7: GC pause + main thread block measurement. Both reset per dump.
+    this.gcStats = newGcStats();
+    this.blockStats = newBlockStats();
+    this.gcObserver = null;
+    this.blockTimer = null;
+    this.blockLastTick = 0;
+    this.blockIntervalMs = DEFAULT_BLOCK_INTERVAL_MS;
+    this.blockThresholdMs = DEFAULT_BLOCK_THRESHOLD_MS;
   }
 
   start(intervalMs = DEFAULT_DUMP_INTERVAL_MS) {
@@ -102,6 +126,32 @@ class Diagnostics {
     this.output.appendLine(
       `[${new Date().toISOString()}] diagnostics started (dump every ${(intervalMs / 1000).toFixed(0)}s)`,
     );
+    // v3.6.7: PerformanceObserver for GC pauses. Stop-the-world major GCs
+    // are the prime suspect for the residual freeze after v3.6.5 — this
+    // counts them per dump window. `buffered: true` so entries that fire
+    // in tight bursts don't get dropped.
+    try {
+      this.gcObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const kind = entry.kind != null
+            ? entry.kind
+            : (entry.detail && entry.detail.kind);
+          recordGcEntry(this.gcStats, kind, entry.duration, perfConstants);
+        }
+      });
+      this.gcObserver.observe({ entryTypes: ['gc'], buffered: true });
+    } catch (_) {
+      this.gcObserver = null;
+    }
+    // v3.6.7: 1Hz timer measuring its own scheduling drift. If main thread
+    // is blocked for N seconds, the next tick lands N seconds late.
+    this.blockLastTick = Date.now();
+    this.blockTimer = setInterval(() => {
+      const now = Date.now();
+      const drift = now - this.blockLastTick - this.blockIntervalMs;
+      recordBlockSample(this.blockStats, drift, this.blockThresholdMs);
+      this.blockLastTick = now;
+    }, this.blockIntervalMs);
     // Immediate snapshot so the user sees the baseline without waiting
     // a full interval — useful when toggling on right before reproducing
     // the freeze.
@@ -162,6 +212,17 @@ class Diagnostics {
     lines.push(
       `  heap: rss=${formatBytes(mem.rss)} heapUsed=${formatBytes(mem.heapUsed)} heapTotal=${formatBytes(mem.heapTotal)} external=${formatBytes(mem.external)}`,
     );
+    // v3.6.7: GC + main thread block lines. Both are window-scoped (reset
+    // after each dump). Major GC count + max-duration are the headline
+    // numbers for diagnosing stop-the-world freezes.
+    const g = this.gcStats;
+    lines.push(
+      `  gc: major count=${g.major.count} total=${g.major.totalMs.toFixed(0)}ms max=${g.major.maxMs.toFixed(0)}ms / minor count=${g.minor.count} total=${g.minor.totalMs.toFixed(0)}ms max=${g.minor.maxMs.toFixed(0)}ms`,
+    );
+    const b = this.blockStats;
+    lines.push(
+      `  main-thread blocks (drift>${this.blockThresholdMs}ms): count=${b.count} total=${b.totalMs.toFixed(0)}ms max=${b.maxMs.toFixed(0)}ms`,
+    );
     lines.push(`  panels-recording: ${this.byPanel.size}`);
     if (this.byPanel.size === 0) {
       lines.push('  (no PTY traffic in this window)');
@@ -209,9 +270,14 @@ class Diagnostics {
     // window starts from the actual gap, not from zero.
     for (const [, s] of this.byPanel) {
       const carriedTs = s.lastTs;
+      const carriedWebview = s.webview;
       Object.assign(s, newPanelStats());
       s.lastTs = carriedTs;
+      s.webview = carriedWebview;
     }
+    // v3.6.7: GC + block stats also reset per window.
+    this.gcStats = newGcStats();
+    this.blockStats = newBlockStats();
   }
 
   /** Drop a tab's counters when its panel disposes. */
@@ -230,9 +296,22 @@ class Diagnostics {
       clearInterval(this.dumpTimer);
       this.dumpTimer = null;
     }
+    if (this.blockTimer) {
+      clearInterval(this.blockTimer);
+      this.blockTimer = null;
+    }
+    if (this.gcObserver) {
+      try { this.gcObserver.disconnect(); } catch (_) { /* already disconnected */ }
+      this.gcObserver = null;
+    }
     try { this.output.dispose(); } catch (_) { /* already disposed */ }
     this.byPanel.clear();
   }
 }
 
-module.exports = { Diagnostics, DEFAULT_DUMP_INTERVAL_MS };
+module.exports = {
+  Diagnostics,
+  DEFAULT_DUMP_INTERVAL_MS,
+  DEFAULT_BLOCK_INTERVAL_MS,
+  DEFAULT_BLOCK_THRESHOLD_MS,
+};

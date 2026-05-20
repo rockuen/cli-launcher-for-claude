@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.6.7] - 2026-05-20
+
+### Added
+- **GC observer + main-thread block timer for diagnostics.** v3.6.5 cut the per-chunk parser cost and v3.6.6 capped the reader DOM, yet a 14:24 KST reproduction with the BigQuery daily-load workflow active still produced a periodic dump that fired **52.4 seconds late** (`elapsed=652.4s` where the scheduler was wired for 600s). That delta is direct evidence the extension-host main thread was blocked for tens of seconds — parser/render were not the residual blocker. v3.6.7 instruments the two prime suspects so the next freeze isolates them on the spot.
+  - **GC pause aggregation** — a `perf_hooks.PerformanceObserver` subscribes to GC entries and buckets each into major / minor / other with per-bucket count + total + max duration. Stop-the-world major GCs are the headline number; minor GCs stay visible as a sanity check that V8 is actually running its young-generation cycles. The observer subscribes with `buffered: true` so entries that fire in tight bursts during a GC storm don't get dropped.
+  - **Main-thread block sampling** — a 1 Hz `setInterval` measures its own scheduling drift each tick. Whenever the actual fire time exceeds the scheduled interval by more than 500ms, that drift is recorded as a block sample (count + total + max). 500ms filters out normal scheduler jitter (GC minor pauses, OS context switches) while catching the seconds-long pauses that match user-visible freezes. A 52-second block surfaces as a single ~52000ms sample.
+- Both axes reset per dump window, identical to the per-panel PTY counters, so consecutive dumps describe the most recent interval — easy to correlate against a freeze the user just experienced.
+
+### Implementation
+- New `src/lib/diagnosticsStats.js` carries the four pure helpers (`newGcStats`, `newBlockStats`, `recordGcEntry`, `recordBlockSample`) so they can be unit-tested without a `vscode` runtime shim. `diagnostics.js` `require`s the module and holds the runtime parts (PerformanceObserver subscription + setInterval lifecycle).
+- `Diagnostics.start()` wires the observer + block timer; `Diagnostics.dispose()` disconnects the observer + clears the timer (no leak across reload / toggle-off).
+- The dump renderer adds two new lines under each `heap:` block: `gc: major count=... / minor count=...` and `main-thread blocks (drift>500ms): count=... total=...ms max=...ms`. No behaviour change beyond the new measurement — hot path PTY recording is untouched.
+- 11 new unit tests in `test/unit/diagnosticsStats.test.ts` cover bucket dispatch, accumulation, threshold strictness, and the 52-second block reproduction case.
+
 ## [3.6.6] - 2026-05-20
 
 ### Fixed
