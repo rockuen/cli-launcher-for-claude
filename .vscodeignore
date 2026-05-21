@@ -64,6 +64,23 @@ icons/icon-128.svg
 # --- Windows debug symbols (~55 MB in node-pty prebuilds) ---
 **/*.pdb
 
+# --- MSVC incremental build intermediates (win32 node-pty rebuild) ---
+# `npx @electron/rebuild` compiles node-pty on the Windows runner and leaves
+# ~16 MB of intermediate artifacts under build/ — object files, incremental
+# linker databases, MSBuild tracking logs. None are needed at runtime (only
+# the compiled .node addons in build/Release/ + the prebuilds/ binaries are).
+# Shipping them pushed the win32-x64 vsix to 78 MB unpacked / 23 MB packed,
+# over the Open VSX publish gateway's upload timeout (repeated 503s on v3.6.9).
+# Excluding them drops the win32 vsix to ~7 MB. darwin/linux builds don't
+# produce these files so this is win32-only in effect.
+**/*.iobj
+**/*.ipdb
+**/*.obj
+**/*.tlog
+**/*.lastbuildstate
+**/build/Release/obj/**
+**/build/deps/**/obj/**
+
 # --- Trim node_modules metadata / tests / docs ---
 node_modules/**/*.md
 node_modules/**/*.ts
