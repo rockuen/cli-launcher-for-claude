@@ -439,18 +439,31 @@ function createPanel(context, extensionPath, session, opts) {
   // spinner, SelectInput partial redraws) — every one fired a separate
   // postMessage + xterm.write, saturating the webview's main thread and
   // driving the single-panel freezes the user reported. We collect tiny
-  // chunks across an 8ms window and ship them as one payload; the window
-  // is half a 60fps frame so input latency stays imperceptible. Large
-  // chunks (≥ SMALL_CHUNK) flush immediately so big transitions (table
-  // dumps, session resume) still pace through sendPtyChunkPaced.
-  // Inactive panels still go through outputBuffer above — coalescing only
-  // applies once the webview is back to receiving traffic live.
+  // chunks across a 32ms window and ship them as one payload; the window
+  // is two 60fps frames so input latency stays imperceptible (well below
+  // the 100ms perception threshold, and Windows ConPTY itself contributes
+  // ~20–30ms baseline latency). Large chunks (≥ SMALL_CHUNK) flush
+  // immediately so big transitions (table dumps, session resume) still
+  // pace through sendPtyChunkPaced. Inactive panels still go through
+  // outputBuffer above — coalescing only applies once the webview is
+  // back to receiving traffic live.
+  //
+  // v3.6.8: window widened 8 → 32ms. v3.6.7 diagnostics dumps showed
+  // panel 3's inter-arrival histogram with the 9–32ms bucket holding
+  // ~80% of chunks (e.g. 4643/8974 in one 10-min window). With the old
+  // 8ms window almost every one of those chunks landed alone, so
+  // coalescing did nothing for the dominant cadence — Ink redraws,
+  // spinner ticks, and cursor blinks all sit in 9–32ms. 32ms captures
+  // them, dropping flush invocations on a busy panel from ~10–15/sec to
+  // ~1/sec (a ~14× reduction) and giving the ext-host main thread real
+  // headroom during OS-level contention windows (e.g. concurrent
+  // Playwright / OneDrive sync activity from sister automations).
   const { SMALL_CHUNK } = require('../lib/ptyChunk');
-  const COALESCE_WINDOW_MS = 8;
+  const COALESCE_WINDOW_MS = 32;
   let pendingPayload = '';
   let pendingFlushTimer = null;
 
-  // v3.6.5: parsing also coalesces on the same 8ms window. Previously
+  // v3.6.5: parsing also coalesces on the same window. Previously
   // contextParser / detectShellRunning / detectBinaryPrompt / looksLikePrompt
   // ran on every raw PTY chunk, which during Ink redraw storms (cursor
   // blink, spinner partial redraws) translated to 125+ parser invocations
@@ -461,8 +474,12 @@ function createPanel(context, extensionPath, session, opts) {
   // main-thread block. The same parser calls on a coalesced payload give
   // identical results (contextParser is incremental via its 300-char
   // rolling buffer; the other three become MORE accurate because their
-  // tail-window regex no longer split across chunk boundaries) while
-  // cutting the parser invocation rate to ≤8/sec/panel.
+  // tail-window regex no longer split across chunk boundaries). With the
+  // v3.6.8 32ms window the parser invocation rate drops further to
+  // ≤30/sec/panel (was ≤8/sec at the 8ms window — but the 8ms window
+  // hardly captured the dominant 9–32ms cadence so most chunks still
+  // triggered their own parser run; 32ms makes the coalescing actually
+  // bite).
   function flushPending() {
     if (pendingFlushTimer) { clearTimeout(pendingFlushTimer); pendingFlushTimer = null; }
     if (!pendingPayload || entry._disposed) { pendingPayload = ''; return; }

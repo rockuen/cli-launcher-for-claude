@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.6.8] - 2026-05-21
+
+### Changed
+- **Coalesce window widened from 8 ms to 32 ms (`createPanel.js:COALESCE_WINDOW_MS`).** v3.6.4 introduced an 8 ms coalescing window for small PTY chunks on the postMessage path, and v3.6.5 routed parser calls through the same window. v3.6.7's PerformanceObserver + main-thread block timer landed in the field and immediately produced an inter-arrival histogram showing why those two fixes left so much on the table: the **9–32 ms bucket holds ~80% of all chunks** on busy panels (one 10-min window: 4 643 / 8 974). An 8 ms window catches almost none of that bucket — every Ink redraw, spinner tick, and cursor blink lands in its own flush. Widening to 32 ms (two 60fps frames, well under the 100 ms perception threshold) makes the coalescing actually bite: flush invocations on a busy panel drop from ~10–15/sec to ~1/sec (~14× reduction), and the four parser calls (`contextParser.feed`, `detectShellRunning`, `detectBinaryPrompt`, `looksLikePrompt`) inherit the same reduction since v3.6.5 hung them on `flushPending`. Large chunks (≥ `SMALL_CHUNK` = 4 KB) still flush immediately so table dumps and session-resume bursts retain their pacing.
+- This is **not** a fix for the OS-level main-thread contention that v3.6.7 surfaced (concurrent Playwright + OneDrive sync from sister automations driving 6–9 s block samples in the dump) — that's outside the extension's control. What v3.6.8 buys is **ext-host main-thread headroom during those contention windows**, so the cli-launcher recovers faster instead of accumulating its own scheduling debt on top of the OS-level pressure.
+
+### Implementation
+- One-line constant change in `src/panel/createPanel.js` (8 → 32) plus the two surrounding comment blocks updated to reflect the new rationale and rate ceilings.
+- No new tests: the change is a single timing constant with no branching; `ptyChunk` tests still cover the SMALL_CHUNK pass-through path; manual verification is via the next diagnostics dump (chunks/flush ratio should rise visibly on busy panels).
+
+### Trade-offs
+- **First-chunk latency: +24 ms** in the worst case (8 → 32 ms). Two frames at 60 fps. Imperceptible against the Windows ConPTY baseline of ~20–30 ms; well below the 100 ms human-perception threshold.
+- **`needs-attention` detection: up to +32 ms**. The four interactive-prompt detectors run on the coalesced payload now, so a Y/n prompt reaches the reader UI one window later. Functionally invisible — the prompt itself still renders via xterm.write at the same time.
+- **Input echo: unaffected** — xterm.js handles local echo without going through the PTY round-trip, so keystroke responsiveness is independent of this window.
+
 ## [3.6.7] - 2026-05-20
 
 ### Added
