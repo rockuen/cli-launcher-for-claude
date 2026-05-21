@@ -44,8 +44,29 @@ jobs:
           node-version: 20
       - run: npm install -g ovsx
       - name: Publish to Open VSX
+        # Idempotent loop: a single artifact that's already on Open VSX (e.g.
+        # darwin-arm64 from a previous attempt of the same tag) must not
+        # abort the run before the other platforms publish. We disable
+        # `set -e`, capture the per-file result, and only treat a non-
+        # "already published" failure as fatal. Any artifact that's still
+        # missing on Open VSX gets published; ones already there get skipped
+        # with a clear log line.
         run: |
+          set +e
+          overall=0
           for f in *.vsix; do
-            echo "Publishing $f..."
-            ovsx publish "$f" -p ${{ secrets.OVSX_TOKEN }}
+            echo "::group::Publishing $f"
+            output=$(ovsx publish "$f" -p ${{ secrets.OVSX_TOKEN }} 2>&1)
+            rc=$?
+            echo "$output"
+            if [ $rc -ne 0 ]; then
+              if echo "$output" | grep -q "is already published"; then
+                echo "::notice::$f already on Open VSX — skipping (partial-publish recovery)"
+              else
+                echo "::error::$f failed to publish (exit $rc)"
+                overall=1
+              fi
+            fi
+            echo "::endgroup::"
           done
+          exit $overall
