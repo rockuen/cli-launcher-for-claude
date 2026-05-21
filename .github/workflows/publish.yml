@@ -44,29 +44,50 @@ jobs:
           node-version: 20
       - run: npm install -g ovsx
       - name: Publish to Open VSX
-        # Idempotent loop: a single artifact that's already on Open VSX (e.g.
-        # darwin-arm64 from a previous attempt of the same tag) must not
-        # abort the run before the other platforms publish. We disable
-        # `set -e`, capture the per-file result, and only treat a non-
-        # "already published" failure as fatal. Any artifact that's still
-        # missing on Open VSX gets published; ones already there get skipped
-        # with a clear log line.
+        # Idempotent + transient-resilient publish loop. Two failure classes
+        # are handled distinctly:
+        #   - "is already published" — a soft skip. Lets a retry of a
+        #     partially-published tag (e.g. darwin-arm64 succeeded, win32-x64
+        #     didn't) re-run cleanly without aborting on the first artifact.
+        #   - transient server/network errors (HTTP 5xx, ECONNRESET,
+        #     ETIMEDOUT, socket hang up) — retried up to 3× with a linear
+        #     backoff. Open VSX returns sporadic 503s, more likely on the
+        #     larger win32-x64 artifact (~23 MB with the node-pty binary).
+        # Anything else is a real failure and fails the job.
         run: |
           set +e
           overall=0
+          MAX_ATTEMPTS=3
           for f in *.vsix; do
             echo "::group::Publishing $f"
-            output=$(ovsx publish "$f" -p ${{ secrets.OVSX_TOKEN }} 2>&1)
-            rc=$?
-            echo "$output"
-            if [ $rc -ne 0 ]; then
+            attempt=1
+            while true; do
+              output=$(ovsx publish "$f" -p ${{ secrets.OVSX_TOKEN }} 2>&1)
+              rc=$?
+              echo "$output"
+              if [ $rc -eq 0 ]; then
+                break
+              fi
               if echo "$output" | grep -q "is already published"; then
                 echo "::notice::$f already on Open VSX — skipping (partial-publish recovery)"
-              else
-                echo "::error::$f failed to publish (exit $rc)"
-                overall=1
+                break
               fi
-            fi
+              if echo "$output" | grep -qE "status 5[0-9][0-9]|ECONNRESET|ETIMEDOUT|socket hang up|EAI_AGAIN"; then
+                if [ $attempt -lt $MAX_ATTEMPTS ]; then
+                  wait=$((attempt * 20))
+                  echo "::warning::$f transient failure (attempt $attempt/$MAX_ATTEMPTS) — retrying in ${wait}s"
+                  sleep $wait
+                  attempt=$((attempt + 1))
+                  continue
+                fi
+                echo "::error::$f still failing after $MAX_ATTEMPTS attempts (last error transient)"
+                overall=1
+                break
+              fi
+              echo "::error::$f failed to publish (exit $rc)"
+              overall=1
+              break
+            done
             echo "::endgroup::"
           done
           exit $overall
