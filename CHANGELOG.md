@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.6.10] - 2026-05-21
+
+### Fixed
+- **Republish to recover the win32-x64 artifact.** v3.6.9 shipped darwin-arm64 and linux-x64 to Open VSX but the win32-x64 artifact never became visible: its 23 MB / 78 MB-unpacked vsix (bloated with MSVC build intermediates — see the v3.6.9 `.vscodeignore` note below) exceeded the Open VSX publish gateway's upload timeout, returning HTTP 503 on every attempt. One of those timed-out attempts left a half-registered, *inactive* `3.6.9 (win32-x64)` entry on Open VSX — enough that `ovsx publish` then reported "already published, but currently isn't active and therefore not visible" and refused to re-upload the (now slimmed) artifact at the same version. Since ovsx cannot overwrite an existing version and the inactive entry cannot be cleared via the CLI, v3.6.10 is a clean version bump so all three platforms register fresh. No code changes from v3.6.9 — the `.vscodeignore` slimming (win32 vsix now ~7 MB) and the workflow's idempotent + retry publish loop are already on `main`.
+- **Publish workflow no longer treats an inactive duplicate as a successful skip.** The idempotent loop matched the bare string "is already published", which also matched the "...but currently isn't active" variant — so a half-published zombie was silently skipped and the job went green. The match is now narrowed: a plain already-published line is a soft skip, but an "isn't active" / "not visible" variant is surfaced as an error so a broken partial publish can't masquerade as success.
+
 ## [3.6.9] - 2026-05-21
 
 ### Fixed

@@ -44,15 +44,21 @@ jobs:
           node-version: 20
       - run: npm install -g ovsx
       - name: Publish to Open VSX
-        # Idempotent + transient-resilient publish loop. Two failure classes
-        # are handled distinctly:
-        #   - "is already published" — a soft skip. Lets a retry of a
-        #     partially-published tag (e.g. darwin-arm64 succeeded, win32-x64
-        #     didn't) re-run cleanly without aborting on the first artifact.
+        # Idempotent + transient-resilient publish loop. Failure classes are
+        # handled distinctly:
+        #   - "is already published" (and active) — a soft skip. Lets a retry
+        #     of a partially-published tag (e.g. darwin-arm64 succeeded,
+        #     win32-x64 didn't) re-run cleanly without aborting on the first
+        #     artifact.
+        #   - "is already published, but currently isn't active" — a
+        #     half-registered zombie left by an interrupted publish. This is
+        #     NOT a safe skip: the artifact is invisible to users and ovsx
+        #     can't overwrite the same version. Surface it as an error so the
+        #     run goes red and a version bump is done deliberately.
         #   - transient server/network errors (HTTP 5xx, ECONNRESET,
         #     ETIMEDOUT, socket hang up) — retried up to 3× with a linear
         #     backoff. Open VSX returns sporadic 503s, more likely on the
-        #     larger win32-x64 artifact (~23 MB with the node-pty binary).
+        #     larger win32-x64 artifact.
         # Anything else is a real failure and fails the job.
         run: |
           set +e
@@ -69,6 +75,11 @@ jobs:
                 break
               fi
               if echo "$output" | grep -q "is already published"; then
+                if echo "$output" | grep -qE "isn't active|not visible"; then
+                  echo "::error::$f is half-published on Open VSX (inactive / not visible) — a previous publish was interrupted. Bump the version to recover; ovsx cannot overwrite or reactivate the same version."
+                  overall=1
+                  break
+                fi
                 echo "::notice::$f already on Open VSX — skipping (partial-publish recovery)"
                 break
               fi
