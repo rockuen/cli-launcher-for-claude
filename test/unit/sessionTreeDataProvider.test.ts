@@ -19,11 +19,47 @@ const koSrc = fs.readFileSync(path.join(repoRoot, 'src/i18n/ko.js'), 'utf8');
 const jsonlSrc = fs.readFileSync(path.join(repoRoot, 'src/lib/sessionJsonl.js'), 'utf8');
 
 test('Tree returns root groups directly without a Sessions wrapper', () => {
-  // _buildGroups ends with `return groups;` and there is no rootNode/list-tree dance.
-  // CRLF-tolerant: tsc emits \r\n on Windows.
-  assert.match(treeSrc, /\s+return groups;\s+\}\s+_loadSessions\(/);
+  // _buildGroups ends with `return groups;` and the next method down the file
+  // is _loadSessions. The lazy multi-line match tolerates v3.6.9's comment
+  // block between the two; the structural invariant is just adjacency in
+  // source order, not literal whitespace.
+  assert.match(treeSrc, /return groups;[\s\S]*?_loadSessions\(/);
   assert.equal(/contextValue\s*=\s*['"]sessionsRoot['"]/.test(treeSrc), false);
   assert.equal(/ThemeIcon\(['"]list-tree['"]\)/.test(treeSrc), false);
+});
+
+test('v3.6.9: _loadSessions accepts protectedIds + archivedIds sets', () => {
+  // Group members must bypass the top-30 hot path and load up to a 100 cap;
+  // archived members must skip title/firstMsg parsing entirely. Both behaviours
+  // are driven by the two id sets passed in from _buildGroups.
+  assert.match(treeSrc, /_loadSessions\s*\(\s*protectedIds\s*=\s*new Set\(\)\s*,\s*archivedIds\s*=\s*new Set\(\)\s*\)/);
+  assert.match(treeSrc, /const PROTECTED_CAP\s*=\s*100/);
+  assert.match(treeSrc, /protectedExtras\.length\s*>=\s*PROTECTED_CAP/);
+});
+
+test('v3.6.9: archived sessions skip title/firstMsg extraction', () => {
+  // The archived loop must NOT call _getFileMeta — only stat-derived label,
+  // and items must carry _archived = true so downstream UI can identify them.
+  assert.match(treeSrc, /archivedExtras\b/);
+  assert.match(treeSrc, /item\._archived\s*=\s*true/);
+  // The archived block uses sessionId substring as label fallback.
+  assert.match(treeSrc, /sessionId\.substring\(0,\s*8\)/);
+});
+
+test('v3.6.9: archived group flag surfaces in label + icon', () => {
+  // makeGroupNode reads archivedGroups (Set built from
+  // claudeSessionGroupArchived) and flips the leaf prefix + folder icon.
+  assert.match(treeSrc, /claudeSessionGroupArchived/);
+  assert.match(treeSrc, /ThemeIcon\('archive'\)/);
+  assert.match(treeSrc, /📦/);
+});
+
+test('v3.6.9: _buildGroups partitions ids into protected vs archived', () => {
+  // The Set partition must consult archivedGroups when iterating customGroups
+  // so that a session in both a regular group AND an archive bucket lands on
+  // the cheap archived path (archive wins).
+  assert.match(treeSrc, /const archivedGroups\s*=\s*new Set\(sessionStoreGet\(['"]claudeSessionGroupArchived['"]/);
+  assert.match(treeSrc, /this\._loadSessions\(\s*protectedIds\s*,\s*archivedIds\s*\)/);
 });
 
 test('No leftover sessionsRoot i18n key', () => {

@@ -411,6 +411,30 @@ function activate(context) {
     })
   );
 
+  // v3.6.9: toggle archive flag on a custom group. Archive groups skip
+  // title/firstMsg parsing on tree load (cheap at scale for stash-style
+  // buckets of big jsonls) and bypass the 100-member soft cap that applies
+  // to regular groups.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.toggleGroupArchive', async (item) => {
+      const groupName = item?._groupName;
+      if (!groupName) return;
+      const groups = sessionStoreGet('claudeSessionGroups', {});
+      if (!(groupName in groups)) {
+        vscode.window.showWarningMessage(t('archiveGroupNotFound') + groupName);
+        return;
+      }
+      const archived = sessionStoreGet('claudeSessionGroupArchived', []);
+      const set = new Set(Array.isArray(archived) ? archived : []);
+      const wasOn = set.has(groupName);
+      if (wasOn) set.delete(groupName);
+      else set.add(groupName);
+      sessionStoreUpdate('claudeSessionGroupArchived', Array.from(set));
+      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      vscode.window.showInformationMessage(wasOn ? t('archiveModeOff') : t('archiveModeOn'));
+    })
+  );
+
   // Phase 13: add a sub-group under a given group node
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.addSubGroup', async (item) => {

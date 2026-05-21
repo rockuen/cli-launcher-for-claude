@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.6.8",
+  "version": "3.6.9",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -189,6 +189,12 @@
         "category": "Claude"
       },
       {
+        "command": "claudeCodeLauncher.toggleGroupArchive",
+        "title": "Toggle Archive Mode",
+        "icon": "$(archive)",
+        "category": "Claude"
+      },
+      {
         "command": "claudeCodeLauncher.repoSync.setDeviceName",
         "title": "Repo Sync: Set Device Name",
         "category": "Claude"
@@ -338,6 +344,11 @@
           "command": "claudeCodeLauncher.addSubGroup",
           "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
           "group": "inline@3"
+        },
+        {
+          "command": "claudeCodeLauncher.toggleGroupArchive",
+          "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
+          "group": "2_archive@1"
         }
       ],
       "view/title": [

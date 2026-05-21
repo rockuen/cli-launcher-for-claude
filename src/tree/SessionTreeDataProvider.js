@@ -4,6 +4,20 @@
 //
 // v2.6.0: custom sort (claudeSessionSortOrder) + 2-level nesting (claudeSessionParent)
 // + TreeDragAndDropController for drag-reorder / drag-to-group.
+//
+// v3.6.9: group-aware session loading. The old hard cap of `slice(0, 30)`
+// silently dropped sessions a user had bucketed into a custom group once
+// newer activity bumped them past the window — exactly the opposite of the
+// intent behind grouping. Two new behaviours:
+//   - protected ids (regular group members + Resume Later) bypass the 30 cap
+//     and are loaded up to a soft cap of 100 (mtime DESC). The cap matches
+//     the v3.5.9 file-meta LRU so title parsing stays inside the cache.
+//   - archive groups (stored in `claudeSessionGroupArchived` — array of
+//     group names) have no cap, but their members skip the expensive
+//     extractAiTitle / extractFirstUserMessage parse on tree load. Labels
+//     fall back to saved title or `<8-char prefix>…`. Designed for the
+//     "stash big jsonls I rarely open" pattern where parsing every file on
+//     refresh would otherwise dominate the tree-build cost.
 
 const vscode = require('vscode');
 const path = require('path');
@@ -215,7 +229,23 @@ class SessionTreeDataProvider {
     const savedSessions = sessionStoreGet('claudeSavedSessions', []);
     const parents = sessionStoreGet('claudeSessionParent', {});
     const sortOrder = sessionStoreGet('claudeSessionSortOrder', {});
-    const allItems = this._loadSessions();
+    // v3.6.9: derive protected vs archived id sets before loading sessions.
+    // Archive membership wins — if a session is in both a regular group and an
+    // archive group (a rare manual case), it gets the cheap archived path.
+    const archivedGroups = new Set(sessionStoreGet('claudeSessionGroupArchived', []));
+    const protectedIds = new Set();
+    const archivedIds = new Set();
+    for (const [name, ids] of Object.entries(customGroups)) {
+      const isArchive = archivedGroups.has(name);
+      for (const id of ids) {
+        if (isArchive) archivedIds.add(id);
+        else protectedIds.add(id);
+      }
+    }
+    for (const s of savedSessions) {
+      if (!archivedIds.has(s.sessionId)) protectedIds.add(s.sessionId);
+    }
+    const allItems = this._loadSessions(protectedIds, archivedIds);
 
     const itemMap = new Map();
     const mtimeMap = new Map();
@@ -251,12 +281,17 @@ class SessionTreeDataProvider {
       }
     }
 
-    // Build map: sessionId → group name (for top-level sessions)
+    // Build map: sessionId → group name (for top-level sessions). Sessions
+    // that fall in this set are excluded from Recent Sessions.
     const groupedSet = new Set();
     for (const ids of Object.values(customGroups)) {
       for (const id of ids) groupedSet.add(id);
     }
     for (const s of savedSessions) groupedSet.add(s.sessionId);
+
+    // v3.6.9: archive prefix + folder icon flip is handled inside
+    // makeGroupNode; captured here for closure access.
+    const isGroupArchived = (name) => archivedGroups.has(name);
 
     const groups = [];
     const exp = this._expandedGroups;
@@ -319,14 +354,21 @@ class SessionTreeDataProvider {
       // Label: show only the leaf segment for non-root nodes; for root nodes
       // (depth 1) the full name IS the leaf, so it's the same.
       const leafLabel = name.includes('/') ? name.substring(name.lastIndexOf('/') + 1) : name;
-      const label = totalCount > 0 ? `${leafLabel} (${totalCount})` : leafLabel;
+      // v3.6.9: archive groups get a 📦 prefix so users can tell at a glance
+      // which buckets skip title parsing.
+      const archived = isGroupArchived(name);
+      const displayLeaf = archived ? `📦 ${leafLabel}` : leafLabel;
+      const label = totalCount > 0 ? `${displayLeaf} (${totalCount})` : displayLeaf;
       const collState = (subGroupNodes.length > 0 || directItems.length > 0)
         ? stateOf(name)
         : vscode.TreeItemCollapsibleState.None;
       const group = new vscode.TreeItem(label, collState);
-      group.iconPath = new vscode.ThemeIcon(subGroupNodes.length > 0 ? 'folder-opened' : 'folder');
+      group.iconPath = archived
+        ? new vscode.ThemeIcon('archive')
+        : new vscode.ThemeIcon(subGroupNodes.length > 0 ? 'folder-opened' : 'folder');
       group.contextValue = 'customGroup';
       group._groupName = name;
+      group._isArchive = archived;
       group._children = [...subGroupNodes, ...directItems];
       group._totalCount = totalCount;
       return group;
@@ -411,29 +453,71 @@ class SessionTreeDataProvider {
     return groups;
   }
 
-  _loadSessions() {
+  // v3.6.9: protectedIds = ids in custom groups + Resume Later. archivedIds =
+  // ids in groups flagged as archive via claudeSessionGroupArchived. The old
+  // hard cap of `slice(0, 30)` dropped any session not in the top-30 mtime
+  // list — sessions a user had explicitly bucketed into a group would silently
+  // disappear once newer activity bumped them past the window. v3.6.9
+  // keeps the Recent-Sessions hot path (top 30) AND surfaces:
+  //   - protected members up to a soft cap of 100 (mtime DESC). The cap aligns
+  //     with the v3.5.9 LRU file-meta cache (size 100), so the file-title /
+  //     first-message parse never exceeds the cache's working set.
+  //   - archived members regardless of count, but with **no title/firstMsg
+  //     extraction** — only stat. extractAiTitle / extractFirstUserMessage are
+  //     the heavy calls (whole-file read + parse) so skipping them is what
+  //     makes archive groups cheap at scale. Labels fall back to the saved
+  //     title or `<8-char prefix>…`.
+  _loadSessions(protectedIds = new Set(), archivedIds = new Set()) {
     const projDir = this._getProjectDir();
     if (!projDir) return [];
 
-    let files;
+    let allFiles;
     try {
-      files = fs.readdirSync(projDir)
+      allFiles = fs.readdirSync(projDir)
         .filter(f => f.endsWith('.jsonl'))
         .map(f => {
           const fullPath = path.join(projDir, f);
           const st = fs.statSync(fullPath);
           return { name: f, path: fullPath, mtime: st.mtimeMs, size: st.size };
         })
-        .sort((a, b) => b.mtime - a.mtime)
-        .slice(0, 30);
+        .sort((a, b) => b.mtime - a.mtime);
     } catch {
       return [];
     }
 
-    const titleMap = sessionStoreGet('claudeSessionTitles', {});
+    const PROTECTED_CAP = 100;
+    const TOP_RECENT = 30;
+    const top30 = allFiles.slice(0, TOP_RECENT);
+    const top30Names = new Set(top30.map(f => f.name.replace('.jsonl', '')));
 
+    // Protected (regular groups + Resume Later) not already in top-30, capped
+    // at PROTECTED_CAP by mtime DESC. Archive membership wins over protected
+    // when a session is in both — archived path is cheaper, so prefer it.
+    const protectedExtras = [];
+    for (const f of allFiles) {
+      const sid = f.name.replace('.jsonl', '');
+      if (top30Names.has(sid)) continue;
+      if (archivedIds.has(sid)) continue;
+      if (!protectedIds.has(sid)) continue;
+      protectedExtras.push(f);
+      if (protectedExtras.length >= PROTECTED_CAP) break;
+    }
+
+    // Archived: every member outside top-30. No cap. Title/firstMsg skipped.
+    const archivedExtras = [];
+    for (const f of allFiles) {
+      const sid = f.name.replace('.jsonl', '');
+      if (top30Names.has(sid)) continue;
+      if (!archivedIds.has(sid)) continue;
+      archivedExtras.push(f);
+    }
+
+    const titleMap = sessionStoreGet('claudeSessionTitles', {});
     const items = [];
-    for (const file of files) {
+
+    // Full-extract path: top 30 + protected extras. Title / firstMsg parsing
+    // gates a session out of the tree if all three are missing.
+    for (const file of [...top30, ...protectedExtras]) {
       const sessionId = file.name.replace('.jsonl', '');
       const savedTitle = titleMap[sessionId];
       // v3.5.9: cached extract. With ~30 top files and several multi-MB
@@ -483,6 +567,41 @@ class SessionTreeDataProvider {
       // has actively expanded.
       item._jsonlPath = file.path;
       item._fileSize = file.size;
+
+      items.push(item);
+    }
+
+    // v3.6.9: archived path. No title/firstMsg parse — stat-only labels keep
+    // a group with hundreds of multi-MB jsonls effectively free to render.
+    // Label uses the saved title if any, otherwise the session id prefix; the
+    // sessions are still resumable by command and the metadata row built
+    // lazily on expand parses the file on demand (one-time + cached).
+    for (const file of archivedExtras) {
+      const sessionId = file.name.replace('.jsonl', '');
+      const savedTitle = titleMap[sessionId];
+
+      const date = new Date(file.mtime);
+      const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+
+      const displayText = savedTitle || `${sessionId.substring(0, 8)}…`;
+      const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
+
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
+      item.description = dateStr;
+      item.resourceUri = buildSessionDecorationUri(sessionId, file.size, false);
+      item.tooltip = `${savedTitle ? savedTitle + '\n\n' : ''}Session: ${sessionId}\n${date.toLocaleString()}\n(archived — title not parsed; expand to load)${_sizeWarningSuffix(file.size, false)}`;
+      item.iconPath = new vscode.ThemeIcon(savedTitle ? 'comment-discussion' : 'archive');
+      item.command = {
+        command: 'claudeCodeLauncher.resumeSession',
+        title: t('resumeSession'),
+        arguments: [sessionId]
+      };
+      item.contextValue = 'session';
+      item._sessionId = sessionId;
+      item._mtime = file.mtime;
+      item._jsonlPath = file.path;
+      item._fileSize = file.size;
+      item._archived = true;
 
       items.push(item);
     }

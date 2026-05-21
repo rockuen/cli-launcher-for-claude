@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.6.9] - 2026-05-21
+
+### Fixed
+- **Sessions placed in a custom group no longer disappear from the tree once newer activity pushes them past the top-30 mtime window.** `_loadSessions` had a hard `.slice(0, 30)` cap inherited from the original Recent Sessions design; that cap was applied before group membership was consulted, so explicit bucketing — the strongest signal a user can give that a session matters — was overridden by raw recency. v3.6.9 keeps the 30-item hot path for the Recent Sessions list AND additionally surfaces group members (regular groups + Resume Later) up to a soft cap of 100 (mtime DESC). The cap aligns with the v3.5.9 file-meta LRU so title parsing stays inside the cache and tree refreshes don't degrade as group sizes grow.
+
+### Added
+- **Archive groups for stash-style buckets of large jsonls.** Right-click a custom group → **Toggle Archive Mode**. Archive groups get a `📦` prefix and `archive` icon, have no member cap, and skip the expensive `extractAiTitle` / `extractFirstUserMessage` parse on tree load — only `fs.statSync` runs per member. Labels fall back to the saved title or an 8-char session-id prefix; the metadata row (turns + relative time + size) still parses lazily on first expand and the entry is fully resumable. A 200-member archive of multi-MB sessions costs roughly the same as a 5-member regular group on refresh.
+- New storage key `claudeSessionGroupArchived` (array of group names). No migration — empty default means existing groups stay in regular mode.
+- New command `claudeCodeLauncher.toggleGroupArchive` exposed in the group context menu and the command palette. Shows a toast confirming the new mode.
+- Korean / English i18n strings (`archiveModeOn` / `archiveModeOff` / `archiveGroupNotFound`).
+
+### Implementation
+- `_loadSessions(protectedIds, archivedIds)` now derives two id sets in `_buildGroups`, full-extracts top-30 + protected-extra members, and runs a separate cheap path for archived members. Archive membership wins when a session would otherwise be in both buckets (cheaper path).
+- `makeGroupNode` reads `claudeSessionGroupArchived` and flips the leaf label / icon for archive groups; tooltip on archived session items advertises `(archived — title not parsed; expand to load)` so users understand why labels read as session-id prefixes.
+
 ## [3.6.8] - 2026-05-21
 
 ### Changed

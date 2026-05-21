@@ -8,6 +8,10 @@ module.exports = {
   enterTabName: '탭 이름을 입력하세요',
   resumeLaterGroup: '나중에 이어서',
   recentSessionsGroup: '최근 세션',
+  // v3.6.9: archive group toggle
+  archiveModeOn: '📦 아카이브 모드로 전환됨 — 제목 파싱 생략, 개수 제한 없음',
+  archiveModeOff: '아카이브 모드 해제됨 — 일반 그룹으로 복귀 (cap 100)',
+  archiveGroupNotFound: '그룹을 찾을 수 없습니다: ',
   resumeSession: '세션 이어하기',
   nodePtyFail: 'node-pty 로드 실패: ',
   startFail: 'Claude Code 시작 실패: ',

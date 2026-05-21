@@ -9,6 +9,10 @@ module.exports = {
   enterTabName: 'Enter tab name',
   resumeLaterGroup: 'Resume Later',
   recentSessionsGroup: 'Recent Sessions',
+  // v3.6.9: archive group toggle
+  archiveModeOn: '📦 Archive mode on — title parsing skipped, no member cap',
+  archiveModeOff: 'Archive mode off — back to normal group (cap 100)',
+  archiveGroupNotFound: 'Group not found: ',
   resumeSession: 'Resume Session',
   nodePtyFail: 'Failed to load node-pty: ',
   startFail: 'Failed to start Claude Code: ',
