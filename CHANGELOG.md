@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.6.11] - 2026-05-30
+
+### Changed
+- **`autoEffortMax` now injects `--effort max` as a CLI flag at spawn time instead of typing `/effort max` once the session goes idle.** The previous behaviour sent the slash command through PTY input ~800 ms after the first idle, which left a visible `/effort max` line in the terminal and only took effect once the prompt was ready. The flag path starts the session at max from the first token with no on-screen command. The setting key, persisted value, and settings toggle are unchanged; turning it off falls back to the model's configured baseline effort (e.g. `effortLevel`).
+
+### Implementation
+- `createPanel.js`: `args` spreads `...(autoEffortMax ? ['--effort', 'max'] : [])` after `claudeArgs`. The multiplexer wrap reuses the same `args`, so both the direct and `psmux`/`tmux` backends inherit the flag.
+- `restartPty.js`: reads `claudeCodeLauncher.autoEffortMax` and appends the same flag to the `--resume` argv, so reload-window restores also start at max.
+- `webviewClient.js`: removed the first-idle slash-injection block (`/effort max` + toast); the spawn-time flag supersedes it.
+
 ## [3.6.10] - 2026-05-21
 
 ### Fixed

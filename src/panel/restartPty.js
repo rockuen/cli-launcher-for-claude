@@ -34,7 +34,8 @@ function restartPty(entry, panel, context, extensionPath) {
     return;
   }
   const shell = resolved.shell;
-  const args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : [])];
+  const autoEffortMax = vscode.workspace.getConfiguration('claudeCodeLauncher').get('autoEffortMax', false);
+  const args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : [])];
 
   // Kill old PTY before spawning new one to prevent orphaned processes
   if (entry.pty) {

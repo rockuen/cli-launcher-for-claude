@@ -1300,16 +1300,10 @@ function getClientScript(ctx) {
       }
       // Track state for queue auto-start
       lastKnownState = state;
-      // v2.6.5: auto /effort max — fire once on first idle (waiting or
-      // needs-attention). Delay a beat so Claude CLI's prompt is really ready
-      // to accept input, not mid-render from the restore animation.
-      if ((state === 'waiting' || state === 'needs-attention') && autoEffortMaxEnabled && !autoEffortMaxSent) {
-        autoEffortMaxSent = true;
-        setTimeout(() => {
-          vscode.postMessage({ type: 'input', data: '/effort max' + String.fromCharCode(13) });
-          showToast(T.autoEffortMaxToast);
-        }, 800);
-      }
+      // autoEffortMax is now injected as a CLI flag (--effort max) at spawn
+      // time (createPanel.js / restartPty.js), so the session starts at max
+      // with no visible /effort message. Old slash-injection on first idle
+      // removed to avoid the on-screen command.
       // Queue: auto-send next item when idle
       if (state === 'waiting' || state === 'needs-attention') {
         if (queueRunning && queueCurrentIndex >= 0) {

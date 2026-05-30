@@ -318,7 +318,7 @@ function createPanel(context, extensionPath, session, opts) {
   const claudeArgs = session?.sessionId
     ? ['--resume', session.sessionId]
     : ['--session-id', sessionId];
-  const args = [...resolved.args, ...claudeArgs];
+  const args = [...resolved.args, ...claudeArgs, ...(autoEffortMax ? ['--effort', 'max'] : [])];
 
   // Multiplexer wrap: keep the webview UI, but spawn an attached tmux/psmux
   // client so the in-tab terminal IS the multiplexer session. Quotes
