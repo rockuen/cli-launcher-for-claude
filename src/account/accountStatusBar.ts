@@ -71,11 +71,11 @@ export function refreshAccountStatusBar(): void {
     return;
   }
 
-  // Label: org wins because it's short and brand-y; otherwise fall
-  // back to the full email (still legible in most status bars).
-  // We intentionally do NOT use the email local-part — same-domain
-  // multi-account users would see indistinguishable labels.
-  const label = p.organizationName || p.email || "Claude";
+  // Label: show the full email directly (user preference — surface the
+  // account email so it's obvious which account is active). Fall back to
+  // organizationName, then a stub. We do NOT use the email local-part —
+  // same-domain multi-account users would see indistinguishable labels.
+  const label = p.email || p.organizationName || "Claude";
 
   const activeProfile = data.savedProfiles.find(
     (sp) => sp.slug === data.activeProfileSlug,

@@ -18,6 +18,13 @@ export class HUDStatusBarItem implements vscode.Disposable {
     }
 
     const parts: string[] = [];
+    // Active model first (e.g. "Opus 4.8"), from the OMC hud cache's model
+    // field — Claude Code populates it via the statusLine payload. Hidden
+    // when absent so the HUD just shows the rate limits as before.
+    const modelName = hud.model?.display_name || hud.model?.id;
+    if (modelName) {
+      parts.push(`$(sparkle) ${modelName}`);
+    }
     const fh = hud.rate_limits?.five_hour;
     const sd = hud.rate_limits?.seven_day;
 
