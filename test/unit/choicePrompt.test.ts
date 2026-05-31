@@ -171,3 +171,34 @@ test('mid-list start WITHOUT scroll indicator → null (prose, not a menu)', () 
   const r = detectChoicePrompt(['❯ 2. foo', '3. bar'].join('\n'));
   assert.equal(r, null);
 });
+
+// Login-method style: the SELECTED row has "1." but NON-selected rows render
+// the number with NO dot — just "2"+CHA. Transcribed from a real onboarding
+// capture (the case that previously returned null because a dot was required).
+const LOGIN_MENU = [
+  '\x1b[2GSelect\x1b[9Glogin\x1b[15Gmethod:',
+  '\x1b[2G\x1b[38;5;153m❯\x1b[4G1. Claude account with subscription',
+  '2\x1b[8GAnthropic\x1b[18GConsole account',
+  '\x1b[4G3\x1b[7G3rd-party platform',
+].join('\r');
+
+test('login-style menu: non-selected rows have no dot (number + CHA)', () => {
+  const r = detectChoicePrompt(LOGIN_MENU);
+  assert.ok(r, 'should detect despite missing dots on rows 2 and 3');
+  assert.equal(r.count, 3);
+  assert.equal(r.selectedNum, 1);
+  assert.equal(r.options[0].num, 1);
+  assert.equal(r.options[2].num, 3);
+});
+
+test('header (the question above the options) is extracted', () => {
+  const login = detectChoicePrompt(LOGIN_MENU);
+  assert.ok(login.header.includes('Select login method'), 'login header: ' + login.header);
+  const theme = detectChoicePrompt(THEME_MENU);
+  assert.ok(theme.header.includes('Choose the text style'), 'theme header: ' + theme.header);
+});
+
+test('a number followed by SGR/space (code line-number) is NOT an option', () => {
+  // "2" + colour escape, or "2 " + text, must stay out — only "."-or-CHA counts.
+  assert.equal(detectChoicePrompt('❯ 1. real option\r\x1b[2m 2\x1b[22m console.log()'), null);
+});

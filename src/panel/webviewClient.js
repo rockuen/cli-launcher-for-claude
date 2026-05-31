@@ -2282,7 +2282,13 @@ function getClientScript(ctx) {
       lastChoice = choice;
       const titleEl = bar.querySelector('.reader-choice-title');
       const optsEl = bar.querySelector('.reader-choice-options');
-      if (titleEl) titleEl.textContent = T.choiceBarTitle || 'Select an option';
+      if (titleEl) {
+        // Show the menu's own question ("Choose the text style…", "Select
+        // login method:") so the user knows what they're picking; fall back
+        // to a generic label. Full text in the tooltip when it's long.
+        titleEl.textContent = choice.header || T.choiceBarTitle || 'Select an option';
+        titleEl.title = choice.header || '';
+      }
       if (optsEl) {
         optsEl.textContent = '';
         choice.options.forEach((opt) => {

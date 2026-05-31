@@ -6,93 +6,108 @@
 // unit-tested directly (same pattern as sessionDecorationCore.js). It is
 // required by createPanel.js's coalesced parse path.
 //
-// THE TRAP (why the 2026-05-03 attempt was rolled back): Ink/Yoga draws
-// inter-word gaps as CHA cursor moves (\x1b[<N>G), NOT spaces. So a naive
-// ANSI strip glues words together — "1.Auto(matchterminal)" — and the
-// classic /\d+\.\s+\w+/ match never fires. The fix is to translate CHA to
-// a single space FIRST, then strip the rest of the escape soup. Verified
-// against a real PTY capture of the v2.1.158 theme picker: 7/7 options
-// extracted, selected row identified by the ❯ (U+276F) caret in column 2.
+// THE TRAPS (learned from real PTY captures, v2.1.158):
+//  1. Ink draws inter-word gaps as CHA cursor moves (\x1b[<N>G), NOT spaces —
+//     a naive ANSI strip glues words ("1.Auto(matchterminal)"). Fix: turn CHA
+//     into a space FIRST, then strip the rest.
+//  2. Dynamic menus delimit rows with bare CR and emit NO LF — split on both.
+//  3. NON-selected rows in some menus (login method) render the number with
+//     NO dot, just "2"+CHA. So an option is "a number immediately followed by
+//     '.' OR a CHA", not "number + dot". Code line-numbers render "1"+SGR or
+//     "1"+space, which this still excludes.
 
 // Turn one raw terminal line into readable text: CHA → space (restore word
 // separation), then drop OSC / remaining CSI / 2-char escapes / charset
-// selects. SGR colours, cursor moves, etc. all vanish; the visible glyphs
-// (including box-drawing and the ❯ caret) survive.
+// selects / stray control chars (SI/SO). Visible glyphs (incl. box-drawing
+// and the ❯ caret) survive.
 function normalizeChoiceLine(s) {
   return String(s == null ? '' : s)
     .replace(/\x1b\[\d*G/g, ' ')                         // CHA → space
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')   // OSC ... BEL/ST
     .replace(/\x1b\[[0-9;?>=]*[A-Za-z]/g, '')            // remaining CSI
     .replace(/\x1b[78>=cZ]/g, '')                        // ESC 7/8/>/=/c/Z
-    .replace(/\x1b\([AB0]/g, '');                        // charset selects
+    .replace(/\x1b\([AB0]/g, '')                         // charset selects
+    .replace(/[\x00-\x08\x0e-\x1f\x7f]/g, '');           // stray controls (SI/SO)
 }
 
-// Marker glyphs Ink uses for the highlighted row. ❯ is what v2.1.158 emits;
-// → is accepted defensively in case a theme/older build differs.
 var CARET_RE = /[❯→]/;
-// A menu row: optional caret, then "N." (the dot is essential — it's what
-// rejects code line-numbers like "1function" / "2 console.log"), then a
-// non-empty label.
-var OPTION_RE = /^\s*([❯→])?\s*(\d{1,2})\.\s+(\S.*?)\s*$/;
+// Option delimiter, checked on the RAW line: a number immediately followed by
+// '.' OR a CHA cursor-move (\x1b[<n>G). Theme rows render "1."; login/other
+// menus render non-selected rows as "2"+CHA with NO dot. Code line-numbers
+// render "1"+SGR (\x1b[..m) or "1"+space, so requiring '.'-or-CHA right after
+// the digit keeps them out.
+var OPT_DELIM = /(\d{1,2})(?:\.|\x1b\[\d*G)/;
+// After normalize: optional caret, number, dot-or-space(s), then label.
+var OPT_NORM = /^([❯→])?\s*(\d{1,2})[.\s]+(\S.*)$/;
+// A line that is ONLY box-drawing / block / rule chars (a separator), used to
+// skip decoration when collecting the header.
+var BOX_ONLY = /^[\s·‐-―─-▟.\-_=]+$/;
 
 // Detect a numbered choice menu in a (coalesced) PTY payload. Returns
-// { options: [{num,label}], selectedNum, count } or null.
+// { options:[{num,label}], selectedNum, count, truncated, header } or null.
 //
-// Guards against false positives (assistant text that happens to contain a
-// "1. ... 2. ..." list):
-//   1. a ❯/→ caret must be present somewhere in the raw payload, AND
-//   2. the option numbers must form a clean ascending run 1..K (K>=2), AND
-//   3. exactly the run must carry the caret on one of its rows.
-// An interactive menu always satisfies all three; prose lists do not.
+// False-positive guards (prose / code that contains "1. ... 2. ..."):
+//   1. a ❯/→ caret somewhere in the payload, AND
+//   2. each option line passes BOTH the raw delimiter (number+dot/CHA) AND the
+//      normalized shape (starts with the number), AND
+//   3. numbers form a contiguous run (starting at 1 unless clipped), AND
+//   4. one of the rows carries the caret.
 function detectChoicePrompt(data) {
   var raw = String(data == null ? '' : data);
   if (!CARET_RE.test(raw)) return null;
 
-  // Split on CR and/or LF. CRUCIAL: Ink's dynamic menus (/theme, /model,
-  // /resume) delimit rows with bare CR (\r) and emit NO line feeds at all,
-  // so a /\r?\n/ split collapses the whole menu into one unmatchable line.
-  // The onboarding/trust prompts happen to include LF — which is exactly
-  // why those detected but /theme silently did not. Verified against a live
-  // v2.1.158 /theme capture: 20 CRs, 0 LFs.
-  var lines = raw.split(/[\r\n]+/);
-  var options = [];
-  var selectedIndex = -1;
-  for (var i = 0; i < lines.length; i++) {
-    var norm = normalizeChoiceLine(lines[i]).replace(/\s{2,}/g, ' ');
-    var m = OPTION_RE.exec(norm);
-    if (!m) continue;
-    var selected = !!m[1];
-    options.push({ num: parseInt(m[2], 10), label: m[3].trim(), selected: selected });
-    if (selected) selectedIndex = options.length - 1;
-  }
-
-  // Ink Select draws ↑/↓ scroll indicators when the menu is taller than the
-  // terminal viewport — only a WINDOW of options is visible, the rest clipped.
-  // This drives validation (a clipped window can legitimately start mid-list)
-  // and lets the panel briefly enlarge the pty to capture the full list.
+  // ↑/↓ scroll indicators ⇒ the menu is taller than the viewport and only a
+  // window is shown (lets a clipped window start mid-list, and the panel keep
+  // the terminal tall enough to render the rest).
   var truncated = /[↑↓]/.test(raw);
 
+  var rawLines = raw.split(/[\r\n]+/);
+  var options = [];
+  var optLineIdx = [];
+  var selectedIndex = -1;
+
+  for (var i = 0; i < rawLines.length; i++) {
+    var line = rawLines[i];
+    var delim = OPT_DELIM.exec(line);
+    if (!delim) continue;
+    var norm = normalizeChoiceLine(line).replace(/\s{2,}/g, ' ').trim();
+    var nm = OPT_NORM.exec(norm);
+    if (!nm) continue;
+    var num = parseInt(nm[2], 10);
+    if (num !== parseInt(delim[1], 10)) continue; // same number raw vs normalized
+    options.push({ num: num, label: nm[3].trim(), selected: !!nm[1] });
+    optLineIdx.push(i);
+    if (nm[1]) selectedIndex = options.length - 1;
+  }
+
   if (options.length < 1) return null;
-  // A lone option is only a menu if Ink also drew a scroll indicator (more are
-  // clipped below/above); otherwise "1. foo" on its own is just prose.
+  // A lone option is only a menu if Ink drew a scroll indicator (more clipped).
   if (options.length === 1 && !truncated) return null;
-  // Numbers must be contiguous. A fully-visible menu starts at 1; a CLIPPED
-  // window can start mid-list because Ink's sliding window shows e.g. options
-  // 2,3,4 around the caret. Requiring start-at-1 there is exactly why a tiny
-  // terminal pane (1 visible option, num=2) detected nothing and never even
-  // triggered the enlarge.
+  // Contiguous numbering. Full menu starts at 1; a clipped window can start
+  // mid-list (Ink shows e.g. 2,3,4 around the caret).
   for (var j = 1; j < options.length; j++) {
     if (options[j].num !== options[j - 1].num + 1) return null;
   }
   if (!truncated && options[0].num !== 1) return null;
-  // No caret on any row → not a live menu (just a rendered list). Reject.
   if (selectedIndex === -1) return null;
+
+  // Header: meaningful text above the first option (the question — "Choose
+  // the text style…", "Select login method:"). Skip blanks and box-drawing /
+  // rule lines; keep the last 2 so the question survives a title/subtitle.
+  var headerCand = [];
+  for (var k = 0; k < optLineIdx[0]; k++) {
+    var h = normalizeChoiceLine(rawLines[k]).replace(/\s{2,}/g, ' ').trim();
+    if (!h || BOX_ONLY.test(h)) continue;
+    headerCand.push(h);
+  }
+  var header = headerCand.slice(-2).join(' · ');
 
   return {
     options: options.map(function (o) { return { num: o.num, label: o.label }; }),
     selectedNum: options[selectedIndex].num,
     count: options.length,
     truncated: truncated,
+    header: header,
   };
 }
 
