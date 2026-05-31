@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.6.12] - 2026-05-31
+
+### Changed
+- **Interactive prompts now fire a desktop notification (and, in reader/split view, auto-expand the bottom terminal) instead of rebuilding the menu as in-reader buttons.** The previous inline y/n prompt-bar and numbered choice-bar screen-scraped raw PTY ANSI to reconstruct Claude's menus as clickable buttons; that mis-fired on plain text (a bare `(y/n)` in prose) and on a `/model` menu rendered above a code diff (phantom options). They are removed. Now, when output settles on an interactive prompt (a `/model`-style menu, a trust/permission prompt, or a y/n), the tab escalates to needs-attention + a desktop notification — regardless of the 7s running threshold, since menus appear in under 3s — and in reader/split view the bottom terminal pane grows so the menu is visible and answerable without dragging, restoring your ratio when the prompt clears.
+- **Built-in slash-command autocomplete synced to the current Claude Code (Opus 4.8 era) built-ins.** Removed commands that no longer exist (`/pr-comments` gone v2.1.91, `/vim` gone v2.1.92, `/output-style` folded into `/config`, `/migrate-installer`) and added the current core + integration commands (`/plan`, `/rewind`, `/status`, `/theme`, `/diff`, `/branch`, `/rename`, `/recap`, `/background`, `/tasks`, `/btw`, `/copy`, `/sandbox`, `/privacy-settings`, `/skills`, `/plugin`, `/keybindings`, `/usage-credits`, `/feedback`, `/mobile`, `/desktop`, `/teleport`, `/remote-control`, `/install-slack-app`). Bundled skills (`/code-review`, `/debug`, `/loop`, …) are intentionally excluded — they're surfaced through the personal PKM/OMC catalog. Verified against the official commands reference.
+- HUD now shows the active model name; the account status bar shows the full email.
+
+### Implementation
+- New `src/lib/promptAffordance.js` — a conservative, idle-gated prompt detector (Claude's interactive footer keywords + a caret-anchored numbered-menu check, not bare tokens). Pure + unit-tested. `createPanel.js` runs it in the idle timer against a rolling `entry._recentTail`, deduped on `entry._promptSig`; `messageRouter.js` drops the tail on user input so a just-answered menu's footer can't keep the affordance "present". Detection is ext-side, so it also fires on background tabs.
+- Terminal auto-expand lives in `webviewClient.js` `setupSplitter` (`expandTerminalForPrompt` / `restoreTerminalAfterPrompt`, reader flex-basis ≤40%, never persisted), driven by new `prompt-terminal-expand` / `prompt-terminal-restore` messages.
+- Removed: `choicePrompt.js` (+ test/fixture), `detectBinaryPrompt`, `looksLikePrompt`, the `prompt-detected` / `choice-detected` / `prompt-respond` / `choice-respond` protocol, `showPromptBar` / `showChoiceBar` + DOM + CSS, `choiceBarTitle` i18n.
+- New `src/pty/backend.js` (`createBackend` / `createPtyBackend`) — a named, behaviour-identical spawn seam used by `createPanel.js`.
+- Slash catalog: `BUILTIN_EXTRAS` rewritten (39 entries) in `slashRegistry.js`; `/plan` + `/rewind` added to the primary array; en/ko labels at parity (55 keys each), no duplicates.
+
+### Tests
+- 237 node + 36 vitest passing. Independent code review (0 Critical/High) addressed.
+
 ## [3.6.11] - 2026-05-30
 
 ### Changed
