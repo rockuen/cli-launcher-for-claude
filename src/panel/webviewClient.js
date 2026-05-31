@@ -1219,6 +1219,10 @@ function getClientScript(ctx) {
       if (msg.type === 'prompt-detected') {
         showPromptBar(msg.prompt);
       }
+      // Numbered choice menu (Ink Select) — render one button per option.
+      if (msg.type === 'choice-detected') {
+        showChoiceBar(msg.choice);
+      }
       // Phase 3 split layout: jsonl watcher in createPanel pushes rendered
       // markdown blocks here. Preserve scroll position unless near bottom
       // (auto-scroll); pulse the ● dot; release typing class only when an
@@ -2248,6 +2252,76 @@ function getClientScript(ctx) {
         const key = btn.dataset.key;
         if (key) vscode.postMessage({ type: 'prompt-respond', key });
         hidePromptBar();
+        term.focus();
+      });
+    })();
+
+    // Numbered choice menu — sibling of the prompt bar, one button per
+    // option. Clicking sends the option's digit (instant-confirm in Ink
+    // Select for 1-9; ext falls back to arrow-delta for >=10 using the
+    // captured caret position). Shows only when split is on; self-hides
+    // after 30s. Buttons are built with DOM APIs + textContent so a menu
+    // label can never inject markup.
+    let choiceBarHideTimer = null;
+    let lastChoice = null;
+    function showChoiceBar(choice) {
+      if (!choice || !choice.options || !choice.options.length || !splitOn) return;
+      const bar = document.getElementById('reader-choice-bar');
+      if (!bar) return;
+      lastChoice = choice;
+      const titleEl = bar.querySelector('.reader-choice-title');
+      const optsEl = bar.querySelector('.reader-choice-options');
+      if (titleEl) titleEl.textContent = T.choiceBarTitle || 'Select an option';
+      if (optsEl) {
+        optsEl.textContent = '';
+        choice.options.forEach((opt) => {
+          const btn = document.createElement('button');
+          btn.className = 'reader-choice-btn';
+          btn.dataset.num = String(opt.num);
+          const isCurrent = opt.num === choice.selectedNum;
+          if (isCurrent) btn.classList.add('reader-choice-current');
+          const numEl = document.createElement('span');
+          numEl.className = 'reader-choice-num';
+          numEl.textContent = String(opt.num);
+          btn.appendChild(numEl);
+          const labelEl = document.createElement('span');
+          labelEl.className = 'reader-choice-label';
+          labelEl.textContent = opt.label;
+          btn.appendChild(labelEl);
+          if (isCurrent) {
+            const caretEl = document.createElement('span');
+            caretEl.className = 'reader-choice-caret';
+            caretEl.textContent = '\\u276F';
+            btn.appendChild(caretEl);
+          }
+          optsEl.appendChild(btn);
+        });
+      }
+      bar.style.display = 'flex';
+      if (choiceBarHideTimer) clearTimeout(choiceBarHideTimer);
+      choiceBarHideTimer = setTimeout(hideChoiceBar, 30000);
+      try { fitAddon.fit(); } catch (_) {}
+    }
+    function hideChoiceBar() {
+      const bar = document.getElementById('reader-choice-bar');
+      if (!bar) return;
+      bar.style.display = 'none';
+      lastChoice = null;
+      if (choiceBarHideTimer) { clearTimeout(choiceBarHideTimer); choiceBarHideTimer = null; }
+      try { fitAddon.fit(); } catch (_) {}
+    }
+    (function setupChoiceBar() {
+      const bar = document.getElementById('reader-choice-bar');
+      if (!bar) return;
+      bar.addEventListener('click', (e) => {
+        if (e.target.closest('.reader-choice-dismiss')) { hideChoiceBar(); return; }
+        const btn = e.target.closest('.reader-choice-btn');
+        if (!btn) return;
+        const num = parseInt(btn.dataset.num, 10);
+        if (!num) return;
+        const current = lastChoice ? lastChoice.selectedNum : num;
+        vscode.postMessage({ type: 'choice-respond', num, current });
+        hideChoiceBar();
         term.focus();
       });
     })();

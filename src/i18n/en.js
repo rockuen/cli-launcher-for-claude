@@ -40,6 +40,7 @@ module.exports = {
   soundToggleTip: 'Sound on/off',
   newTabTip: 'New tab',
   searchPlaceholder: 'Search...',
+  choiceBarTitle: 'Select an option',
   searchPrevTip: 'Previous (Shift+Enter)',
   searchNextTip: 'Next (Enter)',
   searchCloseTip: 'Close (Escape)',

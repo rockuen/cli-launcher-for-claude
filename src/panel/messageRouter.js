@@ -41,7 +41,14 @@ function routeWebviewMessage(msg, ctx) {
     case 'resize':
       entry._lastCols = msg.cols;
       entry._lastRows = msg.rows;
-      if (entry.pty) try { entry.pty.resize(msg.cols, msg.rows); } catch (_) {}
+      // Keep the pty's LOGICAL height tall enough (>=40 rows) that Ink always
+      // renders FULL menus (theme/model/permission) even when the visible
+      // terminal pane is short in split layout. The xterm display stays at
+      // msg.rows; the extra logical rows live in scrollback. Without this a
+      // tiny pane shows 0-1 options and detectChoicePrompt can't even fire —
+      // the "nothing pops up" the user hit. Per the user's own framing: the
+      // pty sees a wider screen internally than is shown.
+      if (entry.pty) try { entry.pty.resize(msg.cols, Math.max(msg.rows || 0, 40)); } catch (_) {}
       return;
 
     // v2.6.4: force TUI full redraw without touching session or scrollback.
@@ -141,6 +148,34 @@ function routeWebviewMessage(msg, ctx) {
       // Clear dedupe key so a legitimate follow-up prompt right after this
       // response (e.g., script that asks two y/n questions in a row with the
       // same wording) can re-fire instead of being suppressed.
+      entry._lastPromptKey = null;
+      entry._lastPromptAt = 0;
+      return;
+    }
+
+    // Numbered choice menu response. Webview detected an Ink Select menu
+    // and the user clicked an option button. For options 1-9 a bare digit
+    // instant-confirms in Ink Select (verified against v2.1.158 — '3'
+    // alone advanced the theme picker and saved theme=light), so we just
+    // write the digit, no CR. For >=10 (rare — long /resume lists) fall
+    // back to walking the caret from its captured position with arrow keys
+    // then Enter.
+    case 'choice-respond': {
+      if (!entry || !entry.pty || entry._disposed) return;
+      const num = parseInt(msg.num, 10);
+      if (!num || num < 1) return;
+      try {
+        if (num <= 9) {
+          writePtyChunked(entry, String(num));
+        } else {
+          const current = parseInt(msg.current, 10) || 1;
+          const delta = num - current;
+          const arrow = delta > 0 ? '\x1b[B' : '\x1b[A';
+          let seq = '';
+          for (let i = 0; i < Math.abs(delta); i++) seq += arrow;
+          writePtyChunked(entry, seq + '\r');
+        }
+      } catch (_) {}
       entry._lastPromptKey = null;
       entry._lastPromptAt = 0;
       return;

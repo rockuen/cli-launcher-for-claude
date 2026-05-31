@@ -531,6 +531,111 @@ function getStyles(ctx) {
     }
     .reader-prompt-dismiss:hover { color: ${fg}; }
 
+    /* Numbered choice menu — appears above the reader when ext detects an
+       Ink Select prompt (theme / model / permission menus). Buttons map
+       1:1 to the menu options; a click sends the option's digit key. */
+    .reader-choice-bar {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px 14px;
+      background: ${isDark ? 'rgba(217,119,87,0.18)' : 'rgba(201,100,66,0.12)'};
+      border-bottom: 1px solid ${isDark ? '#D97757' : '#C96442'};
+      font-family: -apple-system, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+      font-size: 11px;
+      color: ${fg};
+      box-sizing: border-box;
+      max-height: 45%;
+      overflow-y: auto;
+    }
+    .reader-choice-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .reader-choice-title {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 600;
+      color: ${fg};
+    }
+    .reader-choice-dismiss {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: none;
+      background: transparent;
+      font-size: 13px;
+      line-height: 1;
+      color: ${statusGray};
+      cursor: pointer;
+    }
+    .reader-choice-dismiss:hover { color: ${fg}; }
+    .reader-choice-options {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .reader-choice-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 5px 10px;
+      border: 1px solid ${border};
+      border-radius: 4px;
+      background: ${btnBg};
+      color: ${fg};
+      font-family: -apple-system, "Segoe UI", sans-serif;
+      font-size: 11px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .reader-choice-btn:hover {
+      background: ${isDark ? '#D97757' : '#C96442'};
+      border-color: ${isDark ? '#D97757' : '#C96442'};
+      color: #ffffff;
+    }
+    .reader-choice-num {
+      flex-shrink: 0;
+      min-width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      background: ${isDark ? 'rgba(217,119,87,0.85)' : 'rgba(201,100,66,0.85)'};
+      color: #ffffff;
+      font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .reader-choice-btn:hover .reader-choice-num {
+      background: #ffffff;
+      color: ${isDark ? '#D97757' : '#C96442'};
+    }
+    .reader-choice-label {
+      flex: 1 1 auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .reader-choice-caret {
+      flex-shrink: 0;
+      color: ${isDark ? '#D97757' : '#C96442'};
+      font-weight: 700;
+    }
+    .reader-choice-btn:hover .reader-choice-caret { color: #ffffff; }
+    .reader-choice-current {
+      box-shadow: 0 0 0 2px ${isDark ? 'rgba(217,119,87,0.55)' : 'rgba(201,100,66,0.45)'};
+    }
+
     /* Splitter — drag handle between reader and terminal */
     #splitter {
       flex: 0 0 auto;

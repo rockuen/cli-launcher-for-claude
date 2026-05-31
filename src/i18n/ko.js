@@ -39,6 +39,7 @@ module.exports = {
   soundToggleTip: '알림음 켜기/끄기',
   newTabTip: '새 탭',
   searchPlaceholder: '검색...',
+  choiceBarTitle: '옵션 선택',
   searchPrevTip: '이전 (Shift+Enter)',
   searchNextTip: '다음 (Enter)',
   searchCloseTip: '닫기 (Escape)',

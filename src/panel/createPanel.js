@@ -30,6 +30,7 @@ const { buildMeta, renderBlocks } = require('../lib/readerRender');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
+const { detectChoicePrompt } = require('../lib/choicePrompt');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -515,6 +516,26 @@ function createPanel(context, extensionPath, session, opts) {
         entry._lastPromptKey = key;
         entry._lastPromptAt = now;
         try { panel.webview.postMessage({ type: 'prompt-detected', prompt: binaryPrompt }); } catch (_) {}
+      }
+    }
+
+    // Numbered choice menus (theme / model / resume / permission prompts —
+    // all rendered through Ink's Select). Only attempt when no binary y/n
+    // matched; the two never coexist on screen. Dedupe on the joined option
+    // labels so navigate redraws (same menu, caret moved) don't re-fire,
+    // while a genuinely new menu does. Reuses _lastPromptKey/_lastPromptAt.
+    if (!binaryPrompt) {
+      const choicePrompt = detectChoicePrompt(payload);
+      if (choicePrompt) {
+        const now = Date.now();
+        const key = 'choice|' + choicePrompt.options.map(o => o.num + '.' + o.label).join('|');
+        const sameAsLast = entry._lastPromptKey === key;
+        const withinWindow = entry._lastPromptAt && (now - entry._lastPromptAt) < 5000;
+        if (!(sameAsLast && withinWindow)) {
+          entry._lastPromptKey = key;
+          entry._lastPromptAt = now;
+          try { panel.webview.postMessage({ type: 'choice-detected', choice: choicePrompt }); } catch (_) {}
+        }
       }
     }
 
