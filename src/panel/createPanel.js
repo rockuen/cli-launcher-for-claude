@@ -21,6 +21,7 @@ const { saveSessions } = require('../store/sessionManager');
 const { resolveClaudeCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
+const { createBackend } = require('../pty/backend');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
@@ -30,68 +31,16 @@ const { buildMeta, renderBlocks } = require('../lib/readerRender');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
-const { detectChoicePrompt } = require('../lib/choicePrompt');
+const { detectPromptAffordance } = require('../lib/promptAffordance');
 
 const IDLE_DELAY_MS = 3000;
 
-// v2.6.6: interactive prompt patterns. When the PTY emits any of these,
-// escalate the entry to needs-attention immediately instead of waiting
-// out the 7-second running threshold. False positives are bounded by
-// keeping the patterns specific to user-prompting language.
-const INTERACTIVE_PROMPT_PATTERNS = [
-  /Do you want to/i,
-  /\[Y\/n\]/,
-  /\[y\/N\]/,
-  /\(y\/n\)/i,
-  /\(yes\/no\)/i,
-  /Press Enter to continue/i,
-  /Press \[?Esc\]? to/i,
-];
-function looksLikePrompt(data) {
-  for (let i = 0; i < INTERACTIVE_PROMPT_PATTERNS.length; i++) {
-    if (INTERACTIVE_PROMPT_PATTERNS[i].test(data)) return true;
-  }
-  return false;
-}
-
-// Phase 4-extra: classify the binary prompt so the reader can render
-// the right Approve/Reject pair. Distinguishes the four common shapes
-// emitted by Claude Code and other CLIs:
-//   [Y/n]   — capital Y = Y is the default; Enter alone = approve
-//   [y/N]   — capital N = N is the default; Enter alone = reject
-//   (y/n)   — symmetric; no implicit default
-//   (yes/no)— same as (y/n) but the responder writes "yes"/"no"
-// snippet captures the last visible prompt line (ANSI-stripped) so the
-// user can read what they're answering before clicking.
-function detectBinaryPrompt(data) {
-  const raw = String(data || '');
-  // ANSI strip — same minimal regex used elsewhere in this codebase.
-  const stripped = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
-  // Anchor matching to the chunk tail where the cursor parks waiting for
-  // input. Earlier chunks (scrollback redraws, command echoes after a
-  // response) often replay the prompt text but the cursor is no longer
-  // there — matching globally produced false re-fires after the user
-  // already answered. 400 chars is enough for any realistic prompt line.
-  const tailWindow = stripped.length > 400 ? stripped.slice(-400) : stripped;
-  let kind = null, approveKey = null, rejectKey = null, defaultSide = null;
-  if (/\[Y\/n\]/.test(tailWindow)) {
-    kind = 'Y/n'; approveKey = 'y'; rejectKey = 'n'; defaultSide = 'approve';
-  } else if (/\[y\/N\]/.test(tailWindow)) {
-    kind = 'y/N'; approveKey = 'y'; rejectKey = 'n'; defaultSide = 'reject';
-  } else if (/\(y\/n\)/i.test(tailWindow)) {
-    kind = 'y/n'; approveKey = 'y'; rejectKey = 'n'; defaultSide = null;
-  } else if (/\(yes\/no\)/i.test(tailWindow)) {
-    kind = 'yes/no'; approveKey = 'yes'; rejectKey = 'no'; defaultSide = null;
-  } else {
-    return null;
-  }
-  // Take the last non-empty line (or two trailing lines) of the tail
-  // window so the snippet shows the actual question text.
-  const lines = tailWindow.split(/\r?\n/).map(l => l.replace(/\s+$/, ''));
-  const tail = lines.filter(l => l.trim()).slice(-2).join(' · ');
-  const snippet = tail.length > 240 ? tail.slice(-240) : tail;
-  return { kind, approveKey, rejectKey, defaultSide, snippet };
-}
+// NOTE (selector removal): the inline y/n prompt-bar and numbered choice-bar
+// — plus their byte-stream detectors (detectBinaryPrompt / detectChoicePrompt)
+// and the looksLikePrompt fast-path — were removed. They screen-scraped raw
+// ANSI to rebuild menus as clickable buttons and mis-fired on plain text. An
+// interactive prompt now only fires a desktop NOTIFICATION, detected
+// idle-gated via lib/promptAffordance.js (see the idle timer in flushPending).
 
 // Split-layout reader watcher: tail the active session's jsonl and broadcast
 // rendered blocks to the webview so the in-panel reader stays in sync with
@@ -180,9 +129,11 @@ function startReaderWatch(entry, panel) {
 }
 
 function createPanel(context, extensionPath, session, opts) {
-  let pty;
+  // Validate node-pty loads up front so the friendly nodePtyFail message shows
+  // early, before any panel setup. The actual spawn goes through createBackend()
+  // (pty/backend.js), which requires node-pty itself (module cache makes this free).
   try {
-    pty = require('node-pty');
+    require('node-pty');
   } catch (e) {
     vscode.window.showErrorMessage(t('nodePtyFail') + e.message);
     return;
@@ -343,12 +294,14 @@ function createPanel(context, extensionPath, session, opts) {
 
   let ptyProcess;
   try {
-    ptyProcess = pty.spawn(spawnBin, spawnArgs, {
-      name: 'xterm-256color',
+    ptyProcess = createBackend({
+      kind: 'pty',
+      spawnBin,
+      spawnArgs,
+      cwd: cwd,
       cols: 120,
       rows: 30,
-      cwd: cwd,
-      env: { ...process.env, FORCE_COLOR: '1' }
+      muxSessionName,
     });
     console.log('[Claude Launcher] PTY spawned OK, pid:', ptyProcess.pid);
   } catch (e) {
@@ -503,108 +456,107 @@ function createPanel(context, extensionPath, session, opts) {
       entry._bgShellsAt = Date.now();
     }
 
-    // Phase 4-extra: surface binary y/n prompts as inline approve/reject
-    // buttons inside the reader area. Dedupe: terminal redraws and
-    // post-response command echoes can replay the same prompt text.
-    const binaryPrompt = detectBinaryPrompt(payload);
-    if (binaryPrompt) {
-      const now = Date.now();
-      const key = binaryPrompt.kind + '|' + binaryPrompt.snippet;
-      const sameAsLast = entry._lastPromptKey === key;
-      const withinWindow = entry._lastPromptAt && (now - entry._lastPromptAt) < 5000;
-      if (!(sameAsLast && withinWindow)) {
-        entry._lastPromptKey = key;
-        entry._lastPromptAt = now;
-        try { panel.webview.postMessage({ type: 'prompt-detected', prompt: binaryPrompt }); } catch (_) {}
+    // Maintain a small rolling tail of recent output so the idle-gated
+    // prompt-affordance check (below, in the idle timer) can see Claude's
+    // current interactive footer. Raw bytes — detectPromptAffordance strips
+    // ANSI itself. Capped to ~the latest screen, not the whole history.
+    entry._recentTail = ((entry._recentTail || '') + payload).slice(-6000);
+
+    // Running/idle state machine + idle-gated prompt notification. The old
+    // looksLikePrompt fast-path (matched raw bytes mid-stream, false-positive
+    // prone) was removed with the inline selectors. The "Claude is waiting for
+    // you" signal now comes from detectPromptAffordance run only when output
+    // has SETTLED (in the idle timer below).
+
+    // Only transition to 'running' if output persists for 3s+
+    if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+      if (!runningDelayTimer) {
+        runningDelayTimer = setTimeout(() => {
+          if (entry._disposed) { runningDelayTimer = null; return; }
+          if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+            entry.state = 'running';
+            entry.runningStartedAt = Date.now();
+            setTabIcon(panel, 'running', extensionPath);
+            try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
+            updateStatusBar();
+          }
+          runningDelayTimer = null;
+        }, IDLE_DELAY_MS);
       }
     }
 
-    // Numbered choice menus (theme / model / resume / permission prompts —
-    // all rendered through Ink's Select). Only attempt when no binary y/n
-    // matched; the two never coexist on screen. Dedupe on the joined option
-    // labels so navigate redraws (same menu, caret moved) don't re-fire,
-    // while a genuinely new menu does. Reuses _lastPromptKey/_lastPromptAt.
-    if (!binaryPrompt) {
-      const choicePrompt = detectChoicePrompt(payload);
-      if (choicePrompt) {
-        const now = Date.now();
-        const key = 'choice|' + choicePrompt.options.map(o => o.num + '.' + o.label).join('|');
-        const sameAsLast = entry._lastPromptKey === key;
-        const withinWindow = entry._lastPromptAt && (now - entry._lastPromptAt) < 5000;
-        if (!(sameAsLast && withinWindow)) {
-          entry._lastPromptKey = key;
-          entry._lastPromptAt = now;
-          try { panel.webview.postMessage({ type: 'choice-detected', choice: choicePrompt }); } catch (_) {}
-        }
-      }
-    }
-
-    // v2.6.6: interactive prompt fast-path. Skip the 7s running threshold
-    // when we recognize a "Do you want / [Y/n] / Press Enter" style
-    // prompt — the user needs to act NOW. Branch out the running
-    // transition + idleTimer reset when we hit this so we don't re-arm
-    // them under needs-attention.
-    let hitPromptFastPath = false;
-    if (entry.state !== 'needs-attention' && entry.state !== 'done' && entry.state !== 'error' && looksLikePrompt(payload)) {
-      if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
+    if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    entry.idleTimer = setTimeout(() => {
       if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
-      entry.state = 'needs-attention';
-      setTabIcon(panel, 'done', extensionPath);
-      try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
-      showDesktopNotification(entry.title);
-      if (!panel.active) {
-        try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
-        startTitleBlink();
-      }
-      updateStatusBar();
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
-      hitPromptFastPath = true;
-    }
+      if (entry._disposed || !entry.pty || entry.state === 'done' || entry.state === 'error') return;
 
-    if (!hitPromptFastPath) {
-      // Only transition to 'running' if output persists for 3s+
-      if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
-        if (!runningDelayTimer) {
-          runningDelayTimer = setTimeout(() => {
-            if (entry._disposed) { runningDelayTimer = null; return; }
-            if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
-              entry.state = 'running';
-              entry.runningStartedAt = Date.now();
-              setTabIcon(panel, 'running', extensionPath);
-              try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
-              updateStatusBar();
-            }
-            runningDelayTimer = null;
-          }, IDLE_DELAY_MS);
-        }
-      }
-
-      if (entry.idleTimer) clearTimeout(entry.idleTimer);
-      entry.idleTimer = setTimeout(() => {
-        if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
-        if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
-        // Brief outputs (< 3s, never reached 'running') stay as-is
-        if (entry.state !== 'running') return;
-        const runningDuration = Date.now() - entry.runningStartedAt;
-        if (entry._disposed) return;
-        if (runningDuration >= 7000) {
+      // Idle-gated interactive-prompt notification. Output has settled; if the
+      // screen shows a prompt waiting on the user (a /model-style menu, a
+      // trust/permission prompt, or y/n), escalate to needs-attention +
+      // desktop notification REGARDLESS of how long Claude ran — these often
+      // appear in <3s, below the running threshold, which is exactly why they
+      // never used to notify. Deduped on the affordance marker so menu
+      // navigation redraws don't re-fire. Works on background tabs too: this
+      // runs ext-side, where output is parsed even when the panel is hidden.
+      const affordance = detectPromptAffordance(entry._recentTail || '');
+      if (affordance) {
+        const sig = affordance.kind + '|' + affordance.marker;
+        const isNewPrompt = entry._promptSig !== sig;
+        entry._promptSig = sig;
+        // Always (re)assert needs-attention while an unanswered prompt is on
+        // screen — idempotent. A menu-navigation redraw can briefly flip the
+        // tab back to 'running' (the running-delay timer re-arms in this state);
+        // re-asserting here corrects that instead of leaving the attention lost.
+        if (entry.state !== 'needs-attention') {
           entry.state = 'needs-attention';
           setTabIcon(panel, 'done', extensionPath);
           try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+          updateStatusBar();
+          if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+        }
+        // Desktop notification only for a genuinely NEW prompt (dedup on the
+        // marker) so navigation redraws don't spam. Fires on background tabs too.
+        if (isNewPrompt) {
           showDesktopNotification(entry.title);
           if (!panel.active) {
             try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
             startTitleBlink();
           }
-        } else {
-          entry.state = 'waiting';
-          setIdleIcon(panel, entry, extensionPath);
-          try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+          // Reader/split view: auto-grow the bottom terminal pane so the menu is
+          // visible and answerable without dragging the splitter. The webview
+          // no-ops when split is off or the terminal is already large, and
+          // restores the user's ratio when the prompt clears (below).
+          try { panel.webview.postMessage({ type: 'prompt-terminal-expand' }); } catch (_) {}
         }
-        updateStatusBar();
-        if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
-      }, IDLE_DELAY_MS);
-    }
+        return;
+      }
+      if (entry._promptSig) {
+        // A prompt just cleared (answered / dismissed) → restore the terminal
+        // pane to the user's ratio (no-op if it was never auto-expanded).
+        try { panel.webview.postMessage({ type: 'prompt-terminal-restore' }); } catch (_) {}
+      }
+      entry._promptSig = null; // no prompt on screen → let the next one re-notify
+
+      // Brief outputs (< 3s, never reached 'running') stay as-is
+      if (entry.state !== 'running') return;
+      const runningDuration = Date.now() - entry.runningStartedAt;
+      if (runningDuration >= 7000) {
+        entry.state = 'needs-attention';
+        setTabIcon(panel, 'done', extensionPath);
+        try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+        showDesktopNotification(entry.title);
+        if (!panel.active) {
+          try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+          startTitleBlink();
+        }
+      } else {
+        entry.state = 'waiting';
+        setIdleIcon(panel, entry, extensionPath);
+        try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+      }
+      updateStatusBar();
+      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+    }, IDLE_DELAY_MS);
 
     // postMessage only when active. Inactive panels' chunks are mirrored
     // into `outputBuffer` (see onData below) and shipped on visibility
@@ -662,6 +614,10 @@ function createPanel(context, extensionPath, session, opts) {
       setIdleIcon(panel, entry, extensionPath);
       try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
       updateStatusBar();
+      // Re-arm the prompt notification: if the user glances at this tab (which
+      // clears needs-attention) then leaves while the SAME prompt is still
+      // unanswered, dropping the dedup sig lets the idle check notify again.
+      entry._promptSig = null;
     }
     // v3.5.7: visibility return → flush buffered PTY output through the pacer
     // so the webview catches up smoothly instead of being hit with one huge
@@ -732,6 +688,8 @@ function createPanel(context, extensionPath, session, opts) {
     }
 
     entry.pty = null;
+    entry._recentTail = '';  // drop the rolling output tail so a stale prompt
+    entry._promptSig = null; // footer can't trigger a notification after exit
     saveSessions();
     updateStatusBar();
 

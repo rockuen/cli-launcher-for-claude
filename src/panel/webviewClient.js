@@ -483,13 +483,9 @@ function getClientScript(ctx) {
     function applySplitVisibility() {
       const reader = document.getElementById('reader-area');
       const splitter = document.getElementById('splitter');
-      const promptBar = document.getElementById('reader-prompt-bar');
       if (!reader || !splitter) return;
       reader.style.display = splitOn ? '' : 'none';
       splitter.style.display = splitOn ? '' : 'none';
-      // Phase 4-extra: when split is off, fall back to TUI swing-back —
-      // the inline approve/reject bar is a split-only affordance.
-      if (promptBar && !splitOn) promptBar.style.display = 'none';
       try { fitAddon.fit(); } catch (_) {}
       try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
     }
@@ -1214,6 +1210,15 @@ function getClientScript(ctx) {
       if (msg.type === 'context-usage') {
         updateContextIndicator(msg.used, msg.total, msg.pct);
       }
+      // Auto-expand / restore the bottom terminal pane around an interactive
+      // prompt (ext detects it idle-gated). Handlers live in setupSplitter,
+      // exposed on window; guard in case the splitter isn't set up yet.
+      if (msg.type === 'prompt-terminal-expand') {
+        if (window.__promptTerminalExpand) window.__promptTerminalExpand();
+      }
+      if (msg.type === 'prompt-terminal-restore') {
+        if (window.__promptTerminalRestore) window.__promptTerminalRestore();
+      }
       if (msg.type === 'process-exited') {
         const isError = msg.exitCode && msg.exitCode !== 0;
         restartMsg.textContent = isError
@@ -1221,18 +1226,6 @@ function getClientScript(ctx) {
           : T.processNormalExit;
         restartBtn.textContent = msg.canResume ? '\\u25B6 ' + T.resumeRestart : '\\u25B6 ' + T.newStart;
         restartBar.style.display = 'flex';
-      }
-      // Phase 4-extra: ext detected a binary y/n prompt — show the inline
-      // approve/reject bar above the reader. Skips when split is off so the
-      // user doesn't get a hidden bar (TUI swing-back is the fallback in
-      // fullscreen mode). Auto-hides after 30s in case the prompt stayed on
-      // the screen longer than expected.
-      if (msg.type === 'prompt-detected') {
-        showPromptBar(msg.prompt);
-      }
-      // Numbered choice menu (Ink Select) — render one button per option.
-      if (msg.type === 'choice-detected') {
-        showChoiceBar(msg.choice);
       }
       // Phase 3 split layout: jsonl watcher in createPanel pushes rendered
       // markdown blocks here. Preserve scroll position unless near bottom
@@ -2212,137 +2205,6 @@ function getClientScript(ctx) {
       particleState = state;
     };
 
-    // Phase 4-extra: inline prompt bar — show / hide / respond. Lives
-    // inside #content-split so it shares the split-on/off lifecycle with
-    // the reader. The 30s timer is a safety net (the prompt may stay on
-    // screen longer than the user expects); user dismiss + button click
-    // both clear immediately.
-    let promptBarHideTimer = null;
-    function showPromptBar(prompt) {
-      if (!prompt || !splitOn) return;
-      const bar = document.getElementById('reader-prompt-bar');
-      if (!bar) return;
-      const snippetEl = bar.querySelector('.reader-prompt-snippet');
-      const approveBtn = bar.querySelector('.reader-prompt-approve');
-      const rejectBtn = bar.querySelector('.reader-prompt-reject');
-      if (snippetEl) {
-        const kind = prompt.kind || '';
-        const snippet = prompt.snippet || '';
-        snippetEl.innerHTML = '<span class="reader-prompt-kind">' + escapeHtml(kind) + '</span>' + escapeHtml(snippet);
-      }
-      if (approveBtn) {
-        approveBtn.dataset.key = prompt.approveKey || 'y';
-        approveBtn.classList.toggle('reader-prompt-default', prompt.defaultSide === 'approve');
-      }
-      if (rejectBtn) {
-        rejectBtn.dataset.key = prompt.rejectKey || 'n';
-        rejectBtn.classList.toggle('reader-prompt-default', prompt.defaultSide === 'reject');
-      }
-      bar.style.display = 'flex';
-      if (promptBarHideTimer) clearTimeout(promptBarHideTimer);
-      promptBarHideTimer = setTimeout(hidePromptBar, 30000);
-      try { fitAddon.fit(); } catch (_) {}
-    }
-    function hidePromptBar() {
-      const bar = document.getElementById('reader-prompt-bar');
-      if (!bar) return;
-      bar.style.display = 'none';
-      if (promptBarHideTimer) { clearTimeout(promptBarHideTimer); promptBarHideTimer = null; }
-      try { fitAddon.fit(); } catch (_) {}
-    }
-    (function setupPromptBar() {
-      const bar = document.getElementById('reader-prompt-bar');
-      if (!bar) return;
-      bar.addEventListener('click', (e) => {
-        const btn = e.target.closest('.reader-prompt-btn');
-        if (!btn) return;
-        if (btn.classList.contains('reader-prompt-dismiss')) {
-          hidePromptBar();
-          return;
-        }
-        const key = btn.dataset.key;
-        if (key) vscode.postMessage({ type: 'prompt-respond', key });
-        hidePromptBar();
-        term.focus();
-      });
-    })();
-
-    // Numbered choice menu — sibling of the prompt bar, one button per
-    // option. Clicking sends the option's digit (instant-confirm in Ink
-    // Select for 1-9; ext falls back to arrow-delta for >=10 using the
-    // captured caret position). Shows only when split is on; self-hides
-    // after 30s. Buttons are built with DOM APIs + textContent so a menu
-    // label can never inject markup.
-    let choiceBarHideTimer = null;
-    let lastChoice = null;
-    function showChoiceBar(choice) {
-      if (!choice || !choice.options || !choice.options.length || !splitOn) return;
-      const bar = document.getElementById('reader-choice-bar');
-      if (!bar) return;
-      lastChoice = choice;
-      const titleEl = bar.querySelector('.reader-choice-title');
-      const optsEl = bar.querySelector('.reader-choice-options');
-      if (titleEl) {
-        // Show the menu's own question ("Choose the text style…", "Select
-        // login method:") so the user knows what they're picking; fall back
-        // to a generic label. Full text in the tooltip when it's long.
-        titleEl.textContent = choice.header || T.choiceBarTitle || 'Select an option';
-        titleEl.title = choice.header || '';
-      }
-      if (optsEl) {
-        optsEl.textContent = '';
-        choice.options.forEach((opt) => {
-          const btn = document.createElement('button');
-          btn.className = 'reader-choice-btn';
-          btn.dataset.num = String(opt.num);
-          const isCurrent = opt.num === choice.selectedNum;
-          if (isCurrent) btn.classList.add('reader-choice-current');
-          const numEl = document.createElement('span');
-          numEl.className = 'reader-choice-num';
-          numEl.textContent = String(opt.num);
-          btn.appendChild(numEl);
-          const labelEl = document.createElement('span');
-          labelEl.className = 'reader-choice-label';
-          labelEl.textContent = opt.label;
-          btn.appendChild(labelEl);
-          if (isCurrent) {
-            const caretEl = document.createElement('span');
-            caretEl.className = 'reader-choice-caret';
-            caretEl.textContent = '\\u276F';
-            btn.appendChild(caretEl);
-          }
-          optsEl.appendChild(btn);
-        });
-      }
-      bar.style.display = 'flex';
-      if (choiceBarHideTimer) clearTimeout(choiceBarHideTimer);
-      choiceBarHideTimer = setTimeout(hideChoiceBar, 30000);
-      try { fitAddon.fit(); } catch (_) {}
-    }
-    function hideChoiceBar() {
-      const bar = document.getElementById('reader-choice-bar');
-      if (!bar) return;
-      bar.style.display = 'none';
-      lastChoice = null;
-      if (choiceBarHideTimer) { clearTimeout(choiceBarHideTimer); choiceBarHideTimer = null; }
-      try { fitAddon.fit(); } catch (_) {}
-    }
-    (function setupChoiceBar() {
-      const bar = document.getElementById('reader-choice-bar');
-      if (!bar) return;
-      bar.addEventListener('click', (e) => {
-        if (e.target.closest('.reader-choice-dismiss')) { hideChoiceBar(); return; }
-        const btn = e.target.closest('.reader-choice-btn');
-        if (!btn) return;
-        const num = parseInt(btn.dataset.num, 10);
-        if (!num) return;
-        const current = lastChoice ? lastChoice.selectedNum : num;
-        vscode.postMessage({ type: 'choice-respond', num, current });
-        hideChoiceBar();
-        term.focus();
-      });
-    })();
-
     // Phase 4 reader: route <a> clicks inside the reader back to the
     // extension. The webview blocks file:// navigation entirely, and http(s)
     // anchors would otherwise rely on host default behavior. Centralizing
@@ -2463,6 +2325,34 @@ function getClientScript(ctx) {
           try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
         });
       };
+
+      // Auto-expand the bottom terminal when an interactive prompt is detected
+      // so the user can see/answer a /model-style menu without dragging. Only
+      // in split (reader) view; never SHRINKS the terminal; does NOT persist
+      // (save-split-ratio) since it's temporary; restores the user's ratio when
+      // the prompt clears — unless they dragged the splitter meanwhile.
+      let promptExpand = null; // { from, to } while expanded, else null
+      function expandTerminalForPrompt() {
+        if (!splitOn || promptExpand != null) return;
+        const curBasis = parseFloat(reader.style.flexBasis);
+        const curRatio = Number.isFinite(curBasis) ? curBasis / 100 : lastRatio;
+        const target = Math.min(curRatio, 0.40); // reader <= 40% → terminal >= 60%
+        if (target >= curRatio - 0.005) return;   // terminal already large enough
+        promptExpand = { from: curRatio, to: target };
+        reader.style.flexBasis = (target * 100) + '%';
+        fitTerm();
+      }
+      function restoreTerminalAfterPrompt() {
+        if (promptExpand == null) return;
+        const from = promptExpand.from, to = promptExpand.to;
+        promptExpand = null;
+        const curRatio = (parseFloat(reader.style.flexBasis) || (to * 100)) / 100;
+        if (Math.abs(curRatio - to) > 0.01) return; // user dragged → respect it
+        reader.style.flexBasis = (from * 100) + '%';
+        fitTerm();
+      }
+      window.__promptTerminalExpand = expandTerminalForPrompt;
+      window.__promptTerminalRestore = restoreTerminalAfterPrompt;
 
       splitter.addEventListener('mousedown', (e) => {
         dragging = true;

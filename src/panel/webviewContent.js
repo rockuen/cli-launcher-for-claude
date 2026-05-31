@@ -63,21 +63,6 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <button class="search-btn" id="search-close" title="${T.searchCloseTip}">&#x2715;</button>
     </div>
     <div id="content-split">
-      <div id="reader-prompt-bar" class="reader-prompt-bar" style="display:none;">
-        <span class="reader-prompt-snippet"></span>
-        <span class="reader-prompt-actions">
-          <button class="reader-prompt-btn reader-prompt-approve" data-key="y">Approve</button>
-          <button class="reader-prompt-btn reader-prompt-reject" data-key="n">Reject</button>
-          <button class="reader-prompt-btn reader-prompt-dismiss" title="Dismiss">&#x2715;</button>
-        </span>
-      </div>
-      <div id="reader-choice-bar" class="reader-choice-bar" style="display:none;">
-        <div class="reader-choice-head">
-          <span class="reader-choice-title"></span>
-          <button class="reader-choice-dismiss" title="Dismiss">&#x2715;</button>
-        </div>
-        <div class="reader-choice-options"></div>
-      </div>
       <div id="reader-area" style="flex-basis: ${(splitRatio != null ? splitRatio : 0.85) * 100}%;--reader-font-size: ${settings.readerFontSize || 12}px;${splitLayoutOn ? '' : 'display:none;'}">
         <span class="reader-live-dot" id="reader-live-dot" title="Watching session for new messages">&#x25CF;</span>
         <div id="reader-meta"></div>

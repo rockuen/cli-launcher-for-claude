@@ -36,18 +36,27 @@ function routeWebviewMessage(msg, ctx) {
 
     case 'input':
       if (entry.pty) writePtyChunked(entry, msg.data);
+      // The user answering/navigating a prompt invalidates the rolling output
+      // tail used for idle prompt-affordance detection. Drop it so a just-
+      // answered menu's footer (still sitting in the 6KB tail because /model et
+      // al. emit little new output on close) can't keep the affordance
+      // "present" — which would block the terminal-restore and leave the tab
+      // stuck in needs-attention. _promptSig is intentionally NOT cleared here,
+      // so navigating a still-open menu (which re-renders the same footer) does
+      // not re-notify/re-expand.
+      entry._recentTail = '';
       return;
 
     case 'resize':
       entry._lastCols = msg.cols;
       entry._lastRows = msg.rows;
-      // Keep the pty's LOGICAL height tall enough (>=40 rows) that Ink always
-      // renders FULL menus (theme/model/permission) even when the visible
-      // terminal pane is short in split layout. The xterm display stays at
-      // msg.rows; the extra logical rows live in scrollback. Without this a
-      // tiny pane shows 0-1 options and detectChoicePrompt can't even fire —
-      // the "nothing pops up" the user hit. Per the user's own framing: the
-      // pty sees a wider screen internally than is shown.
+      // Keep the pty's LOGICAL height tall enough (>=40 rows) that the TUI
+      // renders a FULL screen internally even when the visible terminal pane is
+      // short in split layout. The xterm display stays at msg.rows; the extra
+      // logical rows live in scrollback. This keeps the background read (HUD
+      // state) and the idle prompt-affordance notification working off a
+      // complete screen. Per the user's framing: the pty sees a wider screen
+      // internally than is shown.
       if (entry.pty) try { entry.pty.resize(msg.cols, Math.max(msg.rows || 0, 40)); } catch (_) {}
       return;
 
@@ -132,52 +141,6 @@ function routeWebviewMessage(msg, ctx) {
       if (state.diagnostics) {
         state.diagnostics.recordWebviewMemory(entry.tabId, msg);
       }
-      return;
-    }
-
-    // Phase 4-extra: reader inline prompt response. Webview detected a
-    // binary y/n prompt and the user clicked Approve/Reject — write the
-    // chosen key plus CR to the PTY, same as if they typed it into the TUI
-    // themselves. Falls through silently if the pty is gone (panel closed
-    // mid-flight); the reader will time the bar out on its own.
-    case 'prompt-respond': {
-      if (!entry || !entry.pty || entry._disposed) return;
-      const key = String(msg.key || '').trim();
-      if (!key) return;
-      try { writePtyChunked(entry, key + '\r'); } catch (_) {}
-      // Clear dedupe key so a legitimate follow-up prompt right after this
-      // response (e.g., script that asks two y/n questions in a row with the
-      // same wording) can re-fire instead of being suppressed.
-      entry._lastPromptKey = null;
-      entry._lastPromptAt = 0;
-      return;
-    }
-
-    // Numbered choice menu response. Webview detected an Ink Select menu
-    // and the user clicked an option button. For options 1-9 a bare digit
-    // instant-confirms in Ink Select (verified against v2.1.158 — '3'
-    // alone advanced the theme picker and saved theme=light), so we just
-    // write the digit, no CR. For >=10 (rare — long /resume lists) fall
-    // back to walking the caret from its captured position with arrow keys
-    // then Enter.
-    case 'choice-respond': {
-      if (!entry || !entry.pty || entry._disposed) return;
-      const num = parseInt(msg.num, 10);
-      if (!num || num < 1) return;
-      try {
-        if (num <= 9) {
-          writePtyChunked(entry, String(num));
-        } else {
-          const current = parseInt(msg.current, 10) || 1;
-          const delta = num - current;
-          const arrow = delta > 0 ? '\x1b[B' : '\x1b[A';
-          let seq = '';
-          for (let i = 0; i < Math.abs(delta); i++) seq += arrow;
-          writePtyChunked(entry, seq + '\r');
-        }
-      } catch (_) {}
-      entry._lastPromptKey = null;
-      entry._lastPromptAt = 0;
       return;
     }
 

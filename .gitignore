@@ -13,3 +13,6 @@ out/
 # Public builds ship only the built-in extras catalog. See README §"Registering
 # your own slashes" for the prompt that builds this file from your environment.
 src/lib/slashRegistry.local.js
+
+# Stray editor config (repo folder opened in Obsidian on a PKM machine)
+.obsidian/

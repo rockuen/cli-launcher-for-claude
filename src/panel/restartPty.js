@@ -42,6 +42,8 @@ function restartPty(entry, panel, context, extensionPath) {
     killPtyProcess(entry.pty);
     entry.pty = null;
   }
+  entry._recentTail = '';   // fresh run — don't let the prior session's prompt
+  entry._promptSig = null;  // footer satisfy the idle prompt-affordance check
   if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
   entry._disposed = false;
 
