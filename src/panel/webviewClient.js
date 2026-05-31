@@ -73,6 +73,17 @@ function getClientScript(ctx) {
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
     term.open(document.getElementById('terminal'));
+    // Background-terminal (PoC): force the LOGICAL row count to stay tall
+    // (40) regardless of the visible pane height, so Ink always renders FULL
+    // menus (theme/model/permission) even in a short split pane. cols still
+    // comes from fit() (container width). The display is clipped by CSS
+    // (#terminal overflow:hidden + .xterm bottom-anchored) so only the
+    // bottom rows — where Claude's input line sits — are visible. This is
+    // what makes "see a wide screen internally, show a short one" work
+    // without the pty/xterm row mismatch that garbled normal output before.
+    var BG_TERM_ROWS = 40;
+    var _origTermResize = term.resize.bind(term);
+    term.resize = function (cols, _rows) { return _origTermResize(cols, BG_TERM_ROWS); };
     fitAddon.fit();
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──

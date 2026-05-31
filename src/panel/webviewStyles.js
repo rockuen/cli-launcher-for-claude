@@ -674,7 +674,13 @@ function getStyles(ctx) {
       min-height: 50px;
       padding: 10px 14px;
       overflow: hidden;
+      position: relative;
     }
+    /* Background-terminal (PoC): the terminal renders 40 LOGICAL rows but the
+       pane may be short. Bottom-anchor the xterm so only the bottom rows —
+       Claude's input line + most recent output — show; the taller top
+       overflows upward and is clipped by #terminal's overflow:hidden. */
+    #terminal .xterm { position: absolute; left: 14px; right: 14px; bottom: 10px; }
     .xterm { padding: 0; }
     .xterm-viewport::-webkit-scrollbar { width: 8px; }
     .xterm-viewport::-webkit-scrollbar-track { background: ${scrollTrack}; border-radius: 4px; }
