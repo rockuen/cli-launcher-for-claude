@@ -526,11 +526,9 @@ function getStyles(ctx) {
       overflow: hidden;
       position: relative;
     }
-    /* Background-terminal (PoC): the terminal renders 40 LOGICAL rows but the
-       pane may be short. Bottom-anchor the xterm so only the bottom rows —
-       Claude's input line + most recent output — show; the taller top
-       overflows upward and is clipped by #terminal's overflow:hidden. */
-    #terminal .xterm { position: absolute; left: 14px; right: 14px; bottom: 10px; }
+    /* xterm fills the visible pane in normal flow; #terminal's padding provides
+       the inset. (The old absolute bottom-anchoring for the removed 40-row
+       background-terminal PoC was dropped — it mispositioned short content.) */
     .xterm { padding: 0; }
     .xterm-viewport::-webkit-scrollbar { width: 8px; }
     .xterm-viewport::-webkit-scrollbar-track { background: ${scrollTrack}; border-radius: 4px; }

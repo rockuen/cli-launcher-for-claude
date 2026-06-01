@@ -73,17 +73,14 @@ function getClientScript(ctx) {
     term.loadAddon(webLinksAddon);
     term.loadAddon(searchAddon);
     term.open(document.getElementById('terminal'));
-    // Background-terminal (PoC): force the LOGICAL row count to stay tall
-    // (40) regardless of the visible pane height, so Ink always renders FULL
-    // menus (theme/model/permission) even in a short split pane. cols still
-    // comes from fit() (container width). The display is clipped by CSS
-    // (#terminal overflow:hidden + .xterm bottom-anchored) so only the
-    // bottom rows — where Claude's input line sits — are visible. This is
-    // what makes "see a wide screen internally, show a short one" work
-    // without the pty/xterm row mismatch that garbled normal output before.
-    var BG_TERM_ROWS = 40;
-    var _origTermResize = term.resize.bind(term);
-    term.resize = function (cols, _rows) { return _origTermResize(cols, BG_TERM_ROWS); };
+    // Fit the terminal to the actual visible pane. (The old background-terminal
+    // PoC forced 40 logical rows + bottom-anchored the xterm via CSS so menus
+    // would render fully for the now-removed choice-bar detector; that
+    // mispositioned Claude's input when its content was short — a fresh panel or
+    // post-/clear — because Ink renders input-after-content, not screen-bottom.
+    // Detection is now byte-based on the PTY footer and menu visibility comes
+    // from the prompt-driven terminal auto-expand, so a normal fit is simpler
+    // and keeps Claude's input naturally at the pane bottom.)
     fitAddon.fit();
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──

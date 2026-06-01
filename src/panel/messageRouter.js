@@ -26,6 +26,16 @@ const readerView = require('./readerView');
 const { handlePasteLargeText } = require('../handlers/pasteLargeText');
 const { restartPty } = require('./restartPty');
 
+// Pure cursor-navigation keystrokes (arrows / page / home / end) — the keys
+// used to move WITHIN a menu without answering it. The input handler keeps the
+// affordance tail intact on these so navigating an open menu isn't mistaken for
+// an answer (Ink re-renders a navigated menu only partially, without re-emitting
+// the footer the detector keys on).
+function isNavKey(data) {
+  if (!data) return false;
+  return /^(?:\x1b(?:\[|O)[ABCDHF]|\x1b\[[0-9;]*~)+$/.test(data);
+}
+
 function routeWebviewMessage(msg, ctx) {
   const { entry, panel, context, extensionPath, createPanel, onWebviewReady } = ctx;
 
@@ -36,28 +46,28 @@ function routeWebviewMessage(msg, ctx) {
 
     case 'input':
       if (entry.pty) writePtyChunked(entry, msg.data);
-      // The user answering/navigating a prompt invalidates the rolling output
-      // tail used for idle prompt-affordance detection. Drop it so a just-
-      // answered menu's footer (still sitting in the 6KB tail because /model et
-      // al. emit little new output on close) can't keep the affordance
-      // "present" — which would block the terminal-restore and leave the tab
-      // stuck in needs-attention. _promptSig is intentionally NOT cleared here,
-      // so navigating a still-open menu (which re-renders the same footer) does
-      // not re-notify/re-expand.
-      entry._recentTail = '';
+      // A menu ANSWER (digit / Enter / Esc / typing) closes the menu, so drop
+      // the rolling affordance tail — otherwise the just-answered menu's footer
+      // lingers in the 6KB tail (because /model et al. emit little on close) and
+      // keeps the affordance "present", blocking the terminal-restore. But do
+      // NOT drop it on pure NAVIGATION keys (arrows / page / home / end): Ink
+      // re-renders a navigated menu only PARTIALLY (changed rows, no footer), so
+      // clearing mid-navigation would lose the footer and falsely restore the
+      // terminal as if the menu had been answered. _promptSig isn't cleared here
+      // either, so a re-detected menu doesn't re-notify.
+      if (!isNavKey(msg.data)) entry._recentTail = '';
       return;
 
     case 'resize':
       entry._lastCols = msg.cols;
       entry._lastRows = msg.rows;
-      // Keep the pty's LOGICAL height tall enough (>=40 rows) that the TUI
-      // renders a FULL screen internally even when the visible terminal pane is
-      // short in split layout. The xterm display stays at msg.rows; the extra
-      // logical rows live in scrollback. This keeps the background read (HUD
-      // state) and the idle prompt-affordance notification working off a
-      // complete screen. Per the user's framing: the pty sees a wider screen
-      // internally than is shown.
-      if (entry.pty) try { entry.pty.resize(msg.cols, Math.max(msg.rows || 0, 40)); } catch (_) {}
+      // Resize the pty to the ACTUAL visible rows so the pty and xterm stay in
+      // sync — Claude's input then sits at the pane bottom naturally. (The old
+      // 40-row floor, for the removed choice-bar detector, forced a pty/xterm
+      // row mismatch that bottom-anchoring tried to hide, which mispositioned
+      // short content. Idle prompt detection is byte-based on the PTY footer,
+      // which Claude emits even when a tall menu is windowed into a short pane.)
+      if (entry.pty) try { entry.pty.resize(msg.cols, msg.rows || 24); } catch (_) {}
       return;
 
     // v2.6.4: force TUI full redraw without touching session or scrollback.
