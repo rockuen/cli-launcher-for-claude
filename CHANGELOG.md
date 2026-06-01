@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.6.14] - 2026-06-01
+
+### Fixed
+- **The terminal pane's content now sits at the pane bottom reliably — including on freshly opened panels/tabs and after `/clear`.** Previously a short startup screen could render at the top of a tall terminal instead of hugging the bottom. The cause was the leftover "background-terminal" trick (the pty forced to 40 logical rows + the xterm CSS-anchored to the pane bottom), whose only consumer — the in-reader choice-bar menu detector — was already removed in 3.6.12. That trick created a pty/xterm row mismatch that bottom-anchoring tried to paper over, which mispositioned content whenever Claude's output was short (a fresh panel, a session right after `/clear`), because Ink renders the input line *after* its content rather than pinned to the screen bottom. The terminal now fits the visible pane normally and the pty resizes to the actual row count, so Claude's input lands at the pane bottom on its own.
+- **Navigating an open menu (e.g. `/model`) with the arrow keys no longer collapses the auto-expanded terminal as if you'd already answered.** The input handler clears the rolling affordance tail on a keystroke so a just-answered menu's footer can't keep the prompt-affordance "present" and block the terminal-restore — but it was doing this on *every* key, including the arrows used to move within a still-open menu. Because Ink re-renders a navigated menu only partially (the changed rows, not the footer the detector keys on), clearing mid-navigation lost the footer and falsely restored the terminal. A new `isNavKey()` guard keeps the tail intact on pure cursor-navigation keys (arrows / page / home / end); only an actual answer (digit / Enter / Esc / typing) clears it.
+
+### Implementation
+- `webviewClient.js`: removed the `BG_TERM_ROWS = 40` `term.resize` override — the terminal just `fitAddon.fit()`s the visible pane now.
+- `webviewStyles.js`: dropped the `#terminal .xterm { position: absolute; bottom: … }` bottom-anchoring; the xterm fills the pane in normal flow with `#terminal`'s padding as inset.
+- `messageRouter.js`: the `resize` handler resizes the pty to the actual `msg.rows` (was `Math.max(rows, 40)`); new pure `isNavKey(data)` helper gates the `input` handler's `entry._recentTail = ''` so navigation keys preserve the tail. Idle prompt detection is unchanged — it's byte-based on the PTY footer, which Claude emits even when a tall menu is windowed into a short pane.
+
+### Tests
+- 237 node + 36 vitest passing.
+
 ## [3.6.13] - 2026-06-01
 
 ### Changed

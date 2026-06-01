@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.6.13",
+  "version": "3.6.14",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
