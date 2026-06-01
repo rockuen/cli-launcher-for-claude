@@ -372,6 +372,37 @@ function getStyles(ctx) {
       padding: 30px 0;
       text-align: center;
     }
+    .reader-welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 60vh;
+      padding: 12px 0 28px;
+      text-align: center;
+    }
+    .reader-welcome-brand {
+      font-size: 1.05em;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      color: ${fg};
+      opacity: 0.9;
+    }
+    .reader-welcome-brand .rw-spark { color: #D97757; margin-right: 3px; }
+    .reader-welcome-hero {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 7%;
+    }
+    .rw-robot { width: 56px; height: 56px; opacity: 0.95; }
+    .rw-msg {
+      color: ${statusGray};
+      font-size: 0.92em;
+      line-height: 1.7;
+      max-width: 300px;
+    }
     #reader-meta {
       font-size: 0.85em;
       color: ${statusGray};

@@ -367,6 +367,12 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     padding-bottom: 8px; margin-bottom: 24px; word-break: break-all;
   }
   .reader-empty { color: var(--fg-muted); font-style: italic; padding: 40px 0; text-align: center; }
+  .reader-welcome { display: flex; flex-direction: column; align-items: center; min-height: 60vh; padding: 12px 0 28px; text-align: center; }
+  .reader-welcome-brand { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; color: var(--fg); opacity: 0.9; }
+  .reader-welcome-brand .rw-spark { color: #D97757; margin-right: 3px; }
+  .reader-welcome-hero { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 16px; padding-bottom: 7%; }
+  .rw-robot { width: 56px; height: 56px; opacity: 0.95; }
+  .rw-msg { color: var(--fg-muted); font-size: 13px; line-height: 1.7; max-width: 300px; }
 
   .reader-actions {
     position: fixed; top: 14px; right: 18px; z-index: 10;

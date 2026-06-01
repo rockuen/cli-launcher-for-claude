@@ -27,7 +27,7 @@ const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib/sessionJsonl');
-const { buildMeta, renderBlocks } = require('../lib/readerRender');
+const { buildMeta, renderBlocks, renderWelcome } = require('../lib/readerRender');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
@@ -246,7 +246,7 @@ function createPanel(context, extensionPath, session, opts) {
   // read its initial value and re-sync when the user reopens the modal
   // after a drag/keyboard adjustment.
   const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle, splitRatio };
-  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, null, splitLayoutDefault, extraSlashes);
+  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, renderWelcome(), splitLayoutDefault, extraSlashes);
 
   // Spawn claude CLI
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
