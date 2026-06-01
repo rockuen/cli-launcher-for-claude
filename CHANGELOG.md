@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.6.13] - 2026-06-01
+
+### Changed
+- **The reader's empty state is now a branded welcome screen instead of the bare "Waiting for session output…" line.** Before any conversation output exists — a freshly opened panel, or a session with zero messages yet — the reader shows the Claude Code wordmark, the robot mascot, and a short hint, matching Claude Code's own welcome look. It transitions to the live transcript as soon as messages arrive.
+
+### Implementation
+- `readerRender.js`: new `renderWelcome()` returns the splash markup (inline `claude-robot.svg`, static/trusted). `renderBlocks([])` returns it and `createPanel.js` passes it as the initial reader HTML, so both the initial load and the zero-message state are covered — for the split-pane reader and the standalone reader view.
+- `.reader-welcome` / `.rw-*` styles added to `webviewStyles.js` and `readerView.js`.
+
 ## [3.6.12] - 2026-05-31
 
 ### Changed
