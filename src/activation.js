@@ -231,7 +231,7 @@ function activate(context) {
   function refreshKiroAvailable() {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
-      .get('enabledAgents', ['claude', 'kiro']);
+      .get('enabledAgents', ['claude']);
     const kiroInstalled = listAgents().some(a => a.id === 'kiro' && a.installed);
     const available = kiroInstalled && enabled.includes('kiro');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.kiroAvailable', available);

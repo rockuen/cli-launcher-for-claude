@@ -13,7 +13,7 @@ const { listAgents } = require('../agents/registry');
 async function pickAgent() {
   const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
   const def = cfg.get('agent') || 'claude';
-  const enabled = cfg.get('enabledAgents', ['claude', 'kiro']);
+  const enabled = cfg.get('enabledAgents', ['claude']);
 
   // enabled ∩ installed
   const candidates = listAgents().filter(

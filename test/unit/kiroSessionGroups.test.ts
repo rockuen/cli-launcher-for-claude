@@ -82,7 +82,11 @@ for (const id of KIRO_IDS) {
   fs.copyFileSync(path.join(kiroDir, `${id}.json`), path.join(kiroDefaultDir, `${id}.json`));
 }
 const origHome = process.env.HOME;
+const origUserProfile = process.env.USERPROFILE;
 process.env.HOME = tmpRoot;
+// Windows: os.homedir() reads USERPROFILE, not HOME — override both so the fake
+// ~/.kiro fixtures resolve cross-platform (macOS/Linux honour HOME).
+process.env.USERPROFILE = tmpRoot;
 
 const { sessionStoreGet, sessionStoreUpdate } = require('../../src/store/sessionStore');
 const { SessionTreeDataProvider } = require('../../src/tree/SessionTreeDataProvider');
@@ -181,5 +185,7 @@ test('kiro provider uses kiro-scoped DnD MIME types', () => {
 
 test('cleanup temp workspace', () => {
   process.env.HOME = origHome;
+  if (origUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = origUserProfile;
   try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
 });

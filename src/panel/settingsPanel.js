@@ -630,7 +630,7 @@ function openGlobalSettings(context) {
 
   const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
   const currentAgent = cfg.get('agent') || 'claude';
-  const enabledAgents = cfg.get('enabledAgents', ['claude', 'kiro']);
+  const enabledAgents = cfg.get('enabledAgents', ['claude']);
   const globals = {
     defaultBackend: cfg.get('terminal.defaultBackend', 'webview'),
     multiplexerLifecycle: cfg.get('terminal.multiplexerLifecycle', 'kill-on-close'),

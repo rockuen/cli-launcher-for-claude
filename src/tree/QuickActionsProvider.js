@@ -37,7 +37,7 @@ class QuickActionsProvider {
     if (element) return [];
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
-      .get('enabledAgents', ['claude', 'kiro']);
+      .get('enabledAgents', ['claude']);
     const actions = [];
     for (const a of listAgents()) {
       if (!a.installed || !enabled.includes(a.id)) continue;

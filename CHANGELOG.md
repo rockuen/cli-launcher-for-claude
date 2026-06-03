@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.7.1] - 2026-06-04
+
+### Fixed
+- **Kiro sessions now launch on Windows.** Opening a new Kiro session failed with `PTY spawn FAILED: File not found:`. `resolveKiroCli()` only checked the macOS/Linux standalone path (`~/.local/bin/kiro-cli`) and otherwise fell back to the bare command name `kiro-cli.exe`. That bare name passes a `child_process --version` probe (Node resolves it via PATH) but then fails inside node-pty, because winpty/conpty does **not** search PATH — it needs an absolute path. The Windows installer location (`%LOCALAPPDATA%\Kiro-Cli\kiro-cli.exe`) was never checked. The resolver now (1) checks the Windows installer dir, and (2) resolves any PATH hit to an absolute path via `where.exe`, so node-pty always receives a spawnable absolute path. macOS was unaffected because `~/.local/bin/kiro-cli` exists there and was returned as an absolute path. The same hardening was applied to `resolveClaudeCli()`'s PATH fallback (identical latent bug, previously masked because `~/.local/bin/claude.exe` exists on the affected machine).
+
+### Changed
+- **New installs enable only Claude by default** (`enabledAgents` default is now `["claude"]`, was `["claude","kiro"]`). Kiro is opt-in — enable it in CLI Launcher Settings → Agent. This keeps the default surface Claude-only for users who don't have Kiro installed; the new-session picker and Kiro Sessions view appear once Kiro is both enabled and installed.
+
+### Implementation
+- `pty/resolveCli.js`: new `resolveOnPath(name)` helper — Windows uses `where.exe <name>` (first PATH hit, absolute path); Unix verifies `<name> --version` and returns the bare name (execvp searches PATH). `resolveKiroCli()` gains a `%LOCALAPPDATA%\Kiro-Cli\kiro-cli.exe` check; both resolvers route their PATH fallback through `resolveOnPath` so the returned `shell` is always absolute on Windows.
+- `enabledAgents` default changed in `package.json` (config schema) and the four runtime readers: `activation.js`, `handlers/pickAgent.js`, `tree/QuickActionsProvider.js`, `panel/settingsPanel.js`.
+
+### Tests
+- 269 node + 36 vitest passing — now green on Windows too. `kiroSessionGroups.test.ts` overrides `USERPROFILE` as well as `HOME`, because `os.homedir()` reads `USERPROFILE` on Windows; the two kiro-grouping cases pointed their fake `~/.kiro` fixtures at `HOME` only and so failed on Windows (a latent test-portability bug from the 3.7.0 Kiro work, not a product regression).
+
 ## [3.6.14] - 2026-06-01
 
 ### Fixed
