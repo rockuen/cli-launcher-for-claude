@@ -1,6 +1,6 @@
 // @module panel/messageRouter — single dispatch for 19 webview→extension message types.
-// ctx carries: { entry, panel, context, extensionPath, createPanel, onWebviewReady }.
-// createPanel is injected (callback) to avoid circular import with createPanel.js.
+// ctx carries: { entry, panel, context, extensionPath, createPanel, pickAgent, onWebviewReady }.
+// createPanel/pickAgent are injected (callbacks) to avoid circular imports.
 //
 // Message protocol (18 webview→ext):
 //   webview-ready, input, resize, toolbar, paste-image, check-clipboard-image,
@@ -18,6 +18,7 @@ const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore')
 const { saveSessions } = require('../store/sessionManager');
 const { writePtyChunked } = require('../pty/write');
 const { handleToolbar } = require('../handlers/toolbar');
+const { pickAgent } = require('../handlers/pickAgent');
 const { handlePasteImage, readClipboardImageFromSystem } = require('../handlers/pasteImage');
 const { handleDropFiles } = require('../handlers/dropFiles');
 const { handleOpenFile } = require('../handlers/openFile');
@@ -89,7 +90,7 @@ function routeWebviewMessage(msg, ctx) {
       return;
 
     case 'toolbar':
-      handleToolbar(msg.action, entry, context, extensionPath, createPanel);
+      handleToolbar(msg.action, entry, context, extensionPath, createPanel, pickAgent);
       return;
 
     case 'paste-image':

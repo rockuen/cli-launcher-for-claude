@@ -26,6 +26,7 @@ const { SessionTreeDataProvider } = require('./tree/SessionTreeDataProvider');
 const { SessionDecorationProvider } = require('./tree/SessionDecorationProvider');
 const { setStatusBar } = require('./panel/statusIndicator');
 const { createPanel } = require('./panel/createPanel');
+const { pickAgent } = require('./handlers/pickAgent');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
@@ -43,8 +44,10 @@ function activate(context) {
   context.subscriptions.push(state.statusBar);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.open', (opts) => {
-      createPanel(context, extensionPath, null, opts || {});
+    vscode.commands.registerCommand('claudeCodeLauncher.open', async (opts) => {
+      const agent = await pickAgent();
+      if (agent === null) return; // user cancelled QuickPick
+      createPanel(context, extensionPath, null, Object.assign({}, opts || {}, { agent }));
     })
   );
 

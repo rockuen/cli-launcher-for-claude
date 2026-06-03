@@ -376,7 +376,7 @@ function getStyles(ctx) {
       display: flex;
       flex-direction: column;
       align-items: center;
-      min-height: 60vh;
+      min-height: 45vh;
       padding: 12px 0 28px;
       text-align: center;
     }
