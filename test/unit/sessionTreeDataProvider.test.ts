@@ -162,7 +162,10 @@ test('_cmp keeps sessionMeta rows ahead of sub-sessions', () => {
 test('extractMessageCount exported from sessionJsonl', () => {
   assert.match(jsonlSrc, /function extractMessageCount\s*\(/);
   assert.match(jsonlSrc, /module\.exports\s*=\s*\{[\s\S]*?extractMessageCount[\s\S]*?\}/);
-  assert.match(treeSrc, /extractMessageCount\s*\}\s*=\s*require\(['"]\.\.\/lib\/sessionJsonl['"]\)/);
+  // extractMessageCount is imported from sessionJsonl; the destructure may
+  // carry additional names after it (e.g. listKiroSessions added for the
+  // Kiro Sessions tree group) before closing the require.
+  assert.match(treeSrc, /extractMessageCount[\s\S]*?\}\s*=\s*require\(['"]\.\.\/lib\/sessionJsonl['"]\)/);
 });
 
 test('_relTime helper exists with the expected branch ladder', () => {

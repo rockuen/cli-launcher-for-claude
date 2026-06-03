@@ -130,6 +130,48 @@ test('kiro: findLatestKiroSessionPath picks the most recently updated session ma
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { listKiroSessions } = require('../../src/lib/sessionJsonl');
+
+test('listKiroSessions: filters by cwd and sorts updated_at DESC', () => {
+  const dir = path.join(os.tmpdir(), `kiro-list-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const CWD = '/my/project';
+  // Two matching sessions for CWD with different updated_at (newer should lead).
+  fs.writeFileSync(
+    path.join(dir, 'older.json'),
+    JSON.stringify({ session_id: 'older', title: 'Older', cwd: CWD, updated_at: '2026-06-01T10:00:00Z' }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(dir, 'newer.json'),
+    JSON.stringify({ session_id: 'newer', title: 'Newer', cwd: CWD, updated_at: '2026-06-02T12:00:00Z' }),
+    'utf8'
+  );
+  // Different cwd — must be excluded.
+  fs.writeFileSync(
+    path.join(dir, 'other.json'),
+    JSON.stringify({ session_id: 'other', title: 'Other', cwd: '/other/project', updated_at: '2026-06-03T10:00:00Z' }),
+    'utf8'
+  );
+  // A .jsonl transcript with a matching cwd must be ignored (not a .json meta).
+  fs.writeFileSync(path.join(dir, 'newer.jsonl'), '{}\n', 'utf8');
+
+  const result = listKiroSessions(CWD, dir);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].sessionId, 'newer'); // updated_at DESC
+  assert.equal(result[0].title, 'Newer');
+  assert.equal(result[1].sessionId, 'older');
+  assert.equal(result.every((s: any) => s.cwd === CWD), true);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('listKiroSessions: returns [] for a nonexistent dir', () => {
+  const out = listKiroSessions('/any/cwd', path.join(os.tmpdir(), `kiro-missing-${Date.now()}`));
+  assert.deepEqual(out, []);
+});
+
 // ── Kiro parser (_extractKiroMessages via extractMessages) ─────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

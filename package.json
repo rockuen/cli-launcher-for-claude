@@ -32,6 +32,24 @@
         "category": "Claude"
       },
       {
+        "command": "claudeCodeLauncher.newClaude",
+        "title": "New Claude Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.newKiro",
+        "title": "New Kiro Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.newSession",
+        "title": "New Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
         "command": "claudeCodeLauncher.renameTab",
         "title": "Rename Claude Code Tab",
         "category": "Claude"
@@ -223,13 +241,19 @@
         "command": "claudeCodeLauncher.handoffToOther",
         "title": "Claude Launcher: Hand off session to other agent",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.openSettings",
+        "title": "Claude Launcher: Settings",
+        "category": "Claude",
+        "icon": "$(gear)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "claude-code-launcher",
-          "title": "Claude Code",
+          "title": "CLI Launcher",
           "icon": "./icons/claude-robot.svg"
         }
       ]
@@ -237,8 +261,17 @@
     "views": {
       "claude-code-launcher": [
         {
+          "id": "claudeCodeLauncher.quickActions",
+          "name": "Quick Actions"
+        },
+        {
           "id": "claudeCodeLauncher.sessionList",
-          "name": "%sessions%"
+          "name": "Claude Sessions"
+        },
+        {
+          "id": "claudeCodeLauncher.kiroSessions",
+          "name": "Kiro Sessions",
+          "when": "claudeCodeLauncher.kiroAvailable"
         },
         {
           "id": "claudeCodeLauncher.ccgPanel",
@@ -255,6 +288,18 @@
     ],
     "menus": {
       "commandPalette": [
+        {
+          "command": "claudeCodeLauncher.newClaude",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.newKiro",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.newSession",
+          "when": "false"
+        },
         {
           "command": "claudeCodeLauncher.openTerminal",
           "when": "false"
@@ -358,7 +403,12 @@
       ],
       "view/title": [
         {
-          "command": "claudeCodeLauncher.open",
+          "command": "claudeCodeLauncher.openSettings",
+          "group": "navigation@0",
+          "when": "view == claudeCodeLauncher.quickActions"
+        },
+        {
+          "command": "claudeCodeLauncher.newClaude",
           "group": "navigation@1",
           "when": "view == claudeCodeLauncher.sessionList"
         },
@@ -366,6 +416,16 @@
           "command": "claudeCodeLauncher.refreshSessions",
           "group": "navigation@2",
           "when": "view == claudeCodeLauncher.sessionList"
+        },
+        {
+          "command": "claudeCodeLauncher.newKiro",
+          "group": "navigation@1",
+          "when": "view == claudeCodeLauncher.kiroSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.refreshSessions",
+          "group": "navigation@2",
+          "when": "view == claudeCodeLauncher.kiroSessions"
         },
         {
           "command": "claudeCodeLauncher.ccg.refresh",
@@ -623,6 +683,12 @@
           "enum": ["claude", "kiro"],
           "default": "claude",
           "description": "Which CLI agent new sessions launch (PoC: Kiro support). 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli). Requires kiro-cli to be installed: https://kiro.dev/docs/cli/installation/"
+        },
+        "claudeCodeLauncher.enabledAgents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["claude", "kiro"],
+          "description": "Agents shown when creating a new session. Toggle agents on/off in CLI Launcher Settings → Agent. Only enabled agents that are also installed appear in the new-session picker."
         }
       }
     },

@@ -39,6 +39,34 @@ function findLatestKiroSessionPath(cwd) {
   return best ? path.join(dir, best + '.jsonl') : null;
 }
 
+// List all Kiro sessions whose metadata cwd matches the given cwd, newest
+// first. Reads the companion .json metadata files under ~/.kiro/sessions/cli/
+// (excluding the .jsonl transcripts), filters to the matching cwd, and sorts
+// by updated_at DESC. Each entry is { sessionId, title, cwd, updatedAt }.
+// Returns [] when the directory doesn't exist or nothing matches. The `_dir`
+// arg is test-only injection; production callers pass cwd alone.
+function listKiroSessions(cwd, _dir) {
+  const dir = _dir || path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.jsonl'));
+  } catch { return []; }
+  const out = [];
+  for (const m of files) {
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(path.join(dir, m), 'utf-8')); } catch { continue; }
+    if (cwd && meta.cwd !== cwd) continue;
+    out.push({
+      sessionId: meta.session_id || m.replace(/\.json$/, ''),
+      title: meta.title || '',
+      cwd: meta.cwd,
+      updatedAt: meta.updated_at,
+    });
+  }
+  out.sort((a, b) => (Date.parse(b.updatedAt || '') || 0) - (Date.parse(a.updatedAt || '') || 0));
+  return out;
+}
+
 function getSessionJsonlPath(sessionId, cwd, agent) {
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids — the launcher's crypto.randomUUID()
@@ -275,6 +303,7 @@ function extractMessageCount(filePath, agent) {
 module.exports = {
   getSessionJsonlPath,
   findLatestKiroSessionPath,
+  listKiroSessions,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,

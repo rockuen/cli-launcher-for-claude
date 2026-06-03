@@ -15,6 +15,9 @@ function saveSessions() {
         cwd: entry.cwd,
         sessionId: entry.sessionId,
         agent: entry.agent || 'claude',
+        // Persist kiro Tree-resume flag so a Reload Window keeps the exact
+        // --resume-id path instead of falling back to cwd-latest --resume.
+        ...(entry.isKiroResume ? { isKiroResume: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
@@ -33,7 +36,7 @@ function saveSessions() {
     }
   }
   sessionStoreUpdate('claudeSessionTitles', titleMap);
-  if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+  state.refreshSessionTrees();
 }
 
 // Called at end of activate(). Restores in saved order with 500ms stagger

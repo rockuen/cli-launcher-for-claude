@@ -287,11 +287,16 @@ function createPanel(context, extensionPath, session, opts) {
       return;
     }
     shell = resolvedKiro.shell;
-    // kiro-cli chat: new session = ['chat'], resume = ['chat', '--resume-id', <id>]
+    // kiro-cli chat args, by precedence:
+    //   - isKiroResume (Tree resume; sessionId is the REAL kiro id on disk) →
+    //     ['chat', '--resume-id', <id>] for an exact directory-scoped resume.
+    //   - sessionId without isKiroResume (auto-restore; our random UUID never
+    //     matches kiro's id) → ['chat', '--resume'] (kiro resumes cwd-latest).
+    //   - neither → ['chat'] (fresh session).
     // Note: --effort/autoEffortMax is Claude-only — never passed to kiro.
-    const kiroArgs = session?.sessionId
-      ? ['chat', '--resume']
-      : ['chat'];
+    const kiroArgs = session?.isKiroResume
+      ? ['chat', '--resume-id', session.sessionId]
+      : (session?.sessionId ? ['chat', '--resume'] : ['chat']);
     args = [...resolvedKiro.args, ...kiroArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
@@ -382,6 +387,9 @@ function createPanel(context, extensionPath, session, opts) {
     cwd: cwd,
     sessionId: sessionId,
     agent: agent,
+    // v: kiro Tree-resume flag. When true, sessionId is the real kiro id on
+    // disk, so restartPty resumes via --resume-id instead of cwd-latest.
+    isKiroResume: !!(session && session.isKiroResume),
     state: 'running',
     idleTimer: null,
     backend: backend,
@@ -557,7 +565,7 @@ function createPanel(context, extensionPath, session, opts) {
           setTabIcon(panel, 'done', extensionPath);
           try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
           updateStatusBar();
-          if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+          state.refreshSessionTrees();
         }
         // Desktop notification only for a genuinely NEW prompt (dedup on the
         // marker) so navigation redraws don't spam. Fires on background tabs too.
@@ -600,7 +608,7 @@ function createPanel(context, extensionPath, session, opts) {
         try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
       }
       updateStatusBar();
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      state.refreshSessionTrees();
     }, IDLE_DELAY_MS);
 
     // postMessage only when active. Inactive panels' chunks are mirrored
@@ -714,7 +722,7 @@ function createPanel(context, extensionPath, session, opts) {
       try { panel.webview.postMessage({ type: 'state', state: 'stuck' }); } catch (_) {}
       setTabIcon(panel, 'error', extensionPath);
       updateStatusBar();
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      state.refreshSessionTrees();
       console.warn('[Claude Launcher] heartbeat: PTY child', pid, 'is gone but onExit never fired — marking stuck');
     }
   }, HEARTBEAT_INTERVAL_MS);

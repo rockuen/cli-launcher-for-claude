@@ -228,7 +228,7 @@ function routeWebviewMessage(msg, ctx) {
         }
       }
       panel.dispose();
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      state.refreshSessionTrees();
       return;
     }
 

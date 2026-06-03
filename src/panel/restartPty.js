@@ -37,10 +37,12 @@ function restartPty(entry, panel, context, extensionPath) {
       return;
     }
     shell = resolvedKiro.shell;
-    // kiro resume: ['chat', '--resume-id', <id>] if sessionId known, else new session
-    const kiroArgs = entry.sessionId
-      ? ['chat', '--resume']
-      : ['chat'];
+    // kiro resume args, same precedence as createPanel: a Tree-resumed panel
+    // (entry.isKiroResume, real kiro id) restarts via --resume-id; otherwise
+    // --resume (cwd-latest) for a known sessionId, or a fresh ['chat'].
+    const kiroArgs = entry.isKiroResume
+      ? ['chat', '--resume-id', entry.sessionId]
+      : (entry.sessionId ? ['chat', '--resume'] : ['chat']);
     args = [...resolvedKiro.args, ...kiroArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved
@@ -124,7 +126,7 @@ function restartPty(entry, panel, context, extensionPath) {
           try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
         }
         updateStatusBar();
-        if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+        state.refreshSessionTrees();
       }, IDLE_DELAY_MS);
     });
 

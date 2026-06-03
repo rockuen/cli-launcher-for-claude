@@ -23,10 +23,12 @@ const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = requi
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
 const { killPtyProcess } = require('./pty/kill');
 const { SessionTreeDataProvider } = require('./tree/SessionTreeDataProvider');
+const { QuickActionsProvider } = require('./tree/QuickActionsProvider');
 const { SessionDecorationProvider } = require('./tree/SessionDecorationProvider');
 const { setStatusBar } = require('./panel/statusIndicator');
 const { createPanel } = require('./panel/createPanel');
 const { pickAgent } = require('./handlers/pickAgent');
+const { listAgents } = require('./agents/registry');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
@@ -48,6 +50,26 @@ function activate(context) {
       const agent = await pickAgent();
       if (agent === null) return; // user cancelled QuickPick
       createPanel(context, extensionPath, null, Object.assign({}, opts || {}, { agent }));
+    })
+  );
+
+  // Agent-scoped new-session commands. The split sidebar views ('Claude
+  // Sessions' / 'Kiro Sessions') each own a + button wired here, so the agent
+  // is decided by which view's header you click — no pickAgent QuickPick. The
+  // generic 'open' command (palette + keybinding) still goes through pickAgent.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.newClaude', () => {
+      createPanel(context, extensionPath, null, { agent: 'claude' });
+    }),
+    vscode.commands.registerCommand('claudeCodeLauncher.newKiro', () => {
+      createPanel(context, extensionPath, null, { agent: 'kiro' });
+    }),
+    // Unified new-session command — backs the Quick Actions view rows (one per
+    // installed + enabled agent). Tree-item only (hidden from the palette via
+    // package.json menus); newClaude/newKiro stay as the session-view + button
+    // entry points.
+    vscode.commands.registerCommand('claudeCodeLauncher.newSession', (agentId) => {
+      createPanel(context, extensionPath, null, { agent: agentId || 'claude' });
     })
   );
 
@@ -148,14 +170,50 @@ function activate(context) {
     })
   );
 
-  // Session tree view — v2.6.0: register TreeDragAndDropController via provider
-  state.sessionTreeProvider = new SessionTreeDataProvider(context);
+  // Session tree views — split into two agent-scoped views:
+  //   'Claude Sessions' (claudeCodeLauncher.sessionList, id kept for keybinding
+  //     compatibility) — claude groups only, kiro excluded.
+  //   'Kiro Sessions' (claudeCodeLauncher.kiroSessions) — kiro sessions only,
+  //     hidden via the kiroAvailable context key when kiro isn't installed/enabled.
+  // v2.6.0: claude view registers a TreeDragAndDropController via its provider.
+  state.sessionTreeProvider = new SessionTreeDataProvider(context, 'claude');
   const treeView = vscode.window.createTreeView('claudeCodeLauncher.sessionList', {
     treeDataProvider: state.sessionTreeProvider,
     dragAndDropController: state.sessionTreeProvider,
     canSelectMany: true
   });
   context.subscriptions.push(treeView);
+
+  state.kiroTreeProvider = new SessionTreeDataProvider(context, 'kiro');
+  const kiroTreeView = vscode.window.createTreeView('claudeCodeLauncher.kiroSessions', {
+    treeDataProvider: state.kiroTreeProvider,
+    canSelectMany: false
+  });
+  context.subscriptions.push(kiroTreeView);
+
+  // Quick Actions — top-of-container view holding the new-session rows (one per
+  // installed + enabled agent) + a handoff row. The settings ⚙ lives in this
+  // view's view/title. refresh() is called from the enabledAgents config-change
+  // handler so toggling an agent on/off updates its row without a reload.
+  state.quickActionsProvider = new QuickActionsProvider();
+  const quickActionsView = vscode.window.createTreeView('claudeCodeLauncher.quickActions', {
+    treeDataProvider: state.quickActionsProvider,
+  });
+  context.subscriptions.push(quickActionsView);
+
+  // kiroAvailable context key — drives the 'Kiro Sessions' view visibility
+  // (package.json views[].when). True only when kiro-cli is installed AND
+  // 'kiro' is in claudeCodeLauncher.enabledAgents. Refreshed on enabledAgents
+  // config changes below.
+  function refreshKiroAvailable() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('enabledAgents', ['claude', 'kiro']);
+    const kiroInstalled = listAgents().some(a => a.id === 'kiro' && a.installed);
+    const available = kiroInstalled && enabled.includes('kiro');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.kiroAvailable', available);
+  }
+  refreshKiroAvailable();
 
   // v3.5.8: size-based decoration. Yellows 5+ MB session labels, reds 10+ MB
   // ones. SessionTreeDataProvider tags each session item with a custom
@@ -183,11 +241,46 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.refreshSessions', () => {
       state.sessionTreeProvider.refresh();
+      if (state.kiroTreeProvider) state.kiroTreeProvider.refresh();
+    })
+  );
+
+  // Re-evaluate the kiroAvailable context key when the enabled agents change
+  // so the 'Kiro Sessions' view shows/hides without a window reload.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('claudeCodeLauncher.enabledAgents')) {
+        refreshKiroAvailable();
+        if (state.quickActionsProvider) state.quickActionsProvider.refresh();
+      }
+    })
+  );
+
+  // Sidebar ⚙ — open the global (extension-wide) settings editor panel. This
+  // is distinct from the per-panel settings MODAL inside each webview tab
+  // (toolbar ⚙); the global panel edits ConfigurationTarget.Global settings
+  // (e.g. default agent) in a standalone 2-column editor.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.openSettings', () => {
+      require('./panel/settingsPanel').openGlobalSettings(context);
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.resumeSession', (sessionId, opts) => {
+      // Kiro resume: directory-scoped resume by the real kiro session id.
+      // The session MUST spawn in its own cwd (kiro resolves --resume-id
+      // relative to the working directory), so opts.cwd is threaded into the
+      // panel session as cwd. No claude-side title/savedSessions bookkeeping.
+      if (opts && opts.agent === 'kiro') {
+        createPanel(
+          context,
+          extensionPath,
+          { sessionId, cwd: opts.cwd, agent: 'kiro', isKiroResume: true },
+          {}
+        );
+        return;
+      }
       const titleMap = sessionStoreGet('claudeSessionTitles', {});
       const title = titleMap[sessionId] || undefined;
       // Remove from saved sessions list when resuming

@@ -26,7 +26,7 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
-const { extractAiTitle, extractFirstUserMessage, extractMessageCount } = require('../lib/sessionJsonl');
+const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions } = require('../lib/sessionJsonl');
 const { formatBytes } = require('../lib/sizeFormat');
 const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_THRESHOLD: SIZE_ERROR, formatMB } = require('./SessionDecorationProvider');
 
@@ -66,8 +66,14 @@ const DND_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.sessions'
 const DND_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.groups';
 
 class SessionTreeDataProvider {
-  constructor(context) {
+  // agentMode: 'claude' (default — full claude groups, kiro excluded) or
+  // 'kiro' (root children are kiro sessions only). Splitting the one sidebar
+  // tree into two agent-scoped views ('Claude Sessions' + 'Kiro Sessions')
+  // lets each view own its header actions and lets the kiro view hide itself
+  // when kiro isn't installed/enabled (kiroAvailable context key).
+  constructor(context, agentMode = 'claude') {
     this._context = context;
+    this._agentMode = agentMode;
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this._cache = null;
@@ -139,7 +145,9 @@ class SessionTreeDataProvider {
   getChildren(element) {
     if (!element) {
       if (this._cache) return this._cache;
-      this._cache = this._buildGroups();
+      this._cache = this._agentMode === 'kiro'
+        ? this._buildKiroSessions()
+        : this._buildGroups();
       return this._cache;
     }
     // v3.5.9: lazy metadata row. Session items carry _jsonlPath + _mtime +
@@ -451,6 +459,34 @@ class SessionTreeDataProvider {
     }
 
     return groups;
+  }
+
+  // Kiro Sessions — used by the dedicated 'Kiro Sessions' view (agentMode
+  // 'kiro'). Root children are the workspace's kiro sessions, listed from the
+  // same cwd _getProjectDir derives the claude project dir from. Returns []
+  // when there are no kiro sessions, leaving the view empty (the view itself
+  // is hidden via the kiroAvailable context key when kiro isn't installed/
+  // enabled). Click → resume via the real kiro id (--resume-id, kiroResume).
+  _buildKiroSessions() {
+    const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    if (!kiroCwd) return [];
+    const kiroSessions = listKiroSessions(kiroCwd);
+    return kiroSessions.map(s => {
+      const label = s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      const mtime = Date.parse(s.updatedAt || '') || 0;
+      item.description = mtime ? _relTime(mtime) : '';
+      item.iconPath = new vscode.ThemeIcon('comment-discussion');
+      item.contextValue = 'kiroSession';
+      item.tooltip = `Kiro session: ${s.sessionId}\n${s.cwd || ''}`;
+      item._sessionId = s.sessionId;
+      item.command = {
+        command: 'claudeCodeLauncher.resumeSession',
+        title: 'Resume',
+        arguments: [s.sessionId, { agent: 'kiro', kiroResume: true, cwd: s.cwd }],
+      };
+      return item;
+    });
   }
 
   // v3.6.9: protectedIds = ids in custom groups + Resume Later. archivedIds =
