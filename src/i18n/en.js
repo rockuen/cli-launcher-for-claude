@@ -48,7 +48,7 @@ module.exports = {
   dropFiles: 'Drop files here',
   scrollBottomTip: 'Scroll to bottom',
   themeTitle: 'Background Theme',
-  themeDefault: 'Default', themeMidnight: 'Midnight', themeOcean: 'Ocean',
+  themeDefault: 'Claude Dark', themeMidnight: 'Midnight', themeOcean: 'Ocean',
   themeForest: 'Forest', themeSunset: 'Sunset', themeAurora: 'Aurora', themeWarm: 'Warm',
   inputPlaceholder: 'Type a message... (Enter: Send / Shift+Enter: Newline / /: Command)',
   inputHint: 'Enter Send · Shift+Enter Newline · / Command',

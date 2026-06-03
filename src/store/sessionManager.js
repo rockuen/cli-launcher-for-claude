@@ -3,6 +3,15 @@
 
 const state = require('../state');
 const { sessionStoreGet, sessionStoreUpdate } = require('./sessionStore');
+const { listAgents } = require('../agents/registry');
+
+// Returns true when `title` is a default-generated tab title for any known agent
+// (e.g. "Claude Code", "Claude Code (2)", "Kiro", "Kiro (3)").
+// Used to skip overwriting titleMap entries with auto-generated names.
+function isDefaultTabTitle(title) {
+  if (!title) return false;
+  return listAgents().some(({ label }) => new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( \\(\\d+\\))?$`).test(title));
+}
 
 function saveSessions() {
   const sessions = [];
@@ -30,8 +39,8 @@ function saveSessions() {
   const titleMap = sessionStoreGet('claudeSessionTitles', {});
   for (const s of sessions) {
     if (s.sessionId && s.title) {
-      // 기본 탭 이름(Claude Code, Claude Code (N))이면 기존 매핑 유지 (덮어쓰기 금지)
-      if (/^Claude Code( \(\d+\))?$/.test(s.title)) continue;
+      // 기본 탭 이름(Claude Code, Kiro 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
+      if (isDefaultTabTitle(s.title)) continue;
       titleMap[s.sessionId] = s.title;
     }
   }

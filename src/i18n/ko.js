@@ -47,7 +47,7 @@ module.exports = {
   dropFiles: '파일을 여기에 놓으세요',
   scrollBottomTip: '맨 아래로',
   themeTitle: '배경 테마',
-  themeDefault: '기본', themeMidnight: '미드나이트', themeOcean: '오션',
+  themeDefault: 'Claude Dark', themeMidnight: '미드나이트', themeOcean: '오션',
   themeForest: '포레스트', themeSunset: '선셋', themeAurora: '오로라', themeWarm: '따뜻한',
   inputPlaceholder: '메시지를 입력하세요... (Enter: 전송 / Shift+Enter: 줄바꿈 / /: 명령어)',
   inputHint: 'Enter 전송 · Shift+Enter 줄바꿈 · / 명령어',

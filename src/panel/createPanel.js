@@ -28,6 +28,7 @@ const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./st
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib/sessionJsonl');
 const { buildMeta, renderBlocks, renderWelcome } = require('../lib/readerRender');
+const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
@@ -183,7 +184,9 @@ function createPanel(context, extensionPath, session, opts) {
 
   state.tabCounter++;
   const tabId = state.tabCounter;
-  const tabTitle = session?.title || (state.tabCounter === 1 ? 'Claude Code' : `Claude Code (${state.tabCounter})`);
+  const agent = (opts && opts.agent) || (session && session.agent) || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
+  const agentLabel = (listAgents().find(a => a.id === agent) || {}).label || 'Claude Code';
+  const tabTitle = session?.title || (state.tabCounter === 1 ? agentLabel : `${agentLabel} (${state.tabCounter})`);
 
   const panel = vscode.window.createWebviewPanel(
     'claudeCode',
@@ -266,7 +269,7 @@ function createPanel(context, extensionPath, session, opts) {
 
   // Spawn CLI — agent-aware (PoC: 'claude' default, 'kiro' opt-in via settings)
   // opts.agent takes priority so handoff can force the opposite backend.
-  const agent = (opts && opts.agent) || (session && session.agent) || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
+  // (agent is already resolved above for tabTitle — reused here)
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
   const sessionId = session?.sessionId || crypto.randomUUID();
 
