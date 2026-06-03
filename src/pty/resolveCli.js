@@ -29,4 +29,28 @@ function resolveClaudeCli() {
   }
 }
 
-module.exports = { resolveClaudeCli };
+// @module pty/resolveCli — locates the Kiro CLI binary.
+// Priority: ~/.local/bin/kiro-cli (official standalone) → PATH fallback.
+function resolveKiroCli() {
+  const isWin = process.platform === 'win32';
+
+  // 1) ~/.local/bin/kiro-cli(.exe) — official standalone install
+  const localBin = isWin
+    ? path.join(os.homedir(), '.local', 'bin', 'kiro-cli.exe')
+    : path.join(os.homedir(), '.local', 'bin', 'kiro-cli');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+
+  // 2) Fallback — hope it's on PATH
+  try {
+    require('child_process').execFileSync(
+      isWin ? 'kiro-cli.exe' : 'kiro-cli',
+      ['--version'],
+      { timeout: 1500, stdio: 'ignore' }
+    );
+    return { shell: isWin ? 'kiro-cli.exe' : 'kiro-cli', args: [] };
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli };

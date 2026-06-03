@@ -4,7 +4,7 @@
 const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
-const { resolveClaudeCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
@@ -27,15 +27,33 @@ function restartPty(entry, panel, context, extensionPath) {
     return;
   }
 
-  const resolved = resolveClaudeCli();
-  if (!resolved) {
-    entry._restarting = false;
-    vscode.window.showErrorMessage('Claude Code CLI not found.');
-    return;
+  const agent = vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
+  let shell, args;
+  if (agent === 'kiro') {
+    const resolvedKiro = resolveKiroCli();
+    if (!resolvedKiro) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Kiro CLI (kiro-cli) not found.');
+      return;
+    }
+    shell = resolvedKiro.shell;
+    // kiro resume: ['chat', '--resume-id', <id>] if sessionId known, else new session
+    const kiroArgs = entry.sessionId
+      ? ['chat', '--resume-id', entry.sessionId]
+      : ['chat'];
+    args = [...resolvedKiro.args, ...kiroArgs];
+  } else {
+    // agent === 'claude' (default) — original logic preserved
+    const resolved = resolveClaudeCli();
+    if (!resolved) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Claude Code CLI not found.');
+      return;
+    }
+    shell = resolved.shell;
+    const autoEffortMax = vscode.workspace.getConfiguration('claudeCodeLauncher').get('autoEffortMax', false);
+    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : [])];
   }
-  const shell = resolved.shell;
-  const autoEffortMax = vscode.workspace.getConfiguration('claudeCodeLauncher').get('autoEffortMax', false);
-  const args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : [])];
 
   // Kill old PTY before spawning new one to prevent orphaned processes
   if (entry.pty) {

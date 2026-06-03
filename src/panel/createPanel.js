@@ -18,7 +18,7 @@ const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
-const { resolveClaudeCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
@@ -49,9 +49,24 @@ const IDLE_DELAY_MS = 3000;
 // that. Watcher attaches even if the jsonl doesn't exist yet (Claude Code
 // creates it on first turn) — chokidar polls and fires `add` when it appears.
 function startReaderWatch(entry, panel) {
-  if (!entry || !entry.sessionId || !entry.cwd) return null;
-  const jsonlPath = getSessionJsonlPath(entry.sessionId, entry.cwd);
-  if (!jsonlPath) return null;
+  if (!entry || !entry.sessionId) return null;
+  if (entry.agent !== 'kiro' && !entry.cwd) return null;
+
+  // For kiro: Kiro assigns its own session ids — our entry.sessionId is a
+  // random UUID that never matches the file on disk. We watch the whole
+  // sessions directory and resolve the correct jsonl path on every render
+  // tick via getSessionJsonlPath (which calls findLatestKiroSessionPath).
+  // For claude: path is fixed for the lifetime of the session; resolve once.
+  const watchTarget = entry.agent === 'kiro'
+    ? path.join(os.homedir(), '.kiro', 'sessions', 'cli')
+    : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
+  if (!watchTarget) return null;
+
+  // Dynamic path resolution: kiro re-evaluates on every render; claude keeps
+  // the fixed path (avoids repeated stat/scan on the common hot path).
+  const resolvePath = entry.agent === 'kiro'
+    ? () => getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent)
+    : () => watchTarget;
 
   let debounceTimer = null;
   // v3.5.7: defer renders on hidden panels. renderBlocks() on a multi-MB
@@ -63,12 +78,13 @@ function startReaderWatch(entry, panel) {
   const render = () => {
     debounceTimer = null;
     if (entry._disposed) return;
-    if (!fs.existsSync(jsonlPath)) return;
+    const jsonlPath = resolvePath();
+    if (!jsonlPath || !fs.existsSync(jsonlPath)) return;
     if (!panel.active) { pendingRender = true; return; }
     let messages, aiTitle;
     try {
-      aiTitle = extractAiTitle(jsonlPath);
-      messages = extractMessages(jsonlPath);
+      aiTitle = extractAiTitle(jsonlPath, entry.agent);
+      messages = extractMessages(jsonlPath, entry.agent);
     } catch (e) {
       console.error('[panel-reader] read failed:', e.message);
       return;
@@ -100,7 +116,7 @@ function startReaderWatch(entry, panel) {
 
   let watcher = null;
   try {
-    watcher = chokidar.watch(jsonlPath, {
+    watcher = chokidar.watch(watchTarget, {
       persistent: true,
       ignoreInitial: false,
       usePolling: true,
@@ -116,7 +132,7 @@ function startReaderWatch(entry, panel) {
     watcher.on('add', () => schedule());
     watcher.on('change', () => schedule());
     watcher.on('error', (e) => console.error('[panel-reader] watcher error:', e && e.message));
-    console.log('[panel-reader] watching ' + jsonlPath);
+    console.log('[panel-reader] watching ' + watchTarget);
   } catch (e) {
     console.error('[panel-reader] failed to start watch:', e.message);
     return null;
@@ -248,29 +264,56 @@ function createPanel(context, extensionPath, session, opts) {
   const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle, splitRatio };
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, renderWelcome(), splitLayoutDefault, extraSlashes);
 
-  // Spawn claude CLI
+  // Spawn CLI — agent-aware (PoC: 'claude' default, 'kiro' opt-in via settings)
+  const agent = vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
   const sessionId = session?.sessionId || crypto.randomUUID();
-  const resolved = resolveClaudeCli();
-  if (!resolved) {
-    const install = 'Install Claude Code';
-    vscode.window.showErrorMessage(
-      'Claude Code CLI not found. Please install it first: npm install -g @anthropic-ai/claude-code',
-      install
-    ).then(choice => {
-      if (choice === install) {
-        vscode.env.openExternal(vscode.Uri.parse('https://docs.anthropic.com/en/docs/claude-code/overview'));
-      }
-    });
-    panel.dispose();
-    return;
-  }
 
-  const shell = resolved.shell;
-  const claudeArgs = session?.sessionId
-    ? ['--resume', session.sessionId]
-    : ['--session-id', sessionId];
-  const args = [...resolved.args, ...claudeArgs, ...(autoEffortMax ? ['--effort', 'max'] : [])];
+  let shell, args;
+  if (agent === 'kiro') {
+    const resolvedKiro = resolveKiroCli();
+    if (!resolvedKiro) {
+      const install = 'Install Kiro CLI';
+      vscode.window.showErrorMessage(
+        'Kiro CLI (kiro-cli) not found. Please install it first.',
+        install
+      ).then(choice => {
+        if (choice === install) {
+          vscode.env.openExternal(vscode.Uri.parse('https://kiro.dev/docs/cli/installation/'));
+        }
+      });
+      panel.dispose();
+      return;
+    }
+    shell = resolvedKiro.shell;
+    // kiro-cli chat: new session = ['chat'], resume = ['chat', '--resume-id', <id>]
+    // Note: --effort/autoEffortMax is Claude-only — never passed to kiro.
+    const kiroArgs = session?.sessionId
+      ? ['chat', '--resume-id', session.sessionId]
+      : ['chat'];
+    args = [...resolvedKiro.args, ...kiroArgs];
+  } else {
+    // agent === 'claude' (default) — original logic, byte-for-byte preserved
+    const resolved = resolveClaudeCli();
+    if (!resolved) {
+      const install = 'Install Claude Code';
+      vscode.window.showErrorMessage(
+        'Claude Code CLI not found. Please install it first: npm install -g @anthropic-ai/claude-code',
+        install
+      ).then(choice => {
+        if (choice === install) {
+          vscode.env.openExternal(vscode.Uri.parse('https://docs.anthropic.com/en/docs/claude-code/overview'));
+        }
+      });
+      panel.dispose();
+      return;
+    }
+    shell = resolved.shell;
+    const claudeArgs = session?.sessionId
+      ? ['--resume', session.sessionId]
+      : ['--session-id', sessionId];
+    args = [...resolved.args, ...claudeArgs, ...(autoEffortMax ? ['--effort', 'max'] : [])];
+  }
 
   // Multiplexer wrap: keep the webview UI, but spawn an attached tmux/psmux
   // client so the in-tab terminal IS the multiplexer session. Quotes
@@ -290,7 +333,7 @@ function createPanel(context, extensionPath, session, opts) {
   }
 
   console.log('[Claude Launcher] Spawning:', spawnBin, spawnArgs.join(' '), '| cwd:', cwd, '| backend:', backend);
-  console.log('[Claude Launcher] resolved shell:', shell, '| args prefix:', resolved.args);
+  console.log('[Claude Launcher] resolved shell:', shell, '| agent:', agent, '| args:', args);
 
   let ptyProcess;
   try {
@@ -337,6 +380,7 @@ function createPanel(context, extensionPath, session, opts) {
     memo: session?.memo || '',
     cwd: cwd,
     sessionId: sessionId,
+    agent: agent,
     state: 'running',
     idleTimer: null,
     backend: backend,

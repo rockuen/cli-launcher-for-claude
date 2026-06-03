@@ -107,8 +107,8 @@ function renderLive() {
   }
   let messages, aiTitle;
   try {
-    aiTitle = extractAiTitle(currentFilePath);
-    messages = extractMessages(currentFilePath);
+    aiTitle = extractAiTitle(currentFilePath, currentEntry.agent);
+    messages = extractMessages(currentFilePath, currentEntry.agent);
   } catch (e) {
     console.error('[reader] re-read failed:', e.message);
     return;
@@ -178,22 +178,22 @@ function handleReaderInput(text) {
 function show(entry, context) {
   if (context) _context = context;
 
-  if (!entry || !entry.sessionId || !entry.cwd) {
+  if (!entry || !entry.sessionId || (entry.agent !== 'kiro' && !entry.cwd)) {
     vscode.window.showInformationMessage('Reader: this tab has no session yet.');
     return;
   }
-  const filePath = getSessionJsonlPath(entry.sessionId, entry.cwd);
+  const filePath = getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
   if (!filePath || !fs.existsSync(filePath)) {
     vscode.window.showInformationMessage(
-      'Reader: no session file yet (try once Claude has produced output).'
+      'Reader: no session file yet (try once the agent has produced output).'
     );
     return;
   }
   let messages = [];
   let aiTitle = null;
   try {
-    aiTitle = extractAiTitle(filePath);
-    messages = extractMessages(filePath);
+    aiTitle = extractAiTitle(filePath, entry.agent);
+    messages = extractMessages(filePath, entry.agent);
   } catch (e) {
     vscode.window.showErrorMessage('Reader: failed to read session — ' + e.message);
     return;

@@ -612,6 +612,12 @@
           "minimum": 20,
           "maximum": 2000,
           "description": "Maximum number of user/assistant messages rendered in the reader pane. Older messages are hidden (the underlying jsonl still holds everything) to keep the reader DOM bounded on long sessions — a 17-panel marathon showed reader-area growing to 10,000+ DOM nodes / 300+ KB on a single panel without this cap. A top indicator line shows the dropped count when truncation kicks in. Default 200 covers typical sessions; raise it if you regularly need more in-pane history, lower it (e.g. 50) if you keep many panels open simultaneously."
+        },
+        "claudeCodeLauncher.agent": {
+          "type": "string",
+          "enum": ["claude", "kiro"],
+          "default": "claude",
+          "description": "Which CLI agent new sessions launch (PoC: Kiro support). 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli). Requires kiro-cli to be installed: https://kiro.dev/docs/cli/installation/"
         }
       }
     },

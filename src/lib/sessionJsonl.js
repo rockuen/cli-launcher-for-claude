@@ -13,8 +13,43 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
-function getSessionJsonlPath(sessionId, cwd) {
-  if (!sessionId || !cwd) return null;
+// Find the most-recently-updated Kiro session jsonl that matches the given cwd.
+// Kiro writes a companion .json metadata file alongside each .jsonl (same dir,
+// same base name). The metadata carries { session_id, cwd, created_at,
+// updated_at }. We scan all .json files (excluding .jsonl), filter to those
+// whose cwd matches, and return the path of the most recently updated one.
+// Returns null when the directory doesn't exist or no matching session is found.
+function findLatestKiroSessionPath(cwd) {
+  const dir = path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+  let files;
+  try {
+    files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.jsonl'));
+  } catch { return null; }
+  let best = null, bestTime = -1;
+  for (const m of files) {
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(path.join(dir, m), 'utf-8')); } catch { continue; }
+    if (cwd && meta.cwd !== cwd) continue; // exact cwd match
+    const t = Date.parse(meta.updated_at || meta.created_at || '') || 0;
+    if (t > bestTime) {
+      bestTime = t;
+      best = meta.session_id || m.replace(/\.json$/, '');
+    }
+  }
+  return best ? path.join(dir, best + '.jsonl') : null;
+}
+
+function getSessionJsonlPath(sessionId, cwd, agent) {
+  if (agent === 'kiro') {
+    // Kiro auto-assigns its own session ids — the launcher's crypto.randomUUID()
+    // never matches what Kiro writes on disk. Discover the actual file by
+    // scanning metadata .json files in the sessions dir and picking the most
+    // recently updated one whose cwd matches. sessionId is intentionally unused
+    // for kiro; cwd is the discriminator.
+    return findLatestKiroSessionPath(cwd);
+  }
+  if (!sessionId) return null;
+  if (!cwd) return null;
   // v3.4.7: include ':' in the strip set. Without it, Windows cwds like
   // 'C:\\Users\\foo\\proj' encoded to 'C:-Users-foo-proj' (colon kept), which
   // never matched Claude Code's actual 'C--Users-foo-proj' folder — so the
@@ -103,8 +138,37 @@ function _readLinesCached(filePath) {
 // Test-only: clear the line cache so unit tests can observe fresh reads.
 function _clearLineCache() { _lineCache.clear(); }
 
+// Kiro JSONL parser helper. Each line has: { version, kind, data: { ... } }
+//   kind === 'Prompt'           → role 'user'
+//   kind === 'AssistantMessage' → role 'assistant'
+//   kind === 'ToolResults'      → skip
+// Text is in data.content[].data where data.content[].kind === 'text'.
+// Timestamp comes from data.meta?.timestamp.
+function _extractKiroMessages(lines) {
+  const out = [];
+  for (const d of lines) {
+    const kind = d && d.kind;
+    if (kind !== 'Prompt' && kind !== 'AssistantMessage') continue;
+    const role = kind === 'Prompt' ? 'user' : 'assistant';
+    const content = d.data && d.data.content;
+    if (!Array.isArray(content)) continue;
+    const parts = [];
+    for (const c of content) {
+      if (c && c.kind === 'text' && typeof c.data === 'string' && c.data.trim()) {
+        parts.push(c.data);
+      }
+    }
+    if (parts.length === 0) continue;
+    const timestamp = (d.data && d.data.meta && d.data.meta.timestamp) || null;
+    out.push({ role, text: parts.join('\n\n'), timestamp });
+  }
+  return out;
+}
+
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
-function extractAiTitle(filePath) {
+// Kiro sessions have no title line in the jsonl; return null for them.
+function extractAiTitle(filePath, agent) {
+  if (agent === 'kiro') return null;
   const lines = _readLinesCached(filePath);
   if (!lines) return null;
   let title = null;
@@ -146,10 +210,11 @@ function extractFirstUserMessage(filePath) {
 //   - filters:   sidechain, isMeta, system-tag-prefixed strings
 const SYS_TAG_RE = /^\s*<(?:command-[a-z-]+|local-command-[a-z-]+|system-reminder|user-prompt-submit-hook)\b/i;
 
-function extractMessages(filePath) {
-  const out = [];
+function extractMessages(filePath, agent) {
   const lines = _readLinesCached(filePath);
-  if (!lines) return out;
+  if (!lines) return [];
+  if (agent === 'kiro') return _extractKiroMessages(lines);
+  const out = [];
   try {
     for (const d of lines) {
       if (d.isSidechain) continue;
@@ -181,10 +246,11 @@ function extractMessages(filePath) {
 
 // User + assistant turn count, matching extractMessages()'s filter so the
 // number on the metadata row equals the rendered reader transcript length.
-function extractMessageCount(filePath) {
-  let n = 0;
+function extractMessageCount(filePath, agent) {
   const lines = _readLinesCached(filePath);
-  if (!lines) return n;
+  if (!lines) return 0;
+  if (agent === 'kiro') return _extractKiroMessages(lines).length;
+  let n = 0;
   try {
     for (const d of lines) {
       if (d.isSidechain) continue;
@@ -208,6 +274,7 @@ function extractMessageCount(filePath) {
 
 module.exports = {
   getSessionJsonlPath,
+  findLatestKiroSessionPath,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,
