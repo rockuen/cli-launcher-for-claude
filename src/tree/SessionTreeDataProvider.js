@@ -64,6 +64,38 @@ function _relTime(mtime) {
 
 const DND_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.sessions';
 const DND_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.groups';
+// kiro view uses its own MIME pair so a drag started in the Kiro Sessions view
+// can never drop onto the Claude Sessions view (and vice-versa) — VSCode only
+// accepts a drop whose DataTransfer carries a MIME the target provider lists in
+// its dropMimeTypes. Distinct MIMEs per agent are the structural guard against
+// cross-view session/group mixing.
+const DND_KIRO_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.kirosessions';
+const DND_KIRO_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.kirogroups';
+
+// Per-agent store-key map. claude keeps its historical keys (no migration);
+// kiro gets a parallel, fully separate set so the two agents' custom groups,
+// membership, ordering and nesting never touch each other's data. _storeKey()
+// resolves a logical key (e.g. 'groups') to the agent-specific physical key.
+const STORE_KEYS = {
+  claude: {
+    groups: 'claudeSessionGroups',
+    saved: 'claudeSavedSessions',
+    parent: 'claudeSessionParent',
+    sortOrder: 'claudeSessionSortOrder',
+    archived: 'claudeSessionGroupArchived',
+    titles: 'claudeSessionTitles',
+  },
+  kiro: {
+    groups: 'kiroSessionGroups',
+    // kiro has no Resume Later / archive concept; the keys are declared so the
+    // shared helpers can read them uniformly (they resolve to empty defaults).
+    saved: 'kiroSavedSessions',
+    parent: 'kiroSessionParent',
+    sortOrder: 'kiroSessionSortOrder',
+    archived: 'kiroSessionGroupArchived',
+    titles: 'kiroSessionTitles',
+  },
+};
 
 class SessionTreeDataProvider {
   // agentMode: 'claude' (default — full claude groups, kiro excluded) or
@@ -97,9 +129,18 @@ class SessionTreeDataProvider {
     this._fileMetaCache = new Map();
     this._FILE_META_CACHE_MAX = 100;
 
-    // TreeDragAndDropController interface (read by createTreeView(options))
-    this.dropMimeTypes = [DND_SESSION_MIME, DND_GROUP_MIME];
-    this.dragMimeTypes = [DND_SESSION_MIME, DND_GROUP_MIME];
+    // TreeDragAndDropController interface (read by createTreeView(options)).
+    // MIME pair is agent-scoped so a drag in one view can't drop in the other.
+    this._sessionMime = agentMode === 'kiro' ? DND_KIRO_SESSION_MIME : DND_SESSION_MIME;
+    this._groupMime = agentMode === 'kiro' ? DND_KIRO_GROUP_MIME : DND_GROUP_MIME;
+    this.dropMimeTypes = [this._sessionMime, this._groupMime];
+    this.dragMimeTypes = [this._sessionMime, this._groupMime];
+  }
+
+  // Resolve a logical store key ('groups', 'parent', ...) to the physical key
+  // for this provider's agentMode. claude → historical keys; kiro → kiro keys.
+  _storeKey(logical) {
+    return (STORE_KEYS[this._agentMode] || STORE_KEYS.claude)[logical];
   }
 
   refresh() {
@@ -471,7 +512,13 @@ class SessionTreeDataProvider {
     const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
     if (!kiroCwd) return [];
     const kiroSessions = listKiroSessions(kiroCwd);
-    return kiroSessions.map(s => {
+
+    // Build the leaf session items keyed by the real kiro session_id (from the
+    // meta .json). The id is what group membership is stored against, mirroring
+    // how claude keys membership by its session id.
+    const itemMap = new Map();
+    const mtimeMap = new Map();
+    for (const s of kiroSessions) {
       const label = s.title || `${(s.sessionId || '').substring(0, 8)}…`;
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       const mtime = Date.parse(s.updatedAt || '') || 0;
@@ -480,13 +527,130 @@ class SessionTreeDataProvider {
       item.contextValue = 'kiroSession';
       item.tooltip = `Kiro session: ${s.sessionId}\n${s.cwd || ''}`;
       item._sessionId = s.sessionId;
+      item._mtime = mtime;
       item.command = {
         command: 'claudeCodeLauncher.resumeSession',
         title: 'Resume',
         arguments: [s.sessionId, { agent: 'kiro', kiroResume: true, cwd: s.cwd }],
       };
-      return item;
-    });
+      itemMap.set(s.sessionId, item);
+      mtimeMap.set(s.sessionId, mtime);
+    }
+
+    // Custom groups + ungrouped, mirroring claude's _buildGroups custom-group
+    // section but with no Resume Later / Recent / Trash / archive — kiro shows
+    // its custom groups followed by every ungrouped session flat (current
+    // behaviour for the ungrouped set). Group definitions live in the
+    // kiro-only store keys (_storeKey), so claude groups never bleed in.
+    return this._buildAgentGroups(itemMap, mtimeMap);
+  }
+
+  // Shared "custom groups + ungrouped sessions" builder used by the kiro view
+  // (and any future agent view). claude keeps its richer _buildGroups (Resume
+  // Later / Recent / Trash / archive) — this is the generalised subset:
+  //   [ ...customGroupNodes, ...ungroupedSessionItems ]
+  // All store reads go through _storeKey so the agent's own keys are used.
+  _buildAgentGroups(itemMap, mtimeMap) {
+    const customGroupsRaw = sessionStoreGet(this._storeKey('groups'), {});
+    // Synthesize empty ancestor paths so { 'Foo/Bar': [...] } renders 'Foo'.
+    const customGroups = { ...customGroupsRaw };
+    for (const key of Object.keys(customGroupsRaw)) {
+      const segs = key.split('/');
+      for (let i = 1; i < segs.length; i++) {
+        const ancestor = segs.slice(0, i).join('/');
+        if (!(ancestor in customGroups)) customGroups[ancestor] = [];
+      }
+    }
+    const sortOrder = sessionStoreGet(this._storeKey('sortOrder'), {});
+    const cmp = this._cmp(sortOrder, mtimeMap);
+
+    // Sub-session nesting (same 2-level model as claude). A session is a
+    // sub-session when its stored parent exists in itemMap. Kiro items have no
+    // lazy _jsonlPath metadata row, so sub-sessions attach directly to the
+    // parent's _children (getChildren returns element._children for these) and
+    // the parent is flipped to a Collapsed state so the caret renders.
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
+    const isSubSession = (sid) => {
+      const pid = parents[sid];
+      return pid && itemMap.has(pid);
+    };
+    for (const [sid, item] of itemMap) {
+      const pid = parents[sid];
+      if (pid && itemMap.has(pid)) {
+        const kiroParent = itemMap.get(pid);
+        // kiro items carry no lazy metadata row, so nested children attach
+        // directly to _children (getChildren returns element._children here).
+        const kids = kiroParent._children || [];
+        kids.push(item);
+        kiroParent._children = kids;
+        item.contextValue = 'subSession';
+      }
+    }
+    for (const item of itemMap.values()) {
+      if (item._children && item._children.length > 0) {
+        item._children.sort(cmp);
+        item.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      }
+    }
+
+    const groupedSet = new Set();
+    for (const ids of Object.values(customGroups)) {
+      for (const id of ids) groupedSet.add(id);
+    }
+
+    const exp = this._expandedGroups;
+    const stateOf = (name) => exp.has(name) ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed;
+
+    const makeGroupNode = (name) => {
+      const ids = customGroups[name] || [];
+      const directItems = ids
+        .map(id => itemMap.get(id))
+        .filter(Boolean)
+        .filter(it => !isSubSession(it._sessionId));
+      directItems.sort(cmp);
+
+      const myDepth = pathDepth(name);
+      const childGroupNames = Object.keys(customGroups).filter(k => {
+        if (pathDepth(k) !== myDepth + 1) return false;
+        return k.startsWith(name + '/');
+      });
+      const allGroupKeys = Object.keys(customGroups);
+      childGroupNames.sort((a, b) => allGroupKeys.indexOf(a) - allGroupKeys.indexOf(b));
+      const subGroupNodes = childGroupNames.map(makeGroupNode).filter(Boolean);
+
+      const totalCount = directItems.length + subGroupNodes.reduce((s, n) => s + (n._totalCount || 0), 0);
+      if (totalCount === 0 && subGroupNodes.length === 0) return null;
+
+      const leafLabel = name.includes('/') ? name.substring(name.lastIndexOf('/') + 1) : name;
+      const label = totalCount > 0 ? `${leafLabel} (${totalCount})` : leafLabel;
+      const collState = (subGroupNodes.length > 0 || directItems.length > 0)
+        ? stateOf(name)
+        : vscode.TreeItemCollapsibleState.Collapsed;
+      const group = new vscode.TreeItem(label, collState);
+      group.iconPath = new vscode.ThemeIcon(subGroupNodes.length > 0 ? 'folder-opened' : 'folder');
+      group.contextValue = 'customGroup';
+      group._groupName = name;
+      group._agentMode = this._agentMode;
+      group._children = [...subGroupNodes, ...directItems];
+      group._totalCount = totalCount;
+      return group;
+    };
+
+    const out = [];
+    const rootGroupNames = Object.keys(customGroups).filter(k => pathDepth(k) === 1);
+    for (const name of rootGroupNames) {
+      const node = makeGroupNode(name);
+      if (node) out.push(node);
+    }
+
+    // Ungrouped sessions (flat, mtime DESC via cmp) appended after the groups.
+    // Sub-sessions are excluded — they render nested under their parent.
+    const ungrouped = [...itemMap.values()].filter(it =>
+      !groupedSet.has(it._sessionId) && !isSubSession(it._sessionId)
+    );
+    ungrouped.sort(cmp);
+    out.push(...ungrouped);
+    return out;
   }
 
   // v3.6.9: protectedIds = ids in custom groups + Resume Later. archivedIds =
@@ -650,23 +814,38 @@ class SessionTreeDataProvider {
   // If parent is set, that takes precedence (sibling set = same parent).
   // Else group membership determines sibling set.
   _getScope(sessionId) {
-    const parents = sessionStoreGet('claudeSessionParent', {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
     if (parents[sessionId]) return { parent: parents[sessionId] };
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     for (const [gname, ids] of Object.entries(groups)) {
       if (ids.includes(sessionId)) return { group: gname };
     }
     return {}; // ungrouped top-level (Recent Sessions)
   }
 
+  // Agent-aware {id, mtime} list. claude reads .claude/projects jsonls via
+  // _loadSessions; kiro reads the workspace's kiro session metas. Both feed the
+  // sibling/sort logic so it works identically across agents.
+  _loadSessionIds() {
+    if (this._agentMode === 'kiro') {
+      const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      if (!kiroCwd) return [];
+      return listKiroSessions(kiroCwd).map(s => ({
+        _sessionId: s.sessionId,
+        _mtime: Date.parse(s.updatedAt || '') || 0,
+      }));
+    }
+    return this._loadSessions();
+  }
+
   // Get ordered sibling list for a given scope. All sessionIds that share the
   // same scope, sorted by current effective order (sortOrder ? mtime).
   _getSiblings(scope) {
-    const allItems = this._loadSessions();
+    const allItems = this._loadSessionIds();
     const idSet = new Set(allItems.map(i => i._sessionId));
-    const parents = sessionStoreGet('claudeSessionParent', {});
-    const groups = sessionStoreGet('claudeSessionGroups', {});
-    const sortOrder = sessionStoreGet('claudeSessionSortOrder', {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
+    const sortOrder = sessionStoreGet(this._storeKey('sortOrder'), {});
     const mtimeMap = new Map(allItems.map(i => [i._sessionId, i._mtime || 0]));
 
     let siblings;
@@ -695,13 +874,13 @@ class SessionTreeDataProvider {
   // Assign sparse integer sortOrder (10, 20, 30, ...) to an ordered id list.
   // Overwrites existing sortOrder entries for these ids only.
   _writeSortOrder(orderedIds) {
-    const sortOrder = sessionStoreGet('claudeSessionSortOrder', {});
+    const sortOrder = sessionStoreGet(this._storeKey('sortOrder'), {});
     let n = 10;
     for (const sid of orderedIds) {
       sortOrder[sid] = n;
       n += 10;
     }
-    sessionStoreUpdate('claudeSessionSortOrder', sortOrder);
+    sessionStoreUpdate(this._storeKey('sortOrder'), sortOrder);
   }
 
   // Move a session up/down among its siblings.
@@ -730,44 +909,46 @@ class SessionTreeDataProvider {
   // have children.
   setSessionParent(sessionId, parentSessionId) {
     if (sessionId === parentSessionId) return { ok: false, reason: 'self' };
-    const parents = sessionStoreGet('claudeSessionParent', {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
     // 2-level limit: parent candidate must not itself be a sub-session
     if (parents[parentSessionId]) return { ok: false, reason: 'depth' };
     // sessionId must not have existing children (would push them to level 3)
     const hasChildren = Object.values(parents).some(p => p === sessionId);
     if (hasChildren) return { ok: false, reason: 'hasChildren' };
     parents[sessionId] = parentSessionId;
-    sessionStoreUpdate('claudeSessionParent', parents);
+    sessionStoreUpdate(this._storeKey('parent'), parents);
     // Also remove sessionId from any custom group and saved sessions
     // (sub-sessions belong to their parent's scope, not an independent group)
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     for (const g of Object.keys(groups)) {
       groups[g] = groups[g].filter(id => id !== sessionId);
       if (groups[g].length === 0) delete groups[g];
     }
-    sessionStoreUpdate('claudeSessionGroups', groups);
+    sessionStoreUpdate(this._storeKey('groups'), groups);
     this.refresh();
     return { ok: true };
   }
 
   removeSessionParent(sessionId) {
-    const parents = sessionStoreGet('claudeSessionParent', {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
     if (!parents[sessionId]) return;
     delete parents[sessionId];
-    sessionStoreUpdate('claudeSessionParent', parents);
+    sessionStoreUpdate(this._storeKey('parent'), parents);
     this.refresh();
   }
 
   // ─── TreeDragAndDropController ──────────────────────────────────────────
 
   handleDrag(source, dataTransfer, _token) {
-    // Sessions (including sub-sessions) → session MIME
+    // Sessions (including sub-sessions + kiro sessions) → session MIME.
+    // The MIME is agent-scoped (_sessionMime), so a kiro drag carries the kiro
+    // MIME and can only land in a target view that lists that MIME.
     const sessionIds = source
-      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession'))
+      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession'))
       .map(it => it._sessionId)
       .filter(Boolean);
     if (sessionIds.length > 0) {
-      dataTransfer.set(DND_SESSION_MIME, new vscode.DataTransferItem(sessionIds));
+      dataTransfer.set(this._sessionMime, new vscode.DataTransferItem(sessionIds));
     }
     // Custom groups → group MIME (for reordering)
     const groupNames = source
@@ -775,13 +956,13 @@ class SessionTreeDataProvider {
       .map(it => it._groupName)
       .filter(Boolean);
     if (groupNames.length > 0) {
-      dataTransfer.set(DND_GROUP_MIME, new vscode.DataTransferItem(groupNames));
+      dataTransfer.set(this._groupMime, new vscode.DataTransferItem(groupNames));
     }
   }
 
   async handleDrop(target, dataTransfer, _token) {
     // Group drag takes precedence — dragged item is a group, reorder groups.
-    const groupItem = dataTransfer.get(DND_GROUP_MIME);
+    const groupItem = dataTransfer.get(this._groupMime);
     if (groupItem) {
       const names = this._asArray(groupItem.value);
       if (names.length === 0) return;
@@ -795,7 +976,7 @@ class SessionTreeDataProvider {
     }
 
     // Session drag (existing behavior)
-    const sessItem = dataTransfer.get(DND_SESSION_MIME);
+    const sessItem = dataTransfer.get(this._sessionMime);
     if (!sessItem) return;
     const ids = this._asArray(sessItem.value);
     if (ids.length === 0) return;
@@ -807,15 +988,16 @@ class SessionTreeDataProvider {
       return;
     }
 
-    // Drop on Recent Sessions group → ungrouped top level
+    // Drop on Recent Sessions group → ungrouped top level (claude only)
     if (target && target.contextValue === 'recentGroup') {
       this._moveToUngrouped(ids);
       this.refresh();
       return;
     }
 
-    // Drop on another session → reorder: insert before target, inherit scope
-    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession')) {
+    // Drop on another session → reorder: insert before target, inherit scope.
+    // kiroSession included so kiro sessions reorder/regroup like claude ones.
+    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession')) {
       this._reorderBefore(ids, target._sessionId);
       this.refresh();
       return;
@@ -839,7 +1021,7 @@ class SessionTreeDataProvider {
   // JS engines for non-integer string keys, and JSON.stringify honors it —
   // so we get stable persistence without an extra order map.
   _writeGroupOrder(orderedNames) {
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     const rebuilt = {};
     for (const name of orderedNames) {
       if (groups[name]) rebuilt[name] = groups[name];
@@ -848,11 +1030,11 @@ class SessionTreeDataProvider {
     for (const [name, ids] of Object.entries(groups)) {
       if (!(name in rebuilt)) rebuilt[name] = ids;
     }
-    sessionStoreUpdate('claudeSessionGroups', rebuilt);
+    sessionStoreUpdate(this._storeKey('groups'), rebuilt);
   }
 
   _reorderGroupsBefore(draggedNames, targetName) {
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     const names = Object.keys(groups);
     const draggedSet = new Set(draggedNames);
     // Remove dragged names first
@@ -868,7 +1050,7 @@ class SessionTreeDataProvider {
   }
 
   moveGroupUp(groupName) {
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     const names = Object.keys(groups);
     const idx = names.indexOf(groupName);
     if (idx <= 0) return;
@@ -878,7 +1060,7 @@ class SessionTreeDataProvider {
   }
 
   moveGroupDown(groupName) {
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     const names = Object.keys(groups);
     const idx = names.indexOf(groupName);
     if (idx < 0 || idx >= names.length - 1) return;
@@ -888,8 +1070,8 @@ class SessionTreeDataProvider {
   }
 
   _moveToGroup(sessionIds, groupName) {
-    const groups = sessionStoreGet('claudeSessionGroups', {});
-    const parents = sessionStoreGet('claudeSessionParent', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
     for (const sid of sessionIds) {
       // Remove from all groups and clear parent
       for (const g of Object.keys(groups)) {
@@ -904,13 +1086,13 @@ class SessionTreeDataProvider {
     for (const g of Object.keys(groups)) {
       if (groups[g].length === 0) delete groups[g];
     }
-    sessionStoreUpdate('claudeSessionGroups', groups);
-    sessionStoreUpdate('claudeSessionParent', parents);
+    sessionStoreUpdate(this._storeKey('groups'), groups);
+    sessionStoreUpdate(this._storeKey('parent'), parents);
   }
 
   _moveToUngrouped(sessionIds) {
-    const groups = sessionStoreGet('claudeSessionGroups', {});
-    const parents = sessionStoreGet('claudeSessionParent', {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
     for (const sid of sessionIds) {
       for (const g of Object.keys(groups)) {
         groups[g] = groups[g].filter(id => id !== sid);
@@ -920,16 +1102,16 @@ class SessionTreeDataProvider {
     for (const g of Object.keys(groups)) {
       if (groups[g].length === 0) delete groups[g];
     }
-    sessionStoreUpdate('claudeSessionGroups', groups);
-    sessionStoreUpdate('claudeSessionParent', parents);
+    sessionStoreUpdate(this._storeKey('groups'), groups);
+    sessionStoreUpdate(this._storeKey('parent'), parents);
   }
 
   // Reorder: move sessionIds right before targetSessionId. Dragged items
   // inherit target's scope (same group + same parent). 2-level safety: if
   // target is a sub-session and any dragged item has children, reject those.
   _reorderBefore(sessionIds, targetSessionId) {
-    const parents = sessionStoreGet('claudeSessionParent', {});
-    const groups = sessionStoreGet('claudeSessionGroups', {});
+    const parents = sessionStoreGet(this._storeKey('parent'), {});
+    const groups = sessionStoreGet(this._storeKey('groups'), {});
     const targetParent = parents[targetSessionId];
     let targetGroup = null;
     for (const [gname, gids] of Object.entries(groups)) {
@@ -973,8 +1155,8 @@ class SessionTreeDataProvider {
     for (const g of Object.keys(groups)) {
       if (groups[g].length === 0) delete groups[g];
     }
-    sessionStoreUpdate('claudeSessionGroups', groups);
-    sessionStoreUpdate('claudeSessionParent', parents);
+    sessionStoreUpdate(this._storeKey('groups'), groups);
+    sessionStoreUpdate(this._storeKey('parent'), parents);
 
     // Rewrite sortOrder among siblings (scope of target, now includes filtered)
     const scope = targetParent ? { parent: targetParent } : (targetGroup ? { group: targetGroup } : {});

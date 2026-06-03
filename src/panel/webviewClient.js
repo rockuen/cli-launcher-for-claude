@@ -502,15 +502,9 @@ function getClientScript(ctx) {
     const setFontfamily = document.getElementById('set-fontfamily');
     const setSound = document.getElementById('set-sound');
     const setParticles = document.getElementById('set-particles');
-    const setAutoEffortMax = document.getElementById('set-autoeffortmax');
-    const setRepoSyncEnabled = document.getElementById('set-repo-sync-enabled');
-    const setRepoSyncPath = document.getElementById('set-repo-sync-path');
-    const setSwitchAccount = document.getElementById('set-switch-account');
     const setSplitLayout = document.getElementById('set-split-layout');
     const setSplitRatio = document.getElementById('set-split-ratio');
     const setSplitRatioLabel = document.getElementById('set-split-ratio-label');
-    const setDefaultBackend = document.getElementById('set-default-backend');
-    const setMuxLifecycle = document.getElementById('set-mux-lifecycle');
 
     function toggleSettings() {
       const visible = settingsModal.style.display === 'block';
@@ -541,8 +535,6 @@ function getClientScript(ctx) {
           setSplitRatio.value = pct;
           if (setSplitRatioLabel) setSplitRatioLabel.textContent = pct + '%';
         }
-        if (setDefaultBackend) setDefaultBackend.value = SETTINGS.defaultBackend || 'webview';
-        if (setMuxLifecycle) setMuxLifecycle.value = SETTINGS.multiplexerLifecycle || 'kill-on-close';
       }
     }
 
@@ -562,22 +554,6 @@ function getClientScript(ctx) {
       const item = document.querySelector('.theme-item[data-theme="' + v + '"]');
       if (item) item.click();
     });
-
-    if (setDefaultBackend) {
-      setDefaultBackend.addEventListener('change', () => {
-        const v = setDefaultBackend.value;
-        SETTINGS.defaultBackend = v;
-        vscode.postMessage({ type: 'save-setting', key: 'terminal.defaultBackend', value: v });
-      });
-    }
-
-    if (setMuxLifecycle) {
-      setMuxLifecycle.addEventListener('change', () => {
-        const v = setMuxLifecycle.value;
-        SETTINGS.multiplexerLifecycle = v;
-        vscode.postMessage({ type: 'save-setting', key: 'terminal.multiplexerLifecycle', value: v });
-      });
-    }
 
     setFontsize.addEventListener('input', () => {
       const v = parseInt(setFontsize.value);
@@ -664,20 +640,6 @@ function getClientScript(ctx) {
       vscode.postMessage({ type: 'save-setting', key: 'soundEnabled', value: soundEnabled });
     });
 
-    if (setRepoSyncEnabled) {
-      setRepoSyncEnabled.addEventListener('click', () => {
-        const next = !setRepoSyncEnabled.classList.contains('on');
-        setRepoSyncEnabled.classList.toggle('on', next);
-        vscode.postMessage({ type: 'save-setting', key: 'repoSync.enabled', value: next });
-      });
-    }
-
-    if (setSwitchAccount) {
-      setSwitchAccount.addEventListener('click', () => {
-        vscode.postMessage({ type: 'invoke-command', command: 'claudeCodeLauncher.switchAccount' });
-      });
-    }
-
     if (setSplitLayout) {
       setSplitLayout.addEventListener('click', () => {
         const next = !setSplitLayout.classList.contains('on');
@@ -703,16 +665,6 @@ function getClientScript(ctx) {
         }
         SETTINGS.splitRatio = ratio;
         vscode.postMessage({ type: 'save-split-ratio', ratio });
-      });
-    }
-
-    if (setRepoSyncPath) {
-      let repoSyncPathTimer = null;
-      setRepoSyncPath.addEventListener('input', () => {
-        clearTimeout(repoSyncPathTimer);
-        repoSyncPathTimer = setTimeout(() => {
-          vscode.postMessage({ type: 'save-setting', key: 'repoSync.path', value: setRepoSyncPath.value });
-        }, 500);
       });
     }
 
@@ -822,74 +774,9 @@ function getClientScript(ctx) {
     // includePkm, includeOmc}. Not user-editable from settings UI; user-owned
     // slashes still go through CUSTOM_SLASH.
     const EXTRA_SLASH = ${JSON.stringify(extraSlashes || [])};
-    let localSlash = CUSTOM_SLASH.slice();
-    const slashListEl = document.getElementById('set-slash-list');
-
-    function renderSlashList() {
-      slashListEl.innerHTML = localSlash.map((s, i) =>
-        '<div class="set-item"><span style="font-weight:600;">' + escapeHtml(s.cmd) + '</span><span style="color:${statusGray};">' + escapeHtml(s.desc) + '</span><span class="set-item-del" data-si="' + i + '">&#x2715;</span></div>'
-      ).join('');
-    }
-    renderSlashList();
-
-    slashListEl.addEventListener('click', (e) => {
-      const del = e.target.closest('.set-item-del');
-      if (del) {
-        const idx = parseInt(del.dataset.si);
-        localSlash.splice(idx, 1);
-        renderSlashList();
-        // Also remove from live slashCommands
-        const baseLen = 15;
-        slashCommands.splice(baseLen + idx, 1);
-        vscode.postMessage({ type: 'save-setting', key: 'customSlashCommands', value: localSlash });
-      }
-    });
-
-    document.getElementById('set-slash-add').addEventListener('click', () => {
-      const cmd = document.getElementById('set-slash-cmd').value.trim();
-      const desc = document.getElementById('set-slash-desc').value.trim();
-      if (!cmd || !desc) return;
-      const entry = { cmd, desc };
-      localSlash.push(entry);
-      slashCommands.push(entry);
-      document.getElementById('set-slash-cmd').value = '';
-      document.getElementById('set-slash-desc').value = '';
-      renderSlashList();
-      vscode.postMessage({ type: 'save-setting', key: 'customSlashCommands', value: localSlash });
-    });
-
-    // File Associations management
-    let localFileAssoc = Object.assign({}, SETTINGS.fileAssociations || {});
-    const faListEl = document.getElementById('set-fileassoc-list');
-    const FA_LABELS = { excel: 'Excel', system: 'System Default', browser: 'Browser', obsidian: 'Obsidian', editor: 'IDE Editor', auto: 'Auto' };
-
-    function renderFaList() {
-      const entries = Object.entries(localFileAssoc).sort((a, b) => a[0].localeCompare(b[0]));
-      faListEl.innerHTML = entries.map(([ext, method]) =>
-        '<div class="set-item"><span style="font-weight:600;">' + escapeHtml(ext) + '</span><span style="color:${statusGray};">' + escapeHtml(FA_LABELS[method] || method) + '</span><span class="set-item-del" data-faext="' + escapeHtml(ext) + '">&#x2715;</span></div>'
-      ).join('');
-    }
-    renderFaList();
-
-    faListEl.addEventListener('click', (e) => {
-      const del = e.target.closest('.set-item-del');
-      if (del) {
-        delete localFileAssoc[del.dataset.faext];
-        renderFaList();
-        vscode.postMessage({ type: 'save-setting', key: 'fileAssociations', value: localFileAssoc });
-      }
-    });
-
-    document.getElementById('set-fa-add').addEventListener('click', () => {
-      let ext = document.getElementById('set-fa-ext').value.trim().toLowerCase();
-      const method = document.getElementById('set-fa-method').value;
-      if (!ext) return;
-      if (!ext.startsWith('.')) ext = '.' + ext;
-      localFileAssoc[ext] = method;
-      document.getElementById('set-fa-ext').value = '';
-      renderFaList();
-      vscode.postMessage({ type: 'save-setting', key: 'fileAssociations', value: localFileAssoc });
-    });
+    // Custom + extra slash commands feed the live slash menu (slashCommands
+    // array below). The settings-UI CRUD for these moved to the global
+    // settings panel (settingsPanel.js).
 
     document.getElementById('settings-export').addEventListener('click', () => {
       vscode.postMessage({ type: 'export-settings' });
@@ -904,16 +791,6 @@ function getClientScript(ctx) {
       document.getElementById('ctx-particles').innerHTML = (particlesEnabled ? T.ctxParticlesOff : T.ctxParticlesOn) + '<span class="shortcut">&#x2728;</span>';
       vscode.postMessage({ type: 'save-setting', key: 'particlesEnabled', value: particlesEnabled });
       if (particlesEnabled) animateParticles();
-    });
-
-    // v2.6.5: auto /effort max — send the command once on first idle after
-    // session start. Saved globally so reload window restores it.
-    let autoEffortMaxEnabled = SETTINGS.autoEffortMax === true;
-    setAutoEffortMax.addEventListener('click', () => {
-      autoEffortMaxEnabled = !autoEffortMaxEnabled;
-      setAutoEffortMax.classList.toggle('on', autoEffortMaxEnabled);
-      vscode.postMessage({ type: 'save-setting', key: 'autoEffortMax', value: autoEffortMaxEnabled });
-      showToast(autoEffortMaxEnabled ? T.autoEffortMaxOn : T.autoEffortMaxOff);
     });
 
     // Tab memo

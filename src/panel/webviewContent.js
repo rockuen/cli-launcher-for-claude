@@ -102,20 +102,6 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         </select>
       </div>
       <div class="settings-row">
-        <label title="Backend used by the default 'Open Claude Code' action (keybinding + title icon). Webview keeps the rich xterm.js terminal; tmux/psmux runs Claude inside an external multiplexer session.">Default Terminal</label>
-        <select class="settings-select" id="set-default-backend">
-          <option value="webview">Webview (default)</option>
-          <option value="multiplexer">tmux / psmux</option>
-        </select>
-      </div>
-      <div class="settings-row">
-        <label title="What to do with the tmux/psmux session when the launcher tab closes. 'Kill on close' matches the webview lifecycle and avoids zombie sessions. 'Detached' leaves the session running so you can re-attach from an external terminal.">Multiplexer Lifecycle</label>
-        <select class="settings-select" id="set-mux-lifecycle">
-          <option value="kill-on-close">Kill on close (default)</option>
-          <option value="detached">Leave detached</option>
-        </select>
-      </div>
-      <div class="settings-row">
         <label>Font Size</label>
         <div style="display:flex;align-items:center;gap:6px;">
           <input type="range" id="set-fontsize" min="8" max="22" step="1" value="${fontSize}" style="width:80px;">
@@ -135,10 +121,6 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <div class="settings-toggle ${settings.particlesEnabled !== false ? 'on' : ''}" id="set-particles"></div>
       </div>
       <div class="settings-row">
-        <label title="${T.autoEffortMaxTip}">${T.autoEffortMaxLabel}</label>
-        <div class="settings-toggle ${settings.autoEffortMax === true ? 'on' : ''}" id="set-autoeffortmax"></div>
-      </div>
-      <div class="settings-row">
         <label title="Show the markdown reader pane above the terminal by default in new tabs. Each tab has a 👁 toggle in the toolbar that flips this for that tab only.">Split Layout (Default)</label>
         <div class="settings-toggle ${settings.splitLayoutDefault === true ? 'on' : ''}" id="set-split-layout"></div>
       </div>
@@ -156,18 +138,6 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
           <span id="set-reader-fontsize-label" style="font-size:11px;min-width:30px;">${settings.readerFontSize || 12}px</span>
         </div>
       </div>
-      <div class="settings-row">
-        <label title="Sprint 0 — chokidar file watcher on the repo path. Reload Window after toggling to apply.">Repo Sync (Sprint 0)</label>
-        <div class="settings-toggle ${settings.repoSyncEnabled === true ? 'on' : ''}" id="set-repo-sync-enabled"></div>
-      </div>
-      <div class="settings-row">
-        <label title="Path to the git repo to watch. Empty = current IDE workspace folder. Supports \${workspaceFolder} (commit a workspace settings.json with this for cross-device auto-resolve), \${userHome}, and \${env:VAR}. Reload Window to apply.">Repo Path</label>
-        <input type="text" class="settings-input" id="set-repo-sync-path" value="${(settings.repoSyncPath || '').replace(/"/g, '&quot;')}" placeholder="/Users/..." style="width:200px;font-size:10px;">
-      </div>
-      <div class="settings-row">
-        <label title="${T.settingsAccountTip}">${T.settingsAccountLabel}</label>
-        <button class="settings-close-btn" id="set-switch-account" style="flex:0 0 auto;width:auto;margin:0;padding:0 12px;height:28px;font-size:11px;border-color:#D97757;color:#D97757;">${T.settingsAccountBtn}</button>
-      </div>
       <div style="border-top:1px solid ${border};margin:12px 0 8px;"></div>
       <details>
         <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">Custom Buttons</summary>
@@ -176,31 +146,6 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
           <input type="text" class="settings-input" id="set-btn-label" placeholder="Label" style="flex:1;font-size:10px;">
           <input type="text" class="settings-input" id="set-btn-cmd" placeholder="/command" style="flex:1;font-size:10px;">
           <button class="settings-close-btn" id="set-btn-add" style="width:28px;margin:0;height:28px;font-size:14px;padding:0;">+</button>
-        </div>
-      </details>
-      <details>
-        <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">Slash Commands</summary>
-        <div id="set-slash-list" style="margin-bottom:6px;max-height:150px;overflow-y:auto;"></div>
-        <div style="display:flex;gap:4px;">
-          <input type="text" class="settings-input" id="set-slash-cmd" placeholder="/command" style="flex:1;font-size:10px;">
-          <input type="text" class="settings-input" id="set-slash-desc" placeholder="Description" style="flex:1;font-size:10px;">
-          <button class="settings-close-btn" id="set-slash-add" style="width:28px;margin:0;height:28px;font-size:14px;padding:0;">+</button>
-        </div>
-      </details>
-      <details>
-        <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">File Associations</summary>
-        <div id="set-fileassoc-list" style="margin-bottom:6px;max-height:180px;overflow-y:auto;"></div>
-        <div style="display:flex;gap:4px;">
-          <input type="text" class="settings-input" id="set-fa-ext" placeholder=".csv" style="width:50px;font-size:10px;">
-          <select class="settings-select" id="set-fa-method" style="flex:1;font-size:10px;height:28px;">
-            <option value="excel">Excel</option>
-            <option value="system">System Default</option>
-            <option value="browser">Browser</option>
-            <option value="obsidian">Obsidian</option>
-            <option value="editor">IDE Editor</option>
-            <option value="auto">Auto</option>
-          </select>
-          <button class="settings-close-btn" id="set-fa-add" style="width:28px;margin:0;height:28px;font-size:14px;padding:0;">+</button>
         </div>
       </details>
       <div style="display:flex;gap:6px;margin-top:10px;">

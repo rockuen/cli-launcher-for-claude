@@ -17,7 +17,7 @@ const fs = require('fs');
 const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
-const { getSessionJsonlPath, extractMessages } = require('./lib/sessionJsonl');
+const { getSessionJsonlPath, extractMessages, listKiroSessions } = require('./lib/sessionJsonl');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
@@ -187,9 +187,32 @@ function activate(context) {
   state.kiroTreeProvider = new SessionTreeDataProvider(context, 'kiro');
   const kiroTreeView = vscode.window.createTreeView('claudeCodeLauncher.kiroSessions', {
     treeDataProvider: state.kiroTreeProvider,
-    canSelectMany: false
+    dragAndDropController: state.kiroTreeProvider,
+    canSelectMany: true
   });
   context.subscriptions.push(kiroTreeView);
+
+  // Resolve which provider a group/session command targets. Items dragged or
+  // right-clicked in the Kiro Sessions view carry kiro markers (kiroSession
+  // contextValue, or a customGroup node tagged _agentMode === 'kiro'); anything
+  // else routes to the claude provider. Keeps kiro/claude group ops fully
+  // separate so a command fired from one view can never mutate the other's store.
+  const providerForItem = (item) => {
+    if (item && (item.contextValue === 'kiroSession' || item._agentMode === 'kiro')) {
+      return state.kiroTreeProvider;
+    }
+    return state.sessionTreeProvider;
+  };
+
+  // Kiro view shares the claude view's expand/collapse tracking semantics.
+  kiroTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.kiroTreeProvider._expandedGroups.add(key);
+  });
+  kiroTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.kiroTreeProvider._expandedGroups.delete(key);
+  });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
   // installed + enabled agent) + a handoff row. The settings ⚙ lives in this
@@ -322,7 +345,10 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.moveToGroup', async (item) => {
       const sessionId = item?._sessionId;
       if (!sessionId) return;
-      const groups = sessionStoreGet('claudeSessionGroups', {});
+      const prov = providerForItem(item);
+      const groupsKey = prov._storeKey('groups');
+      const isKiro = prov === state.kiroTreeProvider;
+      const groups = sessionStoreGet(groupsKey, {});
       const groupNames = Object.keys(groups);
       // Build indented picks: 'Work', '  Backend', '    API'
       const indentedPicks = groupNames.map(n => {
@@ -352,11 +378,13 @@ function activate(context) {
         groups[g] = groups[g].filter(id => id !== sessionId);
         if (groups[g].length === 0 && !hasDescendants(g)) delete groups[g];
       }
-      // Also remove from legacy saved/archived
-      const saved = sessionStoreGet('claudeSavedSessions', []);
-      sessionStoreUpdate('claudeSavedSessions', saved.filter(s => s.sessionId !== sessionId));
-      const archived = sessionStoreGet('claudeArchivedSessions', []);
-      sessionStoreUpdate('claudeArchivedSessions', archived.filter(s => s.sessionId !== sessionId));
+      // Also remove from legacy saved/archived (claude-only concepts).
+      if (!isKiro) {
+        const saved = sessionStoreGet('claudeSavedSessions', []);
+        sessionStoreUpdate('claudeSavedSessions', saved.filter(s => s.sessionId !== sessionId));
+        const archived = sessionStoreGet('claudeArchivedSessions', []);
+        sessionStoreUpdate('claudeArchivedSessions', archived.filter(s => s.sessionId !== sessionId));
+      }
       if (choice._fullPath === REMOVE) {
         // Just remove, already done above
       } else if (choice._fullPath === ADD_NEW) {
@@ -395,14 +423,16 @@ function activate(context) {
         if (!groups[targetPath]) groups[targetPath] = [];
         groups[targetPath].push(sessionId);
       }
-      sessionStoreUpdate('claudeSessionGroups', groups);
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      sessionStoreUpdate(groupsKey, groups);
+      prov.refresh();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.deleteGroup', async (item) => {
-      const groups = sessionStoreGet('claudeSessionGroups', {});
+      const prov = providerForItem(item);
+      const groupsKey = prov._storeKey('groups');
+      const groups = sessionStoreGet(groupsKey, {});
       const choice = item?._groupName;
       if (!choice || !(choice in groups)) return;
       // Confirm
@@ -423,14 +453,16 @@ function activate(context) {
       for (const p of toDelete) {
         delete groups[p];
       }
-      sessionStoreUpdate('claudeSessionGroups', groups);
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      sessionStoreUpdate(groupsKey, groups);
+      prov.refresh();
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.renameGroup', async (item) => {
-      const groups = sessionStoreGet('claudeSessionGroups', {});
+      const prov = providerForItem(item);
+      const groupsKey = prov._storeKey('groups');
+      const groups = sessionStoreGet(groupsKey, {});
       const oldFullPath = item?._groupName;
       if (!oldFullPath || !(oldFullPath in groups)) return;
       const currentLeaf = getLeafName(oldFullPath);
@@ -462,15 +494,15 @@ function activate(context) {
         }
       }
       // Update expanded state
-      const exp = state.sessionTreeProvider._expandedGroups;
+      const exp = prov._expandedGroups;
       for (const old of toRename) {
         if (exp.has(old)) {
           exp.delete(old);
           exp.add(newFullPath + old.substring(oldFullPath.length));
         }
       }
-      sessionStoreUpdate('claudeSessionGroups', rebuilt);
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      sessionStoreUpdate(groupsKey, rebuilt);
+      prov.refresh();
     })
   );
 
@@ -518,36 +550,48 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.moveSessionUp', (item) => {
       const sid = item?._sessionId;
-      if (sid) state.sessionTreeProvider.moveSessionUp(sid);
+      if (sid) providerForItem(item).moveSessionUp(sid);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.moveSessionDown', (item) => {
       const sid = item?._sessionId;
-      if (sid) state.sessionTreeProvider.moveSessionDown(sid);
+      if (sid) providerForItem(item).moveSessionDown(sid);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.moveUnderSession', async (item) => {
       const sid = item?._sessionId;
       if (!sid) return;
-      // Build candidate list: top-level sessions only (parent empty), not self
-      const parents = sessionStoreGet('claudeSessionParent', {});
-      const titleMap = sessionStoreGet('claudeSessionTitles', {});
-      const projDir = state.sessionTreeProvider._getProjectDir();
-      if (!projDir) return;
-      const files = fs.readdirSync(projDir).filter(f => f.endsWith('.jsonl'));
+      const prov = providerForItem(item);
+      const isKiro = prov === state.kiroTreeProvider;
+      // Build candidate list: top-level sessions only (parent empty), not self.
+      const parents = sessionStoreGet(prov._storeKey('parent'), {});
+      const titleMap = sessionStoreGet(prov._storeKey('titles'), {});
       const hasChildrenOfMe = Object.values(parents).some(p => p === sid);
       if (hasChildrenOfMe) {
         vscode.window.showWarningMessage(t('nestDepthErr'));
         return;
       }
+      // Candidate id list comes from each agent's own session source.
+      let candidateIds;
+      if (isKiro) {
+        const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+        const kiroList = kiroCwd ? listKiroSessions(kiroCwd) : [];
+        candidateIds = kiroList.map(s => ({ id: s.sessionId, title: s.title }));
+      } else {
+        const projDir = state.sessionTreeProvider._getProjectDir();
+        if (!projDir) return;
+        candidateIds = fs.readdirSync(projDir)
+          .filter(f => f.endsWith('.jsonl'))
+          .map(f => ({ id: f.replace('.jsonl', ''), title: null }));
+      }
       const candidates = [];
-      for (const f of files) {
-        const cid = f.replace('.jsonl', '');
+      for (const c of candidateIds) {
+        const cid = c.id;
         if (cid === sid) continue;
         if (parents[cid]) continue; // can't nest under a sub-session
-        const label = titleMap[cid] || cid.substring(0, 8);
+        const label = titleMap[cid] || c.title || cid.substring(0, 8);
         candidates.push({ label, detail: cid, sessionId: cid });
       }
       if (candidates.length === 0) {
@@ -559,7 +603,7 @@ function activate(context) {
         matchOnDetail: true
       });
       if (!pick) return;
-      const result = state.sessionTreeProvider.setSessionParent(sid, pick.sessionId);
+      const result = prov.setSessionParent(sid, pick.sessionId);
       if (!result.ok) {
         const reasons = { self: t('nestSelfErr'), depth: t('nestDepthErr'), hasChildren: t('nestHasChildrenErr') };
         vscode.window.showWarningMessage(reasons[result.reason] || 'Failed to nest');
@@ -569,19 +613,19 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.removeSessionParent', (item) => {
       const sid = item?._sessionId;
-      if (sid) state.sessionTreeProvider.removeSessionParent(sid);
+      if (sid) providerForItem(item).removeSessionParent(sid);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.moveGroupUp', (item) => {
       const name = item?._groupName;
-      if (name) state.sessionTreeProvider.moveGroupUp(name);
+      if (name) providerForItem(item).moveGroupUp(name);
     })
   );
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.moveGroupDown', (item) => {
       const name = item?._groupName;
-      if (name) state.sessionTreeProvider.moveGroupDown(name);
+      if (name) providerForItem(item).moveGroupDown(name);
     })
   );
 
@@ -629,10 +673,12 @@ function activate(context) {
         return;
       }
       const newPath = `${parentPath}/${leafName.trim()}`;
-      const groups = sessionStoreGet('claudeSessionGroups', {});
+      const prov = providerForItem(item);
+      const groupsKey = prov._storeKey('groups');
+      const groups = sessionStoreGet(groupsKey, {});
       if (!groups[newPath]) groups[newPath] = [];
-      sessionStoreUpdate('claudeSessionGroups', groups);
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      sessionStoreUpdate(groupsKey, groups);
+      prov.refresh();
     })
   );
 
