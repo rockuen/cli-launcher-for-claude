@@ -14,12 +14,14 @@ function saveSessions() {
         memo: entry.memo || '',
         cwd: entry.cwd,
         sessionId: entry.sessionId,
+        agent: entry.agent || 'claude',
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
     }
   }
   sessionStoreUpdate('claudeSessions', sessions);
+  console.log('[Claude Launcher] saveSessions agents:', sessions.map(s => (s.title || '?') + '=' + (s.agent || '(none)')).join(' | '));
 
   // sessionId → title 매핑 저장 (사이드바 세션 목록용)
   const titleMap = sessionStoreGet('claudeSessionTitles', {});
@@ -39,6 +41,7 @@ function saveSessions() {
 function restoreSessions(onRestore) {
   const sessions = sessionStoreGet('claudeSessions', []);
   console.log('[Claude Launcher] restoreSessions called, found:', sessions.length, 'sessions');
+  console.log('[Claude Launcher] restore agents:', sessions.map(s => (s.title || '?') + '=' + (s.agent || '(none)')).join(' | '));
   if (sessions.length === 0) return;
 
   // Clear immediately to avoid double-restore on activate re-entry

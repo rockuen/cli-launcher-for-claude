@@ -39,7 +39,7 @@ function restartPty(entry, panel, context, extensionPath) {
     shell = resolvedKiro.shell;
     // kiro resume: ['chat', '--resume-id', <id>] if sessionId known, else new session
     const kiroArgs = entry.sessionId
-      ? ['chat', '--resume-id', entry.sessionId]
+      ? ['chat', '--resume']
       : ['chat'];
     args = [...resolvedKiro.args, ...kiroArgs];
   } else {

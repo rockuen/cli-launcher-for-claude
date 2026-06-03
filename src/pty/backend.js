@@ -37,7 +37,7 @@ const SPAWN_NAME = 'xterm-256color';
 // env and force colour so the TUI renders ANSI. Read at spawn time (matches the
 // previous inline behaviour).
 function spawnEnv() {
-  return { ...process.env, FORCE_COLOR: '1' };
+  return { ...process.env, FORCE_COLOR: '1', COLORFGBG: '15;0' };
 }
 
 // Spawn the claude CLI (optionally wrapped by a multiplexer) and return a

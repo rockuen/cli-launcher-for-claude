@@ -265,7 +265,8 @@ function createPanel(context, extensionPath, session, opts) {
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, renderWelcome(), splitLayoutDefault, extraSlashes);
 
   // Spawn CLI — agent-aware (PoC: 'claude' default, 'kiro' opt-in via settings)
-  const agent = vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
+  // opts.agent takes priority so handoff can force the opposite backend.
+  const agent = (opts && opts.agent) || (session && session.agent) || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
   const sessionId = session?.sessionId || crypto.randomUUID();
 
@@ -289,7 +290,7 @@ function createPanel(context, extensionPath, session, opts) {
     // kiro-cli chat: new session = ['chat'], resume = ['chat', '--resume-id', <id>]
     // Note: --effort/autoEffortMax is Claude-only — never passed to kiro.
     const kiroArgs = session?.sessionId
-      ? ['chat', '--resume-id', session.sessionId]
+      ? ['chat', '--resume']
       : ['chat'];
     args = [...resolvedKiro.args, ...kiroArgs];
   } else {

@@ -16,6 +16,9 @@ const path = require('path');
 const fs = require('fs');
 const { t } = require('./i18n');
 const state = require('./state');
+const { buildHandoffNote } = require('./lib/handoff');
+const { getSessionJsonlPath, extractMessages } = require('./lib/sessionJsonl');
+const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
 const { killPtyProcess } = require('./pty/kill');
@@ -42,6 +45,81 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.open', (opts) => {
       createPanel(context, extensionPath, null, opts || {});
+    })
+  );
+
+  // v3.6.15 — handoff: extract current session's conversation and inject it
+  // as context into a new tab running the opposite agent (claude↔kiro).
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.handoffToOther', async () => {
+      // (a) Find the active (focused) panel entry.
+      let activeEntry = null;
+      for (const [, entry] of state.panels) {
+        if (entry.panel.active) { activeEntry = entry; break; }
+      }
+      if (!activeEntry) {
+        vscode.window.showInformationMessage('Claude Launcher: 핸드오프할 활성 탭이 없습니다.');
+        return;
+      }
+
+      // (b) Resolve jsonl path and extract messages.
+      const jsonlPath = getSessionJsonlPath(activeEntry.sessionId, activeEntry.cwd, activeEntry.agent);
+      if (!jsonlPath) {
+        vscode.window.showInformationMessage('Claude Launcher: 세션 파일 경로를 찾을 수 없습니다.');
+        return;
+      }
+      let messages;
+      try {
+        messages = extractMessages(jsonlPath, activeEntry.agent);
+      } catch (e) {
+        vscode.window.showInformationMessage('Claude Launcher: 대화 추출 실패 — ' + e.message);
+        return;
+      }
+      if (!messages || messages.length === 0) {
+        vscode.window.showInformationMessage('Claude Launcher: 넘길 대화가 없습니다.');
+        return;
+      }
+
+      // (c) Build handoff note (PoC: raw text; swap buildHandoffNote for AI summary later).
+      const note = buildHandoffNote(messages, { fromAgent: activeEntry.agent, cwd: activeEntry.cwd });
+
+      // (d) Determine opposite agent and open new tab.
+      const targetAgent = activeEntry.agent === 'claude' ? 'kiro' : 'claude';
+      createPanel(context, extensionPath, { cwd: activeEntry.cwd }, { agent: targetAgent });
+
+      // (e) Inject note once the new entry's PTY is ready.
+      // Strategy: poll state.panels for the highest tabId (the one just created),
+      // wait up to 8s for its PTY to be alive, then write once. A fixed delay
+      // avoids coupling to internal idle-state machinery; 2500ms is conservative
+      // but safe across both claude and kiro startup times.
+      const createdTabId = state.tabCounter; // captured synchronously right after createPanel
+      let injected = false;
+      const INJECT_DELAY_MS = 2500;
+      const INJECT_POLL_MS = 200;
+      const INJECT_TIMEOUT_MS = 8000;
+      const startedAt = Date.now();
+
+      const tryInject = () => {
+        const newEntry = state.panels.get(createdTabId);
+        if (!newEntry || newEntry._disposed) return; // tab closed before inject
+        if (injected) return;
+
+        if (newEntry.pty) {
+          injected = true;
+          // Use the chunked writer so large notes don't overflow ConPTY buffers.
+          setTimeout(() => {
+            if (injected && newEntry.pty && !newEntry._disposed) {
+              writePtyChunked(newEntry, note);
+            }
+          }, INJECT_DELAY_MS);
+          return;
+        }
+
+        if (Date.now() - startedAt < INJECT_TIMEOUT_MS) {
+          setTimeout(tryInject, INJECT_POLL_MS);
+        }
+      };
+      setTimeout(tryInject, INJECT_POLL_MS);
     })
   );
 
@@ -595,6 +673,7 @@ function deactivate() {
         memo: entry.memo || '',
         cwd: entry.cwd,
         sessionId: entry.sessionId,
+        agent: entry.agent || 'claude',
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });

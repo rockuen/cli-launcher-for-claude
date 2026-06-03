@@ -218,6 +218,11 @@
         "command": "claudeCodeLauncher.diagnostics.dumpNow",
         "title": "Diagnostics: Dump Now",
         "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.handoffToOther",
+        "title": "Claude Launcher: Hand off session to other agent",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
