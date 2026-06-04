@@ -35,16 +35,21 @@ function saveSessions() {
   sessionStoreUpdate('claudeSessions', sessions);
   console.log('[Claude Launcher] saveSessions agents:', sessions.map(s => (s.title || '?') + '=' + (s.agent || '(none)')).join(' | '));
 
-  // sessionId → title 매핑 저장 (사이드바 세션 목록용)
-  const titleMap = sessionStoreGet('claudeSessionTitles', {});
+  // sessionId → title 매핑 저장 (사이드바 세션 목록용). agent별 스토어로 분리 —
+  // claude는 claudeSessionTitles, kiro는 kiroSessionTitles. Kiro Sessions 트리가
+  // kiroSessionTitles를 라벨로 읽으므로, 안 나누면 kiro 세션 rename이 claude
+  // 스토어로 가 사이드바에 반영되지 않는다 (실제 버그였음).
+  const claudeTitles = sessionStoreGet('claudeSessionTitles', {});
+  const kiroTitles = sessionStoreGet('kiroSessionTitles', {});
   for (const s of sessions) {
-    if (s.sessionId && s.title) {
-      // 기본 탭 이름(Claude Code, Kiro 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
-      if (isDefaultTabTitle(s.title)) continue;
-      titleMap[s.sessionId] = s.title;
-    }
+    if (!s.sessionId || !s.title) continue;
+    // 기본 탭 이름(Claude Code / Kiro 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
+    if (isDefaultTabTitle(s.title)) continue;
+    if (s.agent === 'kiro') kiroTitles[s.sessionId] = s.title;
+    else claudeTitles[s.sessionId] = s.title;
   }
-  sessionStoreUpdate('claudeSessionTitles', titleMap);
+  sessionStoreUpdate('claudeSessionTitles', claudeTitles);
+  sessionStoreUpdate('kiroSessionTitles', kiroTitles);
   state.refreshSessionTrees();
 }
 

@@ -19,8 +19,13 @@ function handlePasteImage(base64Data, entry, panel) {
     fs.writeFileSync(filepath, buffer);
 
     const normalized = filepath.replace(/\\/g, '/');
-    if (entry.pty) entry.pty.write(normalized + ' ');
-    try { panel.webview.postMessage({ type: 'image-paste-result', success: true, filename, fullPath: filepath }); } catch (_) {}
+    // kiro: defer injection until the user confirms in the toast. kiro's TUI
+    // (win32-input-mode) ignores the client-side backspaces claude uses to undo
+    // an upfront injection, so injecting now would leave an un-cancellable path.
+    // Claude keeps the immediate inject + backspace-to-cancel behaviour.
+    const deferred = entry.agent === 'kiro';
+    if (!deferred && entry.pty) entry.pty.write(normalized + ' ');
+    try { panel.webview.postMessage({ type: 'image-paste-result', success: true, filename, fullPath: filepath, deferred, injectPath: normalized }); } catch (_) {}
   } catch (e) {
     vscode.window.showErrorMessage(t('imageSaveFail') + e.message);
     try { panel.webview.postMessage({ type: 'image-paste-result', success: false, reason: e.message }); } catch (_) {}
@@ -59,8 +64,9 @@ function readClipboardImageFromSystem(entry, panel) {
     const result = stdout.trim();
     if (result === 'OK' && fs.existsSync(filepath)) {
       const normalized = filepath.replace(/\\/g, '/');
-      if (entry.pty) entry.pty.write(normalized + ' ');
-      try { panel.webview.postMessage({ type: 'image-paste-result', success: true, filename, fullPath: filepath }); } catch (_) {}
+      const deferred = entry.agent === 'kiro';
+      if (!deferred && entry.pty) entry.pty.write(normalized + ' ');
+      try { panel.webview.postMessage({ type: 'image-paste-result', success: true, filename, fullPath: filepath, deferred, injectPath: normalized }); } catch (_) {}
     } else {
       try { panel.webview.postMessage({ type: 'image-paste-result', success: false, reason: 'clipboard-no-image' }); } catch (_) {}
     }

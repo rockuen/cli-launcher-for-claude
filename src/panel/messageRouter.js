@@ -311,6 +311,14 @@ function routeWebviewMessage(msg, ctx) {
       }
       return;
 
+    case 'inject-paste-file':
+      // Deferred image paste (kiro): inject the path only when the user confirms
+      // from the toast, so [취소] truly cancels (nothing was injected). kiro's
+      // TUI doesn't honor the client-side backspaces claude uses to undo an
+      // upfront injection.
+      if (entry.pty && msg.path) entry.pty.write(String(msg.path).replace(/\\/g, '/') + ' ');
+      return;
+
     case 'cancel-paste-file':
       // v2.5.7: user clicked [취소] on a paste/image attachment toast. PTY
       // backspaces are sent client-side via an 'input' message; here we just

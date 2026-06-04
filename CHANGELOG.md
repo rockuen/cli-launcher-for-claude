@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.6] - 2026-06-04
+
+### Fixed
+- **Image-paste cancel now works in Kiro tabs.** Kiro's TUI runs in Windows *win32-input-mode* and ignores the client-side backspaces the launcher used to undo an image-path injection, so [취소] couldn't remove an already-injected path. Kiro tabs now **defer** the injection: pasting an image saves the temp PNG and shows a toast with [붙여넣기]/[취소] — the path is written to Kiro only when you confirm, so cancel simply discards it (nothing was injected). Claude tabs keep the immediate inject + backspace-to-cancel behaviour. (Confirmed empirically that neither `0x7f`/`0x08` raw backspaces clear Kiro's input via the launcher.)
+- **Renaming a Kiro session now updates its label in the Kiro Sessions sidebar.** Session-title persistence was hardcoded to the `claudeSessionTitles` store and the Kiro Sessions tree only read the kiro metadata title — so a renamed kiro session's new name went to the wrong store and never appeared. `saveSessions()` now splits titles by agent into `claudeSessionTitles` / `kiroSessionTitles`, and `_buildKiroSessions()` reads `kiroSessionTitles` first (falling back to the kiro meta title).
+
+### Implementation
+- `handlers/pasteImage.js`: both paste paths skip the upfront `pty.write` when `entry.agent === 'kiro'` and flag the result `deferred`; `panel/messageRouter.js` gains an `inject-paste-file` case that writes the path on confirm.
+- `panel/webviewClient.js`: the image-paste-result toast offers [붙여넣기]/[취소] for a deferred (kiro) result.
+- `store/sessionManager.js`: title persistence split by agent. `tree/SessionTreeDataProvider.js`: `_buildKiroSessions()` labels from `kiroSessionTitles` first.
+
+### Tests
+- 273 node + 36 vitest passing.
+
+### Note
+- The Kiro "Trust all tools" toggle persists from 3.7.3 onward (the setting key is registered in the manifest). If it appears to not save, you are likely on a pre-3.7.3 build where the key was unregistered and `config.update` silently dropped it — updating resolves it.
+
 ## [3.7.5] - 2026-06-04
 
 ### Changed

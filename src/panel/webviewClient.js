@@ -1102,7 +1102,22 @@ function getClientScript(ctx) {
       if (msg.type === 'image-paste-result') {
         if (msg.success) {
           const opts = { image: lastImageDataUrl };
-          if (msg.fullPath) {
+          if (msg.deferred && msg.fullPath) {
+            // kiro: the path was NOT injected yet (kiro ignores the client-side
+            // backspaces claude uses to undo, so cancel-by-backspace can't work).
+            // Inject on confirm; discard the temp file on cancel.
+            opts.actions = [
+              {
+                label: '\\uBD99\\uC5EC\\uB123\\uAE30',
+                onClick: () => vscode.postMessage({ type: 'inject-paste-file', path: msg.injectPath || msg.fullPath })
+              },
+              {
+                label: '\\uCDE8\\uC18C',
+                color: '#ff7b7b',
+                onClick: () => vscode.postMessage({ type: 'cancel-paste-file', path: msg.fullPath })
+              }
+            ];
+          } else if (msg.fullPath) {
             // Image handler PTY-writes "<forward-slash path> " so backspace
             // count = path.length + 1 (space). char count is the same either
             // way because backslash/forward-slash is 1-char-per-sep.

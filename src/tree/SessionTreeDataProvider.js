@@ -512,6 +512,11 @@ class SessionTreeDataProvider {
     const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
     if (!kiroCwd) return [];
     const kiroSessions = listKiroSessions(kiroCwd);
+    // Launcher-side rename store wins over the kiro meta title, so renaming a
+    // kiro tab/session shows in this tree. saveSessions() writes kiro titles to
+    // kiroSessionTitles (split from claudeSessionTitles) — _storeKey('titles')
+    // resolves to kiroSessionTitles in kiro mode.
+    const titleMap = sessionStoreGet(this._storeKey('titles'), {});
 
     // Build the leaf session items keyed by the real kiro session_id (from the
     // meta .json). The id is what group membership is stored against, mirroring
@@ -519,7 +524,7 @@ class SessionTreeDataProvider {
     const itemMap = new Map();
     const mtimeMap = new Map();
     for (const s of kiroSessions) {
-      const label = s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+      const label = titleMap[s.sessionId] || s.title || `${(s.sessionId || '').substring(0, 8)}…`;
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       const mtime = Date.parse(s.updatedAt || '') || 0;
       item.description = mtime ? _relTime(mtime) : '';
