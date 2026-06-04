@@ -14,13 +14,15 @@ function getClientScript(ctx) {
     // normal buffer (CSI 2J + cursor-home redraws), which needs a different
     // bottom-follow strategy than Claude's inline output — see scrollback below.
     const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
+    const IS_ANTIGRAVITY = ${JSON.stringify(agent === 'antigravity')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
     // colors. 'auto' (the default) follows the agent: claude -> coral,
-    // kiro -> purple. An explicit claude/kiro pick in Settings pins one tone
-    // for all panels; legacy values (default/midnight/...) resolve to 'auto'.
+    // kiro -> purple, antigravity -> azure. An explicit claude/kiro/antigravity
+    // pick in Settings pins one tone for all panels; legacy values
+    // (default/midnight/...) resolve to 'auto'.
     const initialPanelTheme =
-      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro')
+      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity')
         ? SETTINGS.defaultTheme
         : 'auto';
     let currentThemeName = initialPanelTheme;
@@ -851,6 +853,10 @@ function getClientScript(ctx) {
       kiro: {
         dark:  { accent: '#9d7bff', accentStrong: '#b79bff', accentDeep: '#7c5cff', panelBg: '#211a2e', inputBg: '#181425', glow: 'rgba(157,123,255,0.3)', glowStrong: 'rgba(157,123,255,0.5)', muted: '#8a7fa8' },
         light: { accent: '#7c5cff', accentStrong: '#9d7bff', accentDeep: '#6344e0', panelBg: '#f5f0fa', inputBg: '#ffffff', glow: 'rgba(124,92,255,0.2)', glowStrong: 'rgba(124,92,255,0.35)', muted: '#9a90b8' }
+      },
+      antigravity: {
+        dark:  { accent: '#34c2e0', accentStrong: '#5bd2ec', accentDeep: '#1fa0be', panelBg: '#15222b', inputBg: '#0e1820', glow: 'rgba(52,194,224,0.3)', glowStrong: 'rgba(52,194,224,0.5)', muted: '#6a8794' },
+        light: { accent: '#1496b6', accentStrong: '#34c2e0', accentDeep: '#0c7491', panelBg: '#ecf7fb', inputBg: '#ffffff', glow: 'rgba(20,150,182,0.2)', glowStrong: 'rgba(20,150,182,0.35)', muted: '#5a8594' }
       }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
@@ -868,8 +874,9 @@ function getClientScript(ctx) {
     // input panel (accent, panel bg, textarea bg, caret/glow, send button)
     // changes tone.
     function applyTheme(themeName) {
-      // 'auto' resolves to this panel's agent tone (claude coral / kiro purple).
-      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : 'claude') : themeName;
+      // 'auto' resolves to this panel's agent tone (claude coral / kiro purple /
+      // antigravity azure).
+      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : 'claude') : themeName;
       const def = themes[resolvedName];
       if (!def) return;
       const t = IS_DARK ? def.dark : def.light;

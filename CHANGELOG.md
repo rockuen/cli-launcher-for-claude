@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.7.15] - 2026-06-04
+
+### Added
+- **Antigravity Spectrum theme.** A third input-area tone, alongside Claude (coral) and Kiro (purple), themed after the Antigravity logo — an azure (`#34c2e0`) accent on a deep teal-charcoal panel, with a rainbow-gradient swatch in the picker. `Auto` now resolves Antigravity panels to it automatically (Claude → coral, Kiro → purple, Antigravity → azure); the assistant role accent and the bottom input area both follow it. Pickable in the theme picker and Settings → Theme, and `defaultTheme` can pin it for every panel.
+
+### Changed
+- **The "new session" icon now launches your default agent directly — no agent QuickPick.** Clicking the editor-title icon, the toolbar `+`, the status bar, or the welcome link opens a session with the default agent (`claudeCodeLauncher.agent`) instead of prompting which agent to use each time. Set the default in **Settings → Agent → "Default for new sessions"** (the radio was already there; it's now what the new-session icons obey). To launch a *specific* non-default agent, use the per-agent **Quick Actions** header or the agent's session view `+`.
+
+### Implementation
+- `panel/webviewClient.js`: `antigravity` palette in `themes`; `IS_ANTIGRAVITY` threaded; `applyTheme('auto')` → `IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : 'claude'`; `initialPanelTheme` accepts `antigravity` as an explicit pin.
+- `panel/webviewContent.js`: Antigravity entry in the theme picker (rainbow swatch) and the Settings theme select. `i18n/en.js` + `ko.js`: `themeAntigravity`. `package.json`: `defaultTheme` enum gains `antigravity`.
+- `activation.js` (`open`) + `handlers/toolbar.js` (`new-tab`): drop the `pickAgent()` prompt; `createPanel` resolves the default agent from `claudeCodeLauncher.agent` when none is forced.
+
+### Tests
+- 273 node + 36 vitest passing; rendered the webview client for `antigravity`/`claude` and asserted the palette, `auto` resolution, `IS_ANTIGRAVITY` threading, picker/select options, and that `open`/`new-tab` no longer call `pickAgent`.
+
 ## [3.7.14] - 2026-06-04
 
 ### Added

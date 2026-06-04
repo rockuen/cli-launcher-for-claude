@@ -46,17 +46,21 @@ function activate(context) {
   context.subscriptions.push(state.statusBar);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.open', async (opts) => {
-      const agent = await pickAgent();
-      if (agent === null) return; // user cancelled QuickPick
-      createPanel(context, extensionPath, null, Object.assign({}, opts || {}, { agent }));
+    vscode.commands.registerCommand('claudeCodeLauncher.open', (opts) => {
+      // The "new session" affordances (editor-title icon, status bar, command
+      // palette, welcome link) launch the DEFAULT agent directly — no agent
+      // QuickPick. The default is claudeCodeLauncher.agent (Settings → Agent →
+      // "Default for new sessions"); createPanel falls back to it when no agent
+      // is forced. Pick a specific non-default agent via the Quick Actions
+      // header or the per-agent session views instead.
+      createPanel(context, extensionPath, null, Object.assign({}, opts || {}));
     })
   );
 
   // Agent-scoped new-session commands. The split sidebar views ('Claude
   // Sessions' / 'Kiro Sessions') each own a + button wired here, so the agent
   // is decided by which view's header you click — no pickAgent QuickPick. The
-  // generic 'open' command (palette + keybinding) still goes through pickAgent.
+  // generic 'open' command launches the default agent (claudeCodeLauncher.agent).
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.newClaude', () => {
       createPanel(context, extensionPath, null, { agent: 'claude' });

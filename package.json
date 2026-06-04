@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.14",
+  "version": "3.7.15",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -542,14 +542,16 @@
           "enum": [
             "auto",
             "claude",
-            "kiro"
+            "kiro",
+            "antigravity"
           ],
           "enumDescriptions": [
-            "Auto — follow each panel's agent (Claude → coral, Kiro → purple)",
+            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure)",
             "Claude Dark — coral input tone for every panel",
-            "Kiro Purple — purple input tone for every panel"
+            "Kiro Purple — purple input tone for every panel",
+            "Antigravity Spectrum — azure input tone for every panel"
           ],
-          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro' pin one tone for all panels."
+          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity' pin one tone for all panels."
         },
         "claudeCodeLauncher.defaultFontSize": {
           "type": "number",

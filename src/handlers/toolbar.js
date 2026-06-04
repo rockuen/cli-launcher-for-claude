@@ -10,10 +10,10 @@ async function handleToolbar(action, entry, context, extensionPath, createPanel,
       if (entry.pty) entry.pty.write('/clear\r');
       break;
     case 'new-tab': {
-      const agent = pickAgent ? await pickAgent() : null;
-      // null means the user cancelled the QuickPick — skip creation.
-      if (agent === null && pickAgent) return;
-      createPanel(context, extensionPath, null, agent ? { agent } : {});
+      // Launch the default agent directly (claudeCodeLauncher.agent) — no agent
+      // QuickPick. createPanel resolves the default when none is forced. (The
+      // pickAgent param is kept for signature compatibility but no longer used.)
+      createPanel(context, extensionPath, null, {});
       break;
     }
   }
