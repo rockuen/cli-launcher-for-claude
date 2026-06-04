@@ -577,6 +577,65 @@ function activate(context) {
     })
   );
 
+  // Kiro Trash: move a kiro session (meta .json + transcript .jsonl) into
+  // <kiro cli>/trash so listKiroSessions / kiro-cli --resume-id no longer see
+  // it. Also drop it from kiro groups. Mirrors claude's trashSession.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.trashKiroSession', async (item) => {
+      const sessionId = item && item._sessionId;
+      if (!sessionId) return;
+      const cliDir = path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+      const trashDir = path.join(cliDir, 'trash');
+      try { if (!fs.existsSync(trashDir)) fs.mkdirSync(trashDir, { recursive: true }); } catch (_) {}
+      for (const ext of ['.json', '.jsonl']) {
+        const src = path.join(cliDir, sessionId + ext);
+        if (fs.existsSync(src)) { try { fs.renameSync(src, path.join(trashDir, sessionId + ext)); } catch (_) {} }
+      }
+      const groups = sessionStoreGet('kiroSessionGroups', {});
+      let changed = false;
+      for (const g of Object.keys(groups)) {
+        const next = groups[g].filter((id) => id !== sessionId);
+        if (next.length !== groups[g].length) { groups[g] = next; changed = true; }
+        if (groups[g].length === 0) delete groups[g];
+      }
+      if (changed) sessionStoreUpdate('kiroSessionGroups', groups);
+      state.refreshSessionTrees();
+    })
+  );
+
+  // Kiro Trash: restore — move the session files back to the cli dir.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.restoreKiroSession', async (item) => {
+      const sessionId = item && item._sessionId;
+      if (!sessionId) return;
+      const cliDir = path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+      const trashDir = path.join(cliDir, 'trash');
+      for (const ext of ['.json', '.jsonl']) {
+        const src = path.join(trashDir, sessionId + ext);
+        if (fs.existsSync(src)) { try { fs.renameSync(src, path.join(cliDir, sessionId + ext)); } catch (_) {} }
+      }
+      state.refreshSessionTrees();
+    })
+  );
+
+  // Kiro Trash: empty — permanently delete every file under <kiro cli>/trash.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.emptyKiroTrash', async () => {
+      const trashDir = path.join(os.homedir(), '.kiro', 'sessions', 'cli', 'trash');
+      if (!fs.existsSync(trashDir)) return;
+      const files = fs.readdirSync(trashDir).filter((f) => f.endsWith('.json') || f.endsWith('.jsonl'));
+      if (files.length === 0) return;
+      const count = files.filter((f) => f.endsWith('.jsonl')).length;
+      const confirm = await vscode.window.showWarningMessage(
+        `Permanently delete ${count} trashed Kiro session(s)? This cannot be undone.`,
+        { modal: true }, 'Delete'
+      );
+      if (confirm !== 'Delete') return;
+      for (const f of files) { try { fs.unlinkSync(path.join(trashDir, f)); } catch (_) {} }
+      state.refreshSessionTrees();
+    })
+  );
+
   // v2.6.0: sort + nesting commands
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.moveSessionUp', (item) => {

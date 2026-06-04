@@ -648,14 +648,60 @@ class SessionTreeDataProvider {
       if (node) out.push(node);
     }
 
-    // Ungrouped sessions (flat, mtime DESC via cmp) appended after the groups.
-    // Sub-sessions are excluded — they render nested under their parent.
+    // Recent Sessions — ungrouped sessions wrapped in a collapsible header,
+    // mirroring the claude view (was previously appended flat). Sub-sessions
+    // are excluded — they render nested under their parent.
     const ungrouped = [...itemMap.values()].filter(it =>
       !groupedSet.has(it._sessionId) && !isSubSession(it._sessionId)
     );
     ungrouped.sort(cmp);
-    out.push(...ungrouped);
+    if (ungrouped.length > 0) {
+      const rsName = t('recentSessionsGroup');
+      const recentGroup = new vscode.TreeItem(`${rsName} (${ungrouped.length})`, stateOf(rsName));
+      recentGroup.iconPath = new vscode.ThemeIcon('history');
+      recentGroup.contextValue = 'recentGroup';
+      recentGroup._children = ungrouped;
+      out.push(recentGroup);
+    }
+
+    // Trash — kiro sessions moved to <kiro cli>/trash (both .json + .jsonl).
+    // listKiroSessions reads only the top-level cli dir, so trashed sessions
+    // are already excluded from the active items above; here we surface them in
+    // a collapsible Trash node. Clicking a trashed item restores it (the
+    // transcript lives in trash, so a direct resume would fail).
+    if (this._agentMode === 'kiro') {
+      const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      let trashed = [];
+      try { trashed = listKiroSessions(kiroCwd, this._kiroTrashDir()); } catch (_) {}
+      if (trashed.length > 0) {
+        const titleMap = sessionStoreGet(this._storeKey('titles'), {});
+        const trashItems = trashed.map((s) => {
+          const label = titleMap[s.sessionId] || s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+          const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+          const mtime = Date.parse(s.updatedAt || '') || 0;
+          item.description = mtime ? `trashed · ${_relTime(mtime)}` : 'trashed';
+          item.iconPath = new vscode.ThemeIcon('trash');
+          item.contextValue = 'kiroTrashed';
+          item.tooltip = `Trashed Kiro session: ${s.sessionId}\nClick to restore.`;
+          item._sessionId = s.sessionId;
+          item._mtime = mtime;
+          item.command = { command: 'claudeCodeLauncher.restoreKiroSession', title: 'Restore', arguments: [item] };
+          return item;
+        });
+        const trashGroup = new vscode.TreeItem(`Trash (${trashItems.length})`, stateOf('Trash'));
+        trashGroup.iconPath = new vscode.ThemeIcon('trash');
+        trashGroup.contextValue = 'kiroTrashGroup';
+        trashGroup._children = trashItems;
+        out.push(trashGroup);
+      }
+    }
     return out;
+  }
+
+  // Kiro trash dir — trashed kiro sessions (<id>.json + <id>.jsonl) live here,
+  // a subdir of the cli sessions dir that listKiroSessions/kiro-cli don't scan.
+  _kiroTrashDir() {
+    return path.join(os.homedir(), '.kiro', 'sessions', 'cli', 'trash');
   }
 
   // v3.6.9: protectedIds = ids in custom groups + Resume Later. archivedIds =

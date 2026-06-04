@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.8",
+  "version": "3.7.9",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -81,6 +81,24 @@
         "command": "claudeCodeLauncher.renameSessionTitle",
         "title": "Rename Session",
         "icon": "$(edit)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.trashKiroSession",
+        "title": "Move to Trash",
+        "icon": "$(trash)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.restoreKiroSession",
+        "title": "Restore",
+        "icon": "$(history)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.emptyKiroTrash",
+        "title": "Empty Trash",
+        "icon": "$(trash)",
         "category": "Claude"
       },
       {
@@ -419,6 +437,21 @@
         {
           "command": "claudeCodeLauncher.moveToGroup",
           "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroSession",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.trashKiroSession",
+          "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroSession",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeLauncher.restoreKiroSession",
+          "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroTrashed",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.emptyKiroTrash",
+          "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroTrashGroup",
           "group": "inline@1"
         },
         {

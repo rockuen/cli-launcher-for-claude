@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.7.9] - 2026-06-04
+
+### Added
+- **Kiro Sessions now has Recent Sessions and Trash, matching Claude Sessions.**
+  - Ungrouped Kiro sessions are collected under a collapsible **Recent Sessions** header (they used to list flat at the root).
+  - A 🗑 action on each Kiro session moves it to **Trash**; the Trash node lists trashed sessions, clicking one restores it, and the Trash header has **Empty Trash** (permanent delete, with a confirmation). Trashing moves the session's `.json` + `.jsonl` into `~/.kiro/sessions/cli/trash/`, so `kiro-cli` and the launcher stop listing it until you restore.
+
+### Implementation
+- `tree/SessionTreeDataProvider.js` `_buildAgentGroups()`: wrap ungrouped sessions in a `recentGroup` node; for kiro, append a `kiroTrashGroup` built from `~/.kiro/sessions/cli/trash` via `listKiroSessions(cwd, trashDir)`. New `_kiroTrashDir()`.
+- `activation.js`: `trashKiroSession` (move files to trash + drop from kiro groups), `restoreKiroSession` (move back), `emptyKiroTrash` (permanent delete, confirmed). `package.json`: 3 commands + `view/item/context` menus (kiroSession 🗑, kiroTrashed ↺, kiroTrashGroup empty).
+
+### Tests
+- 273 node + 36 vitest passing (kiro group/nesting tests updated for the Recent Sessions wrapper; the `.None` leaf-row guard bumped to ≤4 for the trash leaf).
+
 ## [3.7.8] - 2026-06-04
 
 ### Fixed

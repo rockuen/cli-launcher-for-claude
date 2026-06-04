@@ -133,22 +133,26 @@ test('kiro and claude group stores are fully independent', () => {
   assert.equal(JSON.stringify(claudeGroups).includes('kiro-aaaa'), false);
 });
 
-test('kiro build groups its sessions and lists the rest ungrouped', () => {
+test('kiro build groups its sessions and lists the rest under Recent Sessions', () => {
   reset();
   const kiro = new SessionTreeDataProvider({}, 'kiro');
-  // Group one session; the other two stay ungrouped.
+  // Group one session; the other two stay ungrouped (→ Recent Sessions).
   sessionStoreUpdate('kiroSessionGroups', { Work: ['kiro-aaaa'] });
   const roots = kiro._buildKiroSessions();
-  // First node = the custom group 'Work'.
+  // The custom group 'Work'.
   const groupNode = roots.find((n: any) => n.contextValue === 'customGroup');
   assert.ok(groupNode, 'expected a customGroup node');
   assert.equal(groupNode._groupName, 'Work');
   assert.equal(groupNode._agentMode, 'kiro');
   assert.equal(groupNode._children.length, 1);
   assert.equal(groupNode._children[0]._sessionId, 'kiro-aaaa');
-  // Ungrouped sessions appear flat after the group.
-  const ungrouped = roots.filter((n: any) => n.contextValue === 'kiroSession');
-  const ungroupedIds = ungrouped.map((n: any) => n._sessionId).sort();
+  // Ungrouped sessions now live under a Recent Sessions node.
+  const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
+  assert.ok(recent, 'expected a recentGroup node');
+  const ungroupedIds = recent._children
+    .filter((n: any) => n.contextValue === 'kiroSession')
+    .map((n: any) => n._sessionId)
+    .sort();
   assert.deepEqual(ungroupedIds, ['kiro-bbbb', 'kiro-cccc']);
 });
 
@@ -160,14 +164,17 @@ test('kiro nesting persists under the kiro parent key and renders as children', 
   assert.deepEqual(sessionStoreGet('kiroSessionParent', {}), { 'kiro-bbbb': 'kiro-aaaa' });
   assert.deepEqual(sessionStoreGet('claudeSessionParent', {}), {});
   const roots = kiro._buildKiroSessions();
-  const parent = roots.find((n: any) => n._sessionId === 'kiro-aaaa');
-  assert.ok(parent, 'parent session should be a root node');
+  // Ungrouped sessions (incl. the parent) live under the Recent Sessions node.
+  const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
+  assert.ok(recent, 'expected a recentGroup node');
+  const parent = recent._children.find((n: any) => n._sessionId === 'kiro-aaaa');
+  assert.ok(parent, 'parent session should be under Recent Sessions');
   assert.ok(Array.isArray(parent._children) && parent._children.length === 1);
   assert.equal(parent._children[0]._sessionId, 'kiro-bbbb');
   assert.equal(parent._children[0].contextValue, 'subSession');
-  // The nested child must NOT also appear at root level.
-  const rootIds = roots.filter((n: any) => n.contextValue === 'kiroSession' || n.contextValue === 'subSession').map((n: any) => n._sessionId);
-  assert.equal(rootIds.includes('kiro-bbbb'), false);
+  // The nested child must NOT also appear at the Recent Sessions top level.
+  const recentIds = recent._children.filter((n: any) => n.contextValue === 'kiroSession' || n.contextValue === 'subSession').map((n: any) => n._sessionId);
+  assert.equal(recentIds.includes('kiro-bbbb'), false);
 });
 
 test('kiro provider uses kiro-scoped DnD MIME types', () => {
