@@ -445,7 +445,7 @@ function getStyles(ctx) {
       text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;
     }
     #reader-area .msg-user .role { color: ${isDark ? '#4fc1ff' : '#0066cc'}; }
-    #reader-area .msg-assistant .role { color: ${isDark ? '#D97757' : '#C96442'}; }
+    #reader-area .msg-assistant .role { color: var(--accent, ${isDark ? '#D97757' : '#C96442'}); }
     #reader-area .msg-head .ts {
       color: ${statusGray};
       font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace;
@@ -497,7 +497,7 @@ function getStyles(ctx) {
       user-select: none;
     }
     #splitter:hover, #splitter.dragging {
-      background: ${isDark ? '#D97757' : '#C96442'};
+      background: var(--accent, ${isDark ? '#D97757' : '#C96442'});
       height: 7px;
     }
     .splitter-handle {
@@ -674,8 +674,8 @@ function getStyles(ctx) {
     #input-panel {
       display: block;
       flex-shrink: 0;
-      border-top: 1px solid ${isDark ? '#D97757' : '#C96442'};
-      background: ${isDark ? '#2a2220' : '#faf5f0'};
+      border-top: 1px solid var(--accent, ${isDark ? '#D97757' : '#C96442'});
+      background: var(--accent-panel-bg, ${isDark ? '#2a2220' : '#faf5f0'});
       position: relative;
     }
     #editor-textarea {
@@ -689,7 +689,7 @@ function getStyles(ctx) {
       outline: none;
       resize: none;
       overflow: hidden;
-      background: ${isDark ? '#1e1a18' : '#ffffff'};
+      background: var(--accent-input-bg, ${isDark ? '#1e1a18' : '#ffffff'});
       color: ${fg};
       font-size: 12px;
       font-family: "D2Coding", "D2Coding ligature", Consolas, monospace;
@@ -698,23 +698,23 @@ function getStyles(ctx) {
       transition: border-color 0.3s, box-shadow 0.3s;
     }
     #editor-textarea.typing {
-      border-color: ${isDark ? '#D97757' : '#C96442'};
-      box-shadow: 0 0 8px ${isDark ? 'rgba(217,119,87,0.3)' : 'rgba(201,100,66,0.2)'};
+      border-color: var(--accent, ${isDark ? '#D97757' : '#C96442'});
+      box-shadow: 0 0 8px var(--accent-glow, ${isDark ? 'rgba(217,119,87,0.3)' : 'rgba(201,100,66,0.2)'});
     }
     #editor-textarea.typing-intense {
-      border-color: ${isDark ? '#E8956A' : '#D97757'};
-      box-shadow: 0 0 14px ${isDark ? 'rgba(217,119,87,0.5)' : 'rgba(201,100,66,0.35)'};
+      border-color: var(--accent-strong, ${isDark ? '#E8956A' : '#D97757'});
+      box-shadow: 0 0 14px var(--accent-glow-strong, ${isDark ? 'rgba(217,119,87,0.5)' : 'rgba(201,100,66,0.35)'});
     }
     #editor-textarea.send-flash {
       animation: sendFlash 0.4s ease;
     }
     @keyframes sendFlash {
       0% { box-shadow: 0 0 0 rgba(217,119,87,0); border-color: transparent; }
-      30% { box-shadow: 0 0 20px ${isDark ? 'rgba(217,119,87,0.7)' : 'rgba(201,100,66,0.5)'}; border-color: ${isDark ? '#E8956A' : '#D97757'}; }
+      30% { box-shadow: 0 0 20px ${isDark ? 'rgba(217,119,87,0.7)' : 'rgba(201,100,66,0.5)'}; border-color: var(--accent-strong, ${isDark ? '#E8956A' : '#D97757'}); }
       100% { box-shadow: 0 0 0 rgba(217,119,87,0); border-color: transparent; }
     }
     #editor-textarea::placeholder {
-      color: ${isDark ? '#8a7060' : '#b8a090'};
+      color: var(--accent-muted, ${isDark ? '#8a7060' : '#b8a090'});
     }
     #typing-ripple {
       position: absolute;
@@ -727,7 +727,7 @@ function getStyles(ctx) {
       position: absolute;
       width: 4px; height: 4px;
       border-radius: 50%;
-      background: ${isDark ? '#D97757' : '#C96442'};
+      background: var(--accent, ${isDark ? '#D97757' : '#C96442'});
       opacity: 0.8;
       animation: rippleFade 0.6s ease forwards;
     }
@@ -747,7 +747,7 @@ function getStyles(ctx) {
     }
     #input-panel-footer .input-hint {
       font-size: 10px;
-      color: ${isDark ? '#8a7060' : '#b8a090'};
+      color: var(--accent-muted, ${isDark ? '#8a7060' : '#b8a090'});
       font-family: -apple-system, "Segoe UI", sans-serif;
       white-space: nowrap;
       overflow: hidden;
@@ -762,8 +762,8 @@ function getStyles(ctx) {
       right: 0;
       max-height: 200px;
       overflow-y: auto;
-      background: ${isDark ? '#2a2220' : '#faf5f0'};
-      border: 1px solid ${isDark ? '#D97757' : '#C96442'};
+      background: var(--accent-panel-bg, ${isDark ? '#2a2220' : '#faf5f0'});
+      border: 1px solid var(--accent, ${isDark ? '#D97757' : '#C96442'});
       border-bottom: none;
       box-shadow: 0 -4px 12px rgba(0,0,0,${isDark ? '0.4' : '0.15'});
       z-index: 300;
@@ -783,7 +783,7 @@ function getStyles(ctx) {
     }
     .slash-item .slash-cmd {
       font-family: monospace;
-      color: #D97757;
+      color: var(--accent, #D97757);
     }
     .slash-item .slash-desc {
       font-size: 10px;
@@ -813,7 +813,7 @@ function getStyles(ctx) {
       font-family: -apple-system, "Segoe UI", sans-serif;
     }
     .queue-item .qi-num {
-      color: #D97757;
+      color: var(--accent, #D97757);
       font-weight: 600;
       margin-right: 6px;
       flex-shrink: 0;
@@ -832,12 +832,12 @@ function getStyles(ctx) {
     }
     .queue-item .qi-del:hover { color: #f44336; }
     .queue-item.active {
-      border-color: #D97757;
+      border-color: var(--accent, #D97757);
       background: ${isDark ? '#2a2018' : '#fef0e0'};
     }
     #queue-status {
       font-size: 10px;
-      color: #D97757;
+      color: var(--accent, #D97757);
       font-family: -apple-system, "Segoe UI", sans-serif;
       padding: 2px 10px;
       display: none;
@@ -851,11 +851,11 @@ function getStyles(ctx) {
       font-size: 11px;
       font-family: -apple-system, "Segoe UI", sans-serif;
       cursor: pointer;
-      background: #D97757;
+      background: var(--accent, #D97757);
       color: #fff;
       font-weight: 600;
     }
-    #editor-send:hover { background: #C96442; }
+    #editor-send:hover { background: var(--accent-deep, #C96442); }
 
     /* Shortcut overlay */
     #shortcut-overlay {

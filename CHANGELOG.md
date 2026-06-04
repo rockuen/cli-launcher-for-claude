@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.7.4] - 2026-06-04
+
+### Changed
+- **Themes now tint the bottom input area, not the terminal.** A theme used to recolor the whole xterm terminal (background/foreground/cursor) and the window frame. Now the terminal always keeps its default colors, and the theme sets the *tone* of the input panel instead — the accent (focus border, send button, caret, queue/slash highlights, typing glow) **and** the input panel background. Output stays visually consistent across agents.
+- **Themes are agent-branded and auto-follow the panel's agent.** Claude tabs get the coral "Claude Dark" tone (identical to before), Kiro tabs get the new purple "Kiro Purple" tone — applied automatically when the tab opens. Override per tab from the theme picker (right-click → Change Theme); an explicit pick in Settings acts as a global override. The old scenic themes (Midnight/Ocean/Forest/Sunset/Aurora/Warm) are removed in favour of this agent-theme model (foundation for future Antigravity/Codex tones).
+
+### Implementation
+- `webviewStyles.js`: the input area's hardcoded coral (`#D97757`/`#C96442`) + panel/textarea backgrounds + glows became CSS variables (`--accent`, `--accent-strong`, `--accent-deep`, `--accent-panel-bg`, `--accent-input-bg`, `--accent-glow`, `--accent-glow-strong`, `--accent-muted`) with the original coral as the fallback — so nothing changes until a theme is applied.
+- `webviewClient.js`: `themes` is now `{ claude, kiro }`, each with a dark + light input-tone palette; `applyTheme()` sets the CSS variables only (no more `term.options.theme` / frame recolor). The initial theme resolves to an explicit `claude`/`kiro` global pick, else the panel's agent (via the `IS_KIRO` flag threaded from v3.7.3), applied synchronously to avoid a flash.
+- `webviewContent.js`: theme picker + settings theme select rebuilt to Claude / Kiro with tone swatches; the queue-add button uses the accent variable.
+- `i18n`: `themeClaude` ("Claude Dark") + `themeKiro` ("Kiro Purple"); the theme section retitled "Agent Theme".
+
+### Tests
+- 273 node + 36 vitest passing. Rendered webview client + full HTML verified for both agents (palettes present, `applyTheme` sets `--accent`, terminal no longer recolored, picker shows Claude/Kiro, input CSS fully variable-ized).
+
 ## [3.7.3] - 2026-06-04
 
 ### Added

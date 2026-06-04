@@ -14,6 +14,15 @@ function getClientScript(ctx) {
     // normal buffer (CSI 2J + cursor-home redraws), which needs a different
     // bottom-follow strategy than Claude's inline output — see kiroStick below.
     const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
+    const IS_DARK = ${JSON.stringify(isDark)};
+    // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
+    // colors. Default follows the agent: claude -> coral, kiro -> purple. An
+    // explicit claude/kiro pick in Settings overrides for all panels.
+    const initialPanelTheme =
+      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro')
+        ? SETTINGS.defaultTheme
+        : (IS_KIRO ? 'kiro' : 'claude');
+    let currentThemeName = initialPanelTheme;
     // Escape user input before injecting into innerHTML.
     // Phase 5 hotfix for XSS via customButtons.label / customSlashCommands / fileAssociations / taskQueue.
     function escapeHtml(s) {
@@ -261,13 +270,8 @@ function getClientScript(ctx) {
       }, { passive: false, capture: true });
     })();
 
-    // Apply default theme from settings
-    if (SETTINGS.defaultTheme && SETTINGS.defaultTheme !== 'default') {
-      setTimeout(() => {
-        const item = document.querySelector('.theme-item[data-theme="' + SETTINGS.defaultTheme + '"]');
-        if (item) item.click();
-      }, 100);
-    }
+    // (The resolved initial theme is applied right after applyTheme() is
+    // defined below — synchronously, so kiro tabs don't flash coral first.)
 
     // Trim trailing whitespace from each line of terminal selection
     function getCleanSelection() {
@@ -528,7 +532,7 @@ function getClientScript(ctx) {
       const visible = settingsModal.style.display === 'block';
       settingsModal.style.display = visible ? 'none' : 'block';
       if (!visible) {
-        setTheme.value = SETTINGS.defaultTheme || 'default';
+        setTheme.value = currentThemeName;
         setFontsize.value = currentFontSize;
         setFontsizeLabel.textContent = currentFontSize + 'px';
         if (setReaderFontsize) {
@@ -835,14 +839,19 @@ function getClientScript(ctx) {
     // which worked for dark themes but collapsed to near-invisible on the
     // light default (#ddd on #fff).
     const themePicker = document.getElementById('theme-picker');
+    // Agent input-tone themes. Each carries a dark + light INPUT-AREA palette
+    // (the terminal itself is never recolored). 'claude' reproduces the original
+    // coral accent exactly, so nothing changes for Claude tabs; 'kiro' is the
+    // purple tone. Future agents (antigravity, codex) slot in here the same way.
     const themes = {
-      'default':  { outer: '${outerBg}', terminal: '${bg}', fg: '${fg}', cursor: '${cursor}', border: '${border}', shadow: '${isDark ? "rgba(0,0,0,0.4)" : "rgba(0,0,0,0.08)"}', selection: '${isDark ? "rgba(100, 150, 220, 0.4)" : "rgba(30, 100, 200, 0.25)"}' },
-      'midnight': { outer: '#15112e', terminal: '#1c1740', fg: '#c8c0f0', cursor: '#9080e0', border: '#3a2d6b', shadow: 'rgba(80,50,180,0.3)',  selection: 'rgba(144, 128, 224, 0.45)' },
-      'ocean':    { outer: '#0a1828', terminal: '#0c2240', fg: '#a0d0f0', cursor: '#60a0e0', border: '#1a4070', shadow: 'rgba(30,80,160,0.3)',  selection: 'rgba(96, 160, 224, 0.45)' },
-      'forest':   { outer: '#0a1a0a', terminal: '#0e2810', fg: '#a0e0a0', cursor: '#60c060', border: '#1a5020', shadow: 'rgba(30,120,40,0.3)',  selection: 'rgba(96, 192, 96, 0.4)' },
-      'sunset':   { outer: '#1e0e08', terminal: '#2a1510', fg: '#f0c8a0', cursor: '#e09060', border: '#5a3020', shadow: 'rgba(180,80,30,0.3)',  selection: 'rgba(224, 144, 96, 0.4)' },
-      'aurora':   { outer: '#0e0818', terminal: '#160e2e', fg: '#d0b0f0', cursor: '#b070e0', border: '#3a2060', shadow: 'rgba(120,40,180,0.3)', selection: 'rgba(176, 112, 224, 0.4)' },
-      'warm':     { outer: '#1a1408', terminal: '#241c10', fg: '#e8d8b0', cursor: '#d0a860', border: '#4a3818', shadow: 'rgba(160,120,40,0.3)', selection: 'rgba(208, 168, 96, 0.4)' }
+      claude: {
+        dark:  { accent: '#D97757', accentStrong: '#E8956A', accentDeep: '#C96442', panelBg: '#2a2220', inputBg: '#1e1a18', glow: 'rgba(217,119,87,0.3)', glowStrong: 'rgba(217,119,87,0.5)', muted: '#8a7060' },
+        light: { accent: '#C96442', accentStrong: '#D97757', accentDeep: '#b5512f', panelBg: '#faf5f0', inputBg: '#ffffff', glow: 'rgba(201,100,66,0.2)', glowStrong: 'rgba(201,100,66,0.35)', muted: '#b8a090' }
+      },
+      kiro: {
+        dark:  { accent: '#9d7bff', accentStrong: '#b79bff', accentDeep: '#7c5cff', panelBg: '#211a2e', inputBg: '#181425', glow: 'rgba(157,123,255,0.3)', glowStrong: 'rgba(157,123,255,0.5)', muted: '#8a7fa8' },
+        light: { accent: '#7c5cff', accentStrong: '#9d7bff', accentDeep: '#6344e0', panelBg: '#f5f0fa', inputBg: '#ffffff', glow: 'rgba(124,92,255,0.2)', glowStrong: 'rgba(124,92,255,0.35)', muted: '#9a90b8' }
+      }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
 
@@ -853,15 +862,29 @@ function getClientScript(ctx) {
       if (!visible) themePickerOpenTime = Date.now();
     }
 
+    // Theme drives the INPUT-AREA tone via CSS variables only — it no longer
+    // recolors the terminal (term.options.theme), the window frame, or the body
+    // background, so the terminal looks identical across themes. Only the bottom
+    // input panel (accent, panel bg, textarea bg, caret/glow, send button)
+    // changes tone.
     function applyTheme(themeName) {
-      const t = themes[themeName];
-      if (!t) return;
-      document.body.style.background = t.outer;
-      termWrapper.style.background = t.terminal;
-      termWrapper.style.borderColor = t.border;
-      termWrapper.style.boxShadow = '0 4px 24px ' + t.shadow;
-      term.options.theme = { background: t.terminal, foreground: t.fg, cursor: t.cursor, selectionBackground: t.selection };
+      const def = themes[themeName];
+      if (!def) return;
+      const t = IS_DARK ? def.dark : def.light;
+      const r = document.documentElement.style;
+      r.setProperty('--accent', t.accent);
+      r.setProperty('--accent-strong', t.accentStrong);
+      r.setProperty('--accent-deep', t.accentDeep);
+      r.setProperty('--accent-panel-bg', t.panelBg);
+      r.setProperty('--accent-input-bg', t.inputBg);
+      r.setProperty('--accent-glow', t.glow);
+      r.setProperty('--accent-glow-strong', t.glowStrong);
+      r.setProperty('--accent-muted', t.muted);
+      currentThemeName = themeName;
     }
+    // Apply the resolved initial theme synchronously (claude → no-op vs the CSS
+    // fallbacks; kiro → purple immediately, no coral flash).
+    applyTheme(initialPanelTheme);
 
     themePicker.addEventListener('click', (e) => {
       const item = e.target.closest('.theme-item');

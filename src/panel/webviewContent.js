@@ -79,26 +79,16 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
     <div id="scroll-fab" title="${T.scrollBottomTip}">&#x25BC;</div>
     <div id="theme-picker">
       <h4>${T.themeTitle}</h4>
-      <div class="theme-item" data-theme="default"><div class="theme-preview" style="background:${bg}"></div>${T.themeDefault}</div>
-      <div class="theme-item" data-theme="midnight"><div class="theme-preview" style="background:#1c1740;border-color:#3a2d6b"></div>${T.themeMidnight}</div>
-      <div class="theme-item" data-theme="ocean"><div class="theme-preview" style="background:#0c2240;border-color:#1a4070"></div>${T.themeOcean}</div>
-      <div class="theme-item" data-theme="forest"><div class="theme-preview" style="background:#0e2810;border-color:#1a5020"></div>${T.themeForest}</div>
-      <div class="theme-item" data-theme="sunset"><div class="theme-preview" style="background:#2a1510;border-color:#5a3020"></div>${T.themeSunset}</div>
-      <div class="theme-item" data-theme="aurora"><div class="theme-preview" style="background:#160e2e;border-color:#3a2060"></div>${T.themeAurora}</div>
-      <div class="theme-item" data-theme="warm"><div class="theme-preview" style="background:#241c10;border-color:#4a3818"></div>${T.themeWarm}</div>
+      <div class="theme-item" data-theme="claude"><div class="theme-preview" style="background:#D97757;border-color:#C96442"></div>${T.themeClaude}</div>
+      <div class="theme-item" data-theme="kiro"><div class="theme-preview" style="background:#9d7bff;border-color:#7c5cff"></div>${T.themeKiro}</div>
     </div>
     <div id="settings-modal">
       <h4>&#x2699; Settings</h4>
       <div class="settings-row">
         <label>${T.themeTitle}</label>
         <select class="settings-select" id="set-theme">
-          <option value="default">${T.themeDefault}</option>
-          <option value="midnight">${T.themeMidnight}</option>
-          <option value="ocean">${T.themeOcean}</option>
-          <option value="forest">${T.themeForest}</option>
-          <option value="sunset">${T.themeSunset}</option>
-          <option value="aurora">${T.themeAurora}</option>
-          <option value="warm">${T.themeWarm}</option>
+          <option value="claude">${T.themeClaude}</option>
+          <option value="kiro">${T.themeKiro}</option>
         </select>
       </div>
       <div class="settings-row">
@@ -165,7 +155,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div id="input-panel-footer">
         <span class="input-hint">${T.inputHint}</span>
         <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
-          <button id="queue-add" style="height:26px;padding:0 10px;border:1px solid #D97757;border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:#D97757;">${T.queueAdd}</button>
+          <button id="queue-add" style="height:26px;padding:0 10px;border:1px solid var(--accent, #D97757);border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:var(--accent, #D97757);">${T.queueAdd}</button>
           <span id="queue-run" style="display:none"></span>
           ${(customButtons || []).map((b, i) => `<button class="custom-cmd-btn" data-cmd="${b.command.replace(/"/g, '&quot;')}" style="height:26px;padding:0 10px;border:1px solid ${isDark ? '#666' : '#bbb'};border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:${isDark ? '#aaa' : '#666'};" title="${b.command.replace(/"/g, '&quot;')}">${b.label.replace(/</g, '&lt;')}</button>`).join('\n          ')}
           <button id="editor-send">${T.send}</button>
