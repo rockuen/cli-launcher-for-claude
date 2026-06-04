@@ -179,7 +179,10 @@ function _clearLineCache() { _lineCache.clear(); }
 //   kind === 'Prompt'           → role 'user'
 //   kind === 'AssistantMessage' → role 'assistant'
 //   kind === 'ToolResults'      → skip
-// Text is in data.content[].data where data.content[].kind === 'text'.
+// Content blocks: { kind: 'text', data: '…' } and { kind: 'toolUse', data: {
+//   name, input } }. An assistant turn that calls a tool is frequently just an
+//   empty text block + a toolUse block — surfacing the toolUse keeps those
+//   turns visible in the reader instead of dropping the whole message.
 // Timestamp comes from data.meta?.timestamp.
 function _extractKiroMessages(lines) {
   const out = [];
@@ -191,8 +194,15 @@ function _extractKiroMessages(lines) {
     if (!Array.isArray(content)) continue;
     const parts = [];
     for (const c of content) {
-      if (c && c.kind === 'text' && typeof c.data === 'string' && c.data.trim()) {
+      if (!c) continue;
+      if (c.kind === 'text' && typeof c.data === 'string' && c.data.trim()) {
         parts.push(c.data);
+      } else if (c.kind === 'toolUse' && c.data) {
+        // Show the tool call (name + its stated purpose) so tool-only
+        // assistant turns aren't invisible in the reader.
+        const name = c.data.name || 'tool';
+        const purpose = c.data.input && c.data.input.__tool_use_purpose;
+        parts.push(purpose ? '`🔧 ' + name + '` — ' + purpose : '`🔧 ' + name + '`');
       }
     }
     if (parts.length === 0) continue;

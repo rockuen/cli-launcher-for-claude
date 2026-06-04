@@ -459,6 +459,37 @@ function activate(context) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.renameSessionTitle', async (item) => {
+      // Per-session rename for the sidebar (claude + kiro). Writes to the
+      // agent-scoped title store (_storeKey('titles') = claudeSessionTitles /
+      // kiroSessionTitles), which the tree reads as the label. Works for closed
+      // sessions too — kiro has no auto-title, so this is the way to name them.
+      const prov = providerForItem(item);
+      const id = item && item._sessionId;
+      if (!prov || !id) return;
+      const titlesKey = prov._storeKey('titles');
+      const titles = sessionStoreGet(titlesKey, {});
+      const name = await vscode.window.showInputBox({
+        prompt: 'Session name (leave empty to clear)',
+        value: titles[id] || ''
+      });
+      if (name === undefined) return; // cancelled
+      const trimmed = name.trim();
+      if (trimmed) titles[id] = trimmed; else delete titles[id];
+      sessionStoreUpdate(titlesKey, titles);
+      prov.refresh();
+      // Keep an open tab for this session in sync with the new name.
+      for (const [, entry] of state.panels) {
+        if (entry.sessionId === id && trimmed) {
+          entry.title = trimmed;
+          try { entry.panel.title = trimmed; } catch (_) {}
+          try { entry.panel.webview.postMessage({ type: 'title-updated', title: trimmed }); } catch (_) {}
+        }
+      }
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.renameGroup', async (item) => {
       const prov = providerForItem(item);
       const groupsKey = prov._storeKey('groups');

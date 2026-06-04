@@ -215,15 +215,23 @@ test('kiro parser: skips ToolResults lines', () => {
   fs.unlinkSync(filePath);
 });
 
-test('kiro parser: skips turns with no text content', () => {
+test('kiro parser: renders toolUse turns (name + purpose) and skips truly-empty ones', () => {
   const filePath = writeTmpJsonl([
-    { version: 1, kind: 'Prompt',           data: { message_id: 'a', content: [{ kind: 'toolUse', data: '{}' }] } },
-    { version: 1, kind: 'AssistantMessage', data: { message_id: 'b', content: [{ kind: 'text', data: 'OK' }] } },
+    { version: 1, kind: 'Prompt',           data: { message_id: 'a', content: [{ kind: 'text', data: 'do a thing' }] } },
+    // tool-only assistant turn (empty text + toolUse) — must be surfaced, not dropped
+    { version: 1, kind: 'AssistantMessage', data: { message_id: 'b', content: [{ kind: 'text', data: '' }, { kind: 'toolUse', data: { name: 'introspect', input: { __tool_use_purpose: 'check settings' } } }] } },
+    // truly empty turn (empty text, nothing else) — still skipped
+    { version: 1, kind: 'AssistantMessage', data: { message_id: 'c', content: [{ kind: 'text', data: '' }] } },
+    { version: 1, kind: 'AssistantMessage', data: { message_id: 'd', content: [{ kind: 'text', data: 'done' }] } },
   ]);
   _clearLineCache();
   const msgs = extractMessages(filePath, 'kiro');
-  assert.equal(msgs.length, 1);
-  assert.equal(msgs[0].role, 'assistant');
+  assert.equal(msgs.length, 3);
+  assert.equal(msgs[0].role, 'user');
+  assert.equal(msgs[1].role, 'assistant');
+  assert.ok(msgs[1].text.includes('introspect'), 'tool name shown');
+  assert.ok(msgs[1].text.includes('check settings'), 'tool purpose shown');
+  assert.equal(msgs[2].text, 'done');
   fs.unlinkSync(filePath);
 });
 

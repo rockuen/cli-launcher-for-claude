@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.7.8] - 2026-06-04
+
+### Fixed
+- **The reader now shows Kiro tool-use turns instead of dropping them.** A Kiro assistant turn that calls a tool is usually an empty `text` block + a `toolUse` block; the kiro parser only kept non-empty `text`, so those whole turns vanished and tool-heavy conversations looked sparse or empty in the card reader. Tool calls now render as `🔧 <tool> — <purpose>`, so the full conversation flow is visible (truly-empty turns are still skipped).
+
+### Added
+- **Rename a session from the sidebar** (Claude Sessions + Kiro Sessions) — a ✎ action on each session row. Kiro has no auto-generated title (it falls back to the session's first message), so this is the reliable way to give a Kiro session a stable name; it works on closed sessions too. The name is stored per agent (`kiroSessionTitles` / `claudeSessionTitles`) and shows as the tree label; an open tab for that session updates live.
+
+### Implementation
+- `lib/sessionJsonl.js` `_extractKiroMessages()`: render `toolUse` content blocks (tool name + its `__tool_use_purpose`).
+- `activation.js`: new `claudeCodeLauncher.renameSessionTitle` command — writes the entered name to `prov._storeKey('titles')`, refreshes the tree, and syncs any open tab. `package.json`: command + `view/item/context` entries for `kiroSession` and `session`/`subSession` (inline ✎).
+
+### Tests
+- 273 node + 36 vitest passing (the kiro parser test now asserts tool-use turns render, empty turns skip).
+
 ## [3.7.7] - 2026-06-04
 
 ### Added

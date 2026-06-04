@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.7",
+  "version": "3.7.8",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -74,6 +74,12 @@
       {
         "command": "claudeCodeLauncher.renameGroup",
         "title": "Rename Group",
+        "icon": "$(edit)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.renameSessionTitle",
+        "title": "Rename Session",
         "icon": "$(edit)",
         "category": "Claude"
       },
@@ -321,6 +327,11 @@
       ],
       "view/item/context": [
         {
+          "command": "claudeCodeLauncher.renameSessionTitle",
+          "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
+          "group": "inline@0"
+        },
+        {
           "command": "claudeCodeLauncher.moveToGroup",
           "when": "view == claudeCodeLauncher.sessionList && (viewItem == session || viewItem == subSession)",
           "group": "inline@1"
@@ -399,6 +410,11 @@
           "command": "claudeCodeLauncher.toggleGroupArchive",
           "when": "view == claudeCodeLauncher.sessionList && viewItem == customGroup",
           "group": "2_archive@1"
+        },
+        {
+          "command": "claudeCodeLauncher.renameSessionTitle",
+          "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroSession",
+          "group": "inline@0"
         },
         {
           "command": "claudeCodeLauncher.moveToGroup",
