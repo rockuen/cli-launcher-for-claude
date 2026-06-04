@@ -69,11 +69,20 @@ function listKiroSessions(cwd, _dir) {
 
 function getSessionJsonlPath(sessionId, cwd, agent) {
   if (agent === 'kiro') {
-    // Kiro auto-assigns its own session ids — the launcher's crypto.randomUUID()
-    // never matches what Kiro writes on disk. Discover the actual file by
-    // scanning metadata .json files in the sessions dir and picking the most
-    // recently updated one whose cwd matches. sessionId is intentionally unused
-    // for kiro; cwd is the discriminator.
+    // Kiro auto-assigns its own session ids. Once we know the REAL id — a
+    // Tree-resume, or a fresh session whose id the reader has discovered and
+    // pinned back onto the entry — read THAT exact transcript. Reading
+    // cwd-latest instead (the old behaviour) bled every other kiro session
+    // sharing this cwd into the reader: open two kiro tabs in one folder and
+    // both showed whichever session wrote most recently. Our placeholder
+    // crypto.randomUUID()s never exist as <id>.jsonl on disk, so existsSync
+    // cleanly tells a real kiro id from a not-yet-pinned placeholder.
+    if (sessionId) {
+      const direct = path.join(os.homedir(), '.kiro', 'sessions', 'cli', `${sessionId}.jsonl`);
+      if (fs.existsSync(direct)) return direct;
+    }
+    // Fresh session, real id not yet known → cwd-latest discovery (the reader
+    // watch pins the real id as soon as kiro writes the transcript).
     return findLatestKiroSessionPath(cwd);
   }
   if (!sessionId) return null;

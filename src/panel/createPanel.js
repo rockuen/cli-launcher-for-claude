@@ -26,7 +26,7 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
-const { getSessionJsonlPath, extractAiTitle, extractMessages } = require('../lib/sessionJsonl');
+const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions } = require('../lib/sessionJsonl');
 const { buildMeta, renderBlocks, renderWelcome } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
@@ -43,6 +43,14 @@ const IDLE_DELAY_MS = 3000;
 // interactive prompt now only fires a desktop NOTIFICATION, detected
 // idle-gated via lib/promptAffordance.js (see the idle timer in flushPending).
 
+// Kiro fresh-session id ownership. A new `kiro-cli chat` accepts no session
+// id, and the id kiro picks isn't known until it writes the transcript. Each
+// fresh kiro panel snapshots the session ids that already existed for its cwd,
+// then claims the first NEW id that appears and pins it (entry.sessionId), so
+// its reader reads that exact transcript instead of cwd-latest. This module-
+// level set stops two fresh panels in the same cwd from claiming one id.
+const _claimedKiroIds = new Set();
+
 // Split-layout reader watcher: tail the active session's jsonl and broadcast
 // rendered blocks to the webview so the in-panel reader stays in sync with
 // the TUI. Same polling shape as readerView's startLiveWatch — macOS fsevents
@@ -53,11 +61,39 @@ function startReaderWatch(entry, panel) {
   if (!entry || !entry.sessionId) return null;
   if (entry.agent !== 'kiro' && !entry.cwd) return null;
 
-  // For kiro: Kiro assigns its own session ids — our entry.sessionId is a
-  // random UUID that never matches the file on disk. We watch the whole
-  // sessions directory and resolve the correct jsonl path on every render
-  // tick via getSessionJsonlPath (which calls findLatestKiroSessionPath).
-  // For claude: path is fixed for the lifetime of the session; resolve once.
+  // For kiro: kiro assigns its own session ids — for a fresh session our
+  // entry.sessionId is a random placeholder UUID that never matches the file
+  // on disk. We watch the whole sessions directory and, on each render tick,
+  // resolve THIS panel's own transcript (never cwd-latest — that bled sibling
+  // sessions sharing the cwd into the reader; see _claimedKiroIds). For
+  // claude: path is fixed for the session lifetime; resolve once.
+  if (entry.agent === 'kiro' && entry.isKiroResume && entry.sessionId) {
+    // Tree-resume already carries the real id — own it immediately.
+    entry._kiroPinned = true;
+    _claimedKiroIds.add(entry.sessionId);
+  }
+  // Session ids that already existed for this cwd BEFORE this fresh panel
+  // spawned, so discovery never claims a pre-existing session. Snapshot once.
+  const kiroPreIds = (entry.agent === 'kiro' && !entry._kiroPinned)
+    ? new Set(listKiroSessions(entry.cwd).map(s => s.sessionId))
+    : null;
+  const resolveKiroPath = () => {
+    if (!entry._kiroPinned) {
+      // The first NEW (post-spawn), unclaimed session for this cwd is ours.
+      const fresh = listKiroSessions(entry.cwd)
+        .find(s => !kiroPreIds.has(s.sessionId) && !_claimedKiroIds.has(s.sessionId));
+      if (!fresh) return null; // kiro hasn't written its transcript yet
+      entry.sessionId = fresh.sessionId; // promote placeholder → real id
+      entry.isKiroResume = true;         // restartPty now resumes via --resume-id
+      entry._kiroPinned = true;
+      _claimedKiroIds.add(fresh.sessionId);
+      try { saveSessions(); } catch (_) {}
+      try { state.refreshSessionTrees(); } catch (_) {}
+      console.log('[panel-reader] kiro session pinned:', fresh.sessionId);
+    }
+    return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro');
+  };
+
   const watchTarget = entry.agent === 'kiro'
     ? path.join(os.homedir(), '.kiro', 'sessions', 'cli')
     : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
@@ -65,9 +101,7 @@ function startReaderWatch(entry, panel) {
 
   // Dynamic path resolution: kiro re-evaluates on every render; claude keeps
   // the fixed path (avoids repeated stat/scan on the common hot path).
-  const resolvePath = entry.agent === 'kiro'
-    ? () => getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent)
-    : () => watchTarget;
+  const resolvePath = entry.agent === 'kiro' ? resolveKiroPath : () => watchTarget;
 
   let debounceTimer = null;
   // v3.5.7: defer renders on hidden panels. renderBlocks() on a multi-MB
@@ -142,6 +176,10 @@ function startReaderWatch(entry, panel) {
   return () => {
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
     if (watcher) { try { watcher.close(); } catch (_) {} }
+    // Release this panel's kiro id so a later session can reuse it.
+    if (entry.agent === 'kiro' && entry._kiroPinned && entry.sessionId) {
+      _claimedKiroIds.delete(entry.sessionId);
+    }
   };
 }
 

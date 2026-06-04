@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.7.2] - 2026-06-04
+
+### Fixed
+- **Kiro readers no longer show other sessions' transcripts.** With two or more Kiro tabs open in the same folder, every reader rendered whichever session wrote most recently instead of its own conversation. `getSessionJsonlPath()` ignored the session id for Kiro and always returned `findLatestKiroSessionPath(cwd)` (cwd-latest) — fine for one session per cwd, wrong the moment a second appears (verified against two real sessions sharing the vault cwd: both resolved to the newer one). Now, when the real Kiro id is known, the reader reads that exact `<id>.jsonl`; a fresh session — whose id Kiro assigns and we don't know at spawn — is **discovered and pinned** on its first transcript write, then reads its own file thereafter. Our placeholder `crypto.randomUUID()`s never exist as `<id>.jsonl` on disk, so an `existsSync` check cleanly tells a real id from a not-yet-pinned placeholder.
+
+### Implementation
+- `lib/sessionJsonl.js` `getSessionJsonlPath()`: for kiro, return `~/.kiro/sessions/cli/<sessionId>.jsonl` when that file exists; only an unknown placeholder id falls back to `findLatestKiroSessionPath(cwd)`.
+- `panel/createPanel.js` `startReaderWatch()`: a fresh kiro panel snapshots the session ids that already existed for its cwd, then claims the first NEW, unclaimed id that appears — pinning it onto `entry.sessionId` (and setting `isKiroResume`, so a restart resumes via `--resume-id`) and persisting it. A module-level `_claimedKiroIds` set stops two fresh panels in one cwd from claiming the same id; the claim is released on panel dispose. A Tree-resume owns its real id immediately.
+- Known limit: two kiro tabs opened in the same folder *before either writes its first transcript* can still be assigned in the wrong order — there is no on-disk id to disambiguate them yet. Opening them one at a time (the normal flow) is exact.
+
+### Tests
+- 273 node + 36 vitest passing. New `kiroReaderPath.test.ts`: a known id resolves to its own file, the older session is not pulled to the newest (the actual bug), and an unknown placeholder falls back to cwd-latest. (`USERPROFILE`+`HOME` overridden so `os.homedir()` resolves the fixtures cross-platform.)
+
 ## [3.7.1] - 2026-06-04
 
 ### Fixed
