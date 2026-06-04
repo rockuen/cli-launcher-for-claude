@@ -79,6 +79,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
     <div id="scroll-fab" title="${T.scrollBottomTip}">&#x25BC;</div>
     <div id="theme-picker">
       <h4>${T.themeTitle}</h4>
+      <div class="theme-item" data-theme="auto"><div class="theme-preview" style="background:linear-gradient(135deg,#D97757 50%,#9d7bff 50%);border-color:#888"></div>${T.themeAuto}</div>
       <div class="theme-item" data-theme="claude"><div class="theme-preview" style="background:#D97757;border-color:#C96442"></div>${T.themeClaude}</div>
       <div class="theme-item" data-theme="kiro"><div class="theme-preview" style="background:#9d7bff;border-color:#7c5cff"></div>${T.themeKiro}</div>
     </div>
@@ -87,6 +88,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div class="settings-row">
         <label>${T.themeTitle}</label>
         <select class="settings-select" id="set-theme">
+          <option value="auto">${T.themeAuto}</option>
           <option value="claude">${T.themeClaude}</option>
           <option value="kiro">${T.themeKiro}</option>
         </select>

@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.11",
+  "version": "3.7.12",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -538,26 +538,18 @@
       "properties": {
         "claudeCodeLauncher.defaultTheme": {
           "type": "string",
-          "default": "default",
+          "default": "auto",
           "enum": [
-            "default",
-            "midnight",
-            "ocean",
-            "forest",
-            "sunset",
-            "aurora",
-            "warm"
+            "auto",
+            "claude",
+            "kiro"
           ],
           "enumDescriptions": [
-            "IDE default theme",
-            "Midnight — deep purple (#1c1740)",
-            "Ocean — deep blue (#0c2240)",
-            "Forest — deep green (#0e2810)",
-            "Sunset — warm orange (#2a1510)",
-            "Aurora — violet (#160e2e)",
-            "Warm — warm brown (#241c10)"
+            "Auto — follow each panel's agent (Claude → coral, Kiro → purple)",
+            "Claude Dark — coral input tone for every panel",
+            "Kiro Purple — purple input tone for every panel"
           ],
-          "description": "Default background theme for new terminals."
+          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro' pin one tone for all panels."
         },
         "claudeCodeLauncher.defaultFontSize": {
           "type": "number",

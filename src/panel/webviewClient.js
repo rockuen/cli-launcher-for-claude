@@ -16,12 +16,13 @@ function getClientScript(ctx) {
     const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
-    // colors. Default follows the agent: claude -> coral, kiro -> purple. An
-    // explicit claude/kiro pick in Settings overrides for all panels.
+    // colors. 'auto' (the default) follows the agent: claude -> coral,
+    // kiro -> purple. An explicit claude/kiro pick in Settings pins one tone
+    // for all panels; legacy values (default/midnight/...) resolve to 'auto'.
     const initialPanelTheme =
       (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro')
         ? SETTINGS.defaultTheme
-        : (IS_KIRO ? 'kiro' : 'claude');
+        : 'auto';
     let currentThemeName = initialPanelTheme;
     // Escape user input before injecting into innerHTML.
     // Phase 5 hotfix for XSS via customButtons.label / customSlashCommands / fileAssociations / taskQueue.
@@ -868,7 +869,9 @@ function getClientScript(ctx) {
     // input panel (accent, panel bg, textarea bg, caret/glow, send button)
     // changes tone.
     function applyTheme(themeName) {
-      const def = themes[themeName];
+      // 'auto' resolves to this panel's agent tone (claude coral / kiro purple).
+      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : 'claude') : themeName;
+      const def = themes[resolvedName];
       if (!def) return;
       const t = IS_DARK ? def.dark : def.light;
       const r = document.documentElement.style;

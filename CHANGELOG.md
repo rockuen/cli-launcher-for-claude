@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.12] - 2026-06-04
+
+### Fixed
+- **The per-agent input tone is back.** Choosing a theme once in Settings wrote `claude` or `kiro` to the global `defaultTheme`, which then pinned every panel — Claude tabs and Kiro tabs both showed the last-picked color instead of each following its own agent. Root cause: the theme picker only had explicit `Claude`/`Kiro` options, so there was no way to ask for "follow the agent," and any pick became a global override.
+
+### Added
+- **`Auto (agent)` theme** — now the default. Each panel follows its own agent (Claude → coral, Kiro → purple); `Claude`/`Kiro` remain as explicit pins for users who want one tone everywhere. The theme picker and Settings dropdown both lead with **Auto**.
+
+### Implementation
+- `webviewClient.js`: `initialPanelTheme` resolves non-`claude`/`kiro` values (incl. legacy `default`/`midnight`/…) to `'auto'`; `applyTheme()` maps `'auto'` → `IS_KIRO ? 'kiro' : 'claude'` per panel.
+- `webviewContent.js`: `Auto` option added to the theme picker (split coral/purple swatch) and the Settings `set-theme` select.
+- `package.json`: `defaultTheme` config rewritten from the stale background-theme enum (`default`/`midnight`/`ocean`/…) to `auto`/`claude`/`kiro`, default `auto`.
+- `i18n/en.js` + `ko.js`: `themeAuto` label.
+
+### Tests
+- 273 node + 36 vitest passing; rendered the webview client for both agents and asserted the `auto` resolution, `IS_KIRO` threading, and explicit-pin guard.
+
 ## [3.7.11] - 2026-06-04
 
 ### Changed
