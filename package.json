@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.10",
+  "version": "3.7.11",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -26,7 +26,7 @@
         "command": "claudeCodeLauncher.open",
         "title": "Open Claude Code",
         "icon": {
-          "light": "./icons/claude-robot.svg",
+          "light": "./icons/claude-robot-light.svg",
           "dark": "./icons/claude-robot.svg"
         },
         "category": "Claude"
@@ -202,7 +202,7 @@
         "command": "claudeCodeLauncher.openTerminal",
         "title": "Open Claude Code (use default backend)",
         "icon": {
-          "light": "./icons/claude-robot.svg",
+          "light": "./icons/claude-robot-light.svg",
           "dark": "./icons/claude-robot.svg"
         },
         "category": "Claude"

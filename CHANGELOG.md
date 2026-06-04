@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.7.11] - 2026-06-04
+
+### Changed
+- **The robot icon is now neutral gray instead of Claude coral.** The robot in the editor title bar (top-right), the activity-bar view container, and the command-palette entries all came from one coral (`#D97757`) `claude-robot.svg`. Now that the launcher hosts non-Claude agents, the icon is a theme-neutral gray so it no longer reads as "Claude" — agent identity is already carried by the per-agent input theme (Claude coral / Kiro purple). The command icons use a light/dark split because VS Code renders contributed command icons as-is without recoloring.
+
+### Implementation
+- `icons/claude-robot.svg`: coral `#D97757` → `#8B949E` (used by the dark-theme command icon + the masked activity-bar container icon).
+- `icons/claude-robot-light.svg` (new): `#57606A` variant for light themes.
+- `package.json`: the `open` / `openTerminal` command icons now point `light` → `claude-robot-light.svg`, `dark` → `claude-robot.svg` (activity-bar container stays `claude-robot.svg`, masked to the theme color anyway).
+
+### Tests
+- 273 node + 36 vitest passing (icon/manifest-only change; no test references the icon).
+
 ## [3.7.10] - 2026-06-04
 
 ### Changed
