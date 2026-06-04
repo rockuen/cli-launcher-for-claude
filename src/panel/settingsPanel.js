@@ -431,6 +431,26 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
         def.appendChild(defText);
         main.appendChild(def);
 
+        // Kiro-only: --trust-all-tools toggle (skip per-tool permission prompts).
+        // Bound to the global claudeCodeLauncher.kiro.trustAllTools; applies to
+        // newly opened and restarted Kiro sessions.
+        if (a.id === 'kiro') {
+          const trust = document.createElement('label');
+          trust.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          trust.title = 'Run Kiro with --trust-all-tools so it can use any tool without asking for confirmation each time. Applies to newly opened and restarted Kiro sessions.';
+          const tcb = document.createElement('input');
+          tcb.type = 'checkbox';
+          tcb.checked = !!GLOBALS.kiroTrustAllTools;
+          tcb.addEventListener('change', () => {
+            vscode.postMessage({ type: 'set-global', key: 'kiro.trustAllTools', value: tcb.checked });
+          });
+          const trustText = document.createElement('span');
+          trustText.textContent = 'Trust all tools (--trust-all-tools)';
+          trust.appendChild(tcb);
+          trust.appendChild(trustText);
+          main.appendChild(trust);
+        }
+
         // Enable toggle — disabled when not installed.
         const sw = document.createElement('label');
         sw.className = 'switch' + (a.installed ? '' : ' disabled');
@@ -635,6 +655,7 @@ function openGlobalSettings(context) {
     defaultBackend: cfg.get('terminal.defaultBackend', 'webview'),
     multiplexerLifecycle: cfg.get('terminal.multiplexerLifecycle', 'kill-on-close'),
     autoEffortMax: cfg.get('autoEffortMax', false),
+    kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
     customSlashCommands: cfg.get('customSlashCommands', []),
@@ -650,6 +671,7 @@ function openGlobalSettings(context) {
     'terminal.defaultBackend',
     'terminal.multiplexerLifecycle',
     'autoEffortMax',
+    'kiro.trustAllTools',
     'repoSync.enabled',
     'repoSync.path',
     'customSlashCommands',

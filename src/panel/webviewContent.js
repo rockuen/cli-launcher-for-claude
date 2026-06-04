@@ -5,7 +5,7 @@
 const { getStyles } = require('./webviewStyles');
 const { getClientScript } = require('./webviewClient');
 
-function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, title, memo, customButtons, T, settings, customSlashCommands, splitRatio, initialReaderBlocks, splitLayoutOn, extraSlashes) {
+function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, title, memo, customButtons, T, settings, customSlashCommands, splitRatio, initialReaderBlocks, splitLayoutOn, extraSlashes, agent) {
   const outerBg = isDark ? '#181818' : '#f0f0f0';
   const bg = isDark ? '#1e1e1e' : '#ffffff';
   const fg = isDark ? '#d4d4d4' : '#333333';
@@ -222,7 +222,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
   <script src="${fitAddonUri}"></script>
   <script src="${webLinksAddonUri}"></script>
   <script src="${searchAddonUri}"></script>
-  <script>${getClientScript({ T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes })}</script>
+  <script>${getClientScript({ T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent })}</script>
 </body>
 </html>`;
 }

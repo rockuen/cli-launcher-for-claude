@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.7.3] - 2026-06-04
+
+### Added
+- **Kiro "Trust all tools" toggle** (CLI Launcher Settings → Agent, under Kiro). When on, Kiro sessions launch with `kiro-cli chat --trust-all-tools` so Kiro may use any tool without asking for confirmation each time. Off by default (Kiro prompts per tool). Applies to newly opened and restarted Kiro sessions; existing tabs pick it up on restart. Config key: `claudeCodeLauncher.kiro.trustAllTools`.
+
+### Fixed
+- **Kiro terminal now stays pinned to the bottom** like the Claude terminal, instead of drifting to the top of the pane on new output. Kiro renders a full-screen frame in the *normal* buffer (no alternate screen): it clears with `CSI 2J` and redraws via cursor-home, which made xterm's pre-write "am I at the bottom?" snapshot go stale mid-redraw, so the viewport could land above Kiro's input line. Kiro sessions now follow the bottom on every write via an explicit scroll-intent flag (set from real scroll gestures through `term.onScroll`) rather than the fragile per-write snapshot, so the input line stays visible — and scrolling up still pauses the follow until you return to the bottom. Claude's inline-render path is unchanged.
+
+### Implementation
+- `panel/createPanel.js` + `panel/restartPty.js`: append `--trust-all-tools` to the kiro `chat` args when `claudeCodeLauncher.kiro.trustAllTools` is set.
+- `panel/webviewContent.js` + `panel/webviewClient.js`: thread the panel's `agent` into the webview as `IS_KIRO`; for kiro the output handler keeps a `kiroStick` follow flag (updated by `term.onScroll`) and `scrollToBottom()`s after each write unless the user scrolled up.
+- `panel/settingsPanel.js`: the Kiro agent row gains a "Trust all tools (--trust-all-tools)" checkbox bound to the global; `kiro.trustAllTools` added to the settings globals and the write allowlist.
+- `package.json`: new `claudeCodeLauncher.kiro.trustAllTools` boolean (default false).
+
+### Tests
+- 273 node + 36 vitest passing. Kiro PTY behaviour confirmed empirically (no alt-screen; `2J` + cursor-home full-redraw), and the rendered webview client was syntax-checked for both agents (`IS_KIRO` true/false).
+
 ## [3.7.2] - 2026-06-04
 
 ### Fixed

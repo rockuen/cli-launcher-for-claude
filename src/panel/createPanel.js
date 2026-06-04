@@ -303,7 +303,7 @@ function createPanel(context, extensionPath, session, opts) {
   // read its initial value and re-sync when the user reopens the modal
   // after a drag/keyboard adjustment.
   const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle, splitRatio };
-  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, renderWelcome(), splitLayoutDefault, extraSlashes);
+  panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, renderWelcome(), splitLayoutDefault, extraSlashes, agent);
 
   // Spawn CLI — agent-aware (PoC: 'claude' default, 'kiro' opt-in via settings)
   // opts.agent takes priority so handoff can force the opposite backend.
@@ -338,6 +338,12 @@ function createPanel(context, extensionPath, session, opts) {
     const kiroArgs = session?.isKiroResume
       ? ['chat', '--resume-id', session.sessionId]
       : (session?.sessionId ? ['chat', '--resume'] : ['chat']);
+    // --trust-all-tools (opt-in via claudeCodeLauncher.kiro.trustAllTools): let
+    // Kiro use any tool without per-call confirmation. Appended after the chat
+    // subcommand/resume flags (flag order is not significant to kiro-cli).
+    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
+      kiroArgs.push('--trust-all-tools');
+    }
     args = [...resolvedKiro.args, ...kiroArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved

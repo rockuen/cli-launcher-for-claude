@@ -3,13 +3,17 @@
 // v2.6.0 plan: convert to real static client.js with __CLAUDE_INIT__ JSON injection.
 
 function getClientScript(ctx) {
-  const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes } = ctx;
+  const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent } = ctx;
   const initialSplitRatio = (splitRatio != null && Number.isFinite(Number(splitRatio))) ? Number(splitRatio) : 0.85;
   const initialSplitOn = splitLayoutOn === true;
   return `
     const vscode = acquireVsCodeApi();
     const T = ${JSON.stringify(T)};
     const SETTINGS = ${JSON.stringify(settings)};
+    // Which backend this panel runs. Kiro renders full-screen frames in the
+    // normal buffer (CSI 2J + cursor-home redraws), which needs a different
+    // bottom-follow strategy than Claude's inline output — see kiroStick below.
+    const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
     // Escape user input before injecting into innerHTML.
     // Phase 5 hotfix for XSS via customButtons.label / customSlashCommands / fileAssociations / taskQueue.
     function escapeHtml(s) {
@@ -82,6 +86,20 @@ function getClientScript(ctx) {
     // from the prompt-driven terminal auto-expand, so a normal fit is simpler
     // and keeps Claude's input naturally at the pane bottom.)
     fitAddon.fit();
+
+    // Kiro renders a full-screen frame in the NORMAL buffer (no alt-screen):
+    // it clears with CSI 2J and redraws via cursor-home, so the pre-write
+    // "was I at the bottom?" snapshot used for Claude can go stale mid-redraw
+    // and the viewport drifts up off the input line. For kiro we keep an
+    // explicit follow flag driven by real scroll gestures instead: stick to
+    // the bottom on every write unless the user scrolled up, re-arming when
+    // they scroll back down to the bottom.
+    let kiroStick = true;
+    if (IS_KIRO) {
+      term.onScroll(() => {
+        kiroStick = term.buffer.active.viewportY >= term.buffer.active.baseY;
+      });
+    }
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──
     // Claude CLI's fullscreen mode uses alternate screen buffer + mouse
@@ -997,10 +1015,17 @@ function getClientScript(ctx) {
       if (msg.type === 'output') {
         checkMouseMode(msg.data);
         const cleaned = stripMouseMode(msg.data);
-        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
-        term.write(cleaned, () => {
-          if (wasAtBottom) term.scrollToBottom();
-        });
+        if (IS_KIRO) {
+          // Kiro: follow the bottom on every write unless the user scrolled up
+          // (kiroStick, driven by onScroll). Robust against the 2J full-redraw
+          // perturbing xterm's buffer position mid-write.
+          term.write(cleaned, () => { if (kiroStick) term.scrollToBottom(); });
+        } else {
+          const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+          term.write(cleaned, () => {
+            if (wasAtBottom) term.scrollToBottom();
+          });
+        }
       }
       if (msg.type === 'state') {
         // Hide restart bar when active

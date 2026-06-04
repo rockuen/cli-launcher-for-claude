@@ -43,6 +43,11 @@ function restartPty(entry, panel, context, extensionPath) {
     const kiroArgs = entry.isKiroResume
       ? ['chat', '--resume-id', entry.sessionId]
       : (entry.sessionId ? ['chat', '--resume'] : ['chat']);
+    // --trust-all-tools (opt-in): let Kiro use any tool without per-call
+    // confirmation. Flag order after the chat subcommand is not significant.
+    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
+      kiroArgs.push('--trust-all-tools');
+    }
     args = [...resolvedKiro.args, ...kiroArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved

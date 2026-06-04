@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.2",
+  "version": "3.7.3",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -739,6 +739,11 @@
           "items": { "type": "string" },
           "default": ["claude"],
           "description": "Agents shown when creating a new session. Toggle agents on/off in CLI Launcher Settings → Agent. Only enabled agents that are also installed appear in the new-session picker."
+        },
+        "claudeCodeLauncher.kiro.trustAllTools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run Kiro sessions with `kiro-cli chat --trust-all-tools` so Kiro may use any tool without asking for confirmation each time. Off by default (Kiro prompts for permission). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Kiro sessions."
         }
       }
     },
