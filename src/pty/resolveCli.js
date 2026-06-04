@@ -77,4 +77,28 @@ function resolveKiroCli() {
   return null;
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli };
+// @module pty/resolveCli — locates the Antigravity CLI (agy) binary.
+// Priority: ~/.local/bin/agy → %LOCALAPPDATA%\agy\bin (Windows installer) → PATH.
+function resolveAntigravityCli() {
+  const isWin = process.platform === 'win32';
+
+  // 1) ~/.local/bin/agy(.exe) — standalone install (macOS/Linux; some Windows)
+  const localBin = isWin
+    ? path.join(os.homedir(), '.local', 'bin', 'agy.exe')
+    : path.join(os.homedir(), '.local', 'bin', 'agy');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+
+  // 2) Windows installer location: %LOCALAPPDATA%\agy\bin\agy.exe (verified)
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    const winInstall = path.join(localAppData, 'agy', 'bin', 'agy.exe');
+    if (fs.existsSync(winInstall)) return { shell: winInstall, args: [] };
+  }
+
+  // 3) PATH — resolved to an absolute path on Windows (node-pty needs it)
+  const onPath = resolveOnPath('agy');
+  if (onPath) return { shell: onPath, args: [] };
+  return null;
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli };

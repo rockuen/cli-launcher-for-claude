@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.13",
+  "version": "3.7.14",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -776,9 +776,9 @@
         },
         "claudeCodeLauncher.agent": {
           "type": "string",
-          "enum": ["claude", "kiro"],
+          "enum": ["claude", "kiro", "antigravity"],
           "default": "claude",
-          "description": "Which CLI agent new sessions launch (PoC: Kiro support). 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli). Requires kiro-cli to be installed: https://kiro.dev/docs/cli/installation/"
+          "description": "Which CLI agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). The agent's CLI must be installed."
         },
         "claudeCodeLauncher.enabledAgents": {
           "type": "array",
@@ -790,6 +790,11 @@
           "type": "boolean",
           "default": false,
           "description": "Run Kiro sessions with `kiro-cli chat --trust-all-tools` so Kiro may use any tool without asking for confirmation each time. Off by default (Kiro prompts for permission). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Kiro sessions."
+        },
+        "claudeCodeLauncher.antigravity.trustAllTools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run Antigravity sessions with `agy --dangerously-skip-permissions` so agy auto-approves all tool permission requests without prompting. Off by default (agy asks for confirmation). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Antigravity sessions."
         }
       }
     },

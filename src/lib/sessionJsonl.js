@@ -68,6 +68,10 @@ function listKiroSessions(cwd, _dir) {
 }
 
 function getSessionJsonlPath(sessionId, cwd, agent) {
+  // Phase 0: antigravity (agy) stores conversations as protobuf blobs inside a
+  // SQLite db (~/.gemini/antigravity-cli/conversations/<id>.db), not jsonl — the
+  // reader can't parse that yet, so resolve to no transcript (no reader pane).
+  if (agent === 'antigravity') return null;
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids. Once we know the REAL id — a
     // Tree-resume, or a fresh session whose id the reader has discovered and

@@ -18,7 +18,7 @@ const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
-const { resolveClaudeCli, resolveKiroCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
@@ -59,6 +59,8 @@ const _claimedKiroIds = new Set();
 // creates it on first turn) — chokidar polls and fires `add` when it appears.
 function startReaderWatch(entry, panel) {
   if (!entry || !entry.sessionId) return null;
+  // Phase 0: agy conversations are SQLite/protobuf, not jsonl — no reader yet.
+  if (entry.agent === 'antigravity') return null;
   if (entry.agent !== 'kiro' && !entry.cwd) return null;
 
   // For kiro: kiro assigns its own session ids — for a fresh session our
@@ -346,6 +348,37 @@ function createPanel(context, extensionPath, session, opts) {
       kiroArgs.push('--trust-all-tools');
     }
     args = [...resolvedKiro.args, ...kiroArgs];
+  } else if (agent === 'antigravity') {
+    const resolvedAgy = resolveAntigravityCli();
+    if (!resolvedAgy) {
+      const install = 'Install Antigravity CLI';
+      vscode.window.showErrorMessage(
+        'Antigravity CLI (agy) not found. Please install it first.',
+        install
+      ).then(choice => {
+        if (choice === install) {
+          vscode.env.openExternal(vscode.Uri.parse('https://antigravity.google/docs/cli-getting-started'));
+        }
+      });
+      panel.dispose();
+      return;
+    }
+    shell = resolvedAgy.shell;
+    // agy args by precedence (agy assigns its own conversation id, like kiro):
+    //   - isAntigravityResume (Tree resume; sessionId is a REAL agy conversation
+    //     id on disk) → ['--conversation', <id>] for an exact resume.
+    //   - sessionId without the flag (auto-restore; our random UUID is never an
+    //     agy id) → ['--continue'] (resume the most recent conversation).
+    //   - neither → [] (fresh session).
+    const agyArgs = session?.isAntigravityResume
+      ? ['--conversation', session.sessionId]
+      : (session?.sessionId ? ['--continue'] : []);
+    // --dangerously-skip-permissions (opt-in via antigravity.trustAllTools):
+    // auto-approve all tool permission requests without prompting.
+    if (config.get('antigravity.trustAllTools', false)) {
+      agyArgs.push('--dangerously-skip-permissions');
+    }
+    args = [...resolvedAgy.args, ...agyArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
     const resolved = resolveClaudeCli();

@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.7.14] - 2026-06-04
+
+### Added
+- **Antigravity CLI (`agy`) as a third agent — Phase 0 (launch).** You can now run Google's Antigravity CLI in a launcher tab alongside Claude and Kiro. Enable it in **Settings → Agent** (opt-in, like Kiro), then pick **Antigravity** when opening a new session. Includes a per-agent **trust toggle** (`antigravity.trustAllTools` → runs `agy --dangerously-skip-permissions`). This phase covers launching/continuing sessions; the sidebar session tree and the card reader for `agy` come in later phases (its conversations are stored as protobuf-in-SQLite, not jsonl, so they need their own parser).
+
+### Implementation
+- `pty/resolveCli.js`: `resolveAntigravityCli()` — `~/.local/bin/agy` → `%LOCALAPPDATA%\agy\bin\agy.exe` (Windows installer) → PATH (absolute via `where.exe`, since node-pty needs it).
+- `agents/registry.js`: `antigravity` entry (`agy`) — auto-surfaces in the Agent settings category and the new-session picker once enabled + installed.
+- `panel/createPanel.js` + `panel/restartPty.js`: `agy` spawn branch — fresh `agy`, `--continue` (auto-restore), `--conversation <id>` (future Tree resume), `+ --dangerously-skip-permissions` when trusted.
+- `panel/createPanel.js` + `lib/sessionJsonl.js`: reader is gated off for `antigravity` (no jsonl transcript yet).
+- `package.json`: `agent` enum gains `antigravity`; new `antigravity.trustAllTools` config.
+
+### Tests
+- 273 node + 36 vitest passing; verified `resolveAntigravityCli` detects the installed binary, the registry exposes `antigravity`, and the reader path is gated.
+
 ## [3.7.13] - 2026-06-04
 
 ### Fixed

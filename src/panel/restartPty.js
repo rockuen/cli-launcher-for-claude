@@ -4,7 +4,7 @@
 const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
-const { resolveClaudeCli, resolveKiroCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
@@ -49,6 +49,24 @@ function restartPty(entry, panel, context, extensionPath) {
       kiroArgs.push('--trust-all-tools');
     }
     args = [...resolvedKiro.args, ...kiroArgs];
+  } else if (agent === 'antigravity') {
+    const resolvedAgy = resolveAntigravityCli();
+    if (!resolvedAgy) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Antigravity CLI (agy) not found.');
+      return;
+    }
+    shell = resolvedAgy.shell;
+    // agy resume args, same precedence as createPanel: Tree-resume (real agy id)
+    // → --conversation <id>; known sessionId (auto-restore) → --continue;
+    // neither → [] (fresh session).
+    const agyArgs = entry.isAntigravityResume
+      ? ['--conversation', entry.sessionId]
+      : (entry.sessionId ? ['--continue'] : []);
+    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('antigravity.trustAllTools', false)) {
+      agyArgs.push('--dangerously-skip-permissions');
+    }
+    args = [...resolvedAgy.args, ...agyArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved
     const resolved = resolveClaudeCli();
