@@ -67,6 +67,77 @@ function listKiroSessions(cwd, _dir) {
   return out;
 }
 
+// Normalise an Antigravity history timestamp to epoch-ms. The history.jsonl
+// `timestamp` field could be an ISO-8601 string, epoch-seconds, or epoch-ms
+// depending on the agy build, so accept all three. Numbers below 1e12 are read
+// as seconds (epoch-ms for 2001+ is already ≥1e12), strings go through
+// Date.parse. Returns 0 when unparseable so callers can sort/format defensively.
+function _antigravityTs(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number' && isFinite(v)) return v >= 1e12 ? v : v * 1000;
+  const p = Date.parse(String(v));
+  return Number.isNaN(p) ? 0 : p;
+}
+
+// Windows-safe path equality: agy may store the workspace path with a different
+// drive-letter case or slash style than VSCode hands us (e.g. `C:\Projects\x`
+// vs `c:/Projects/x`). Fold separators + case before comparing so the cwd
+// filter doesn't silently drop every session on a drive-case mismatch.
+function _samePath(a, b) {
+  const norm = (p) => String(p || '').replace(/[\/\\]+/g, '\\').replace(/\\+$/, '').toLowerCase();
+  return norm(a) === norm(b);
+}
+
+// List Antigravity (agy) CLI conversations for a given cwd, newest first.
+// agy logs every conversation to ~/.gemini/antigravity-cli/history.jsonl — one
+// JSON object per line carrying { conversationId, workspace (cwd), display
+// (title), timestamp }. The file is append-only, so a single conversation can
+// appear on multiple lines as it grows; we dedupe by conversationId keeping the
+// latest record (max timestamp / last write wins). Field names are read with
+// fallbacks (conversation_id/id, cwd/workspaceDir, title/summary/name,
+// updatedAt/updated_at) so a minor agy schema drift degrades gracefully rather
+// than emptying the tree. Each entry is { sessionId, title, cwd, mtime } where
+// mtime is epoch-ms (0 when unknown) — the shape SessionTreeDataProvider's
+// agent-group builder consumes. Returns [] when the file is absent or empty
+// (e.g. agy installed but never run / not logged in). The `_file` arg is
+// test-only injection; production callers pass cwd alone.
+//
+// NOTE: the history.jsonl path + line schema are from the work-PC handoff
+// (agy v1.0.5, logged in). On a logged-out machine agy never writes the file,
+// so this is verified against fixtures here and needs a live agy login to
+// confirm end-to-end. See Phase 1 notes.
+function listAntigravitySessions(cwd, _file) {
+  const file = _file || path.join(os.homedir(), '.gemini', 'antigravity-cli', 'history.jsonl');
+  let text;
+  try { text = fs.readFileSync(file, 'utf-8'); } catch { return []; }
+  const byId = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s) continue;
+    let d;
+    try { d = JSON.parse(s); } catch { continue; }
+    if (!d || typeof d !== 'object') continue;
+    const id = d.conversationId || d.conversation_id || d.id;
+    if (!id) continue;
+    const ws = d.workspace || d.cwd || d.workspaceDir || d.workspace_dir || '';
+    const display = d.display || d.title || d.summary || d.name || '';
+    const mtime = _antigravityTs(
+      d.timestamp != null ? d.timestamp
+        : (d.updatedAt != null ? d.updatedAt : d.updated_at)
+    );
+    const prev = byId.get(id);
+    // Latest record per conversation wins. `>=` so a later line with an equal
+    // (or missing → 0) timestamp still overwrites with the freshest title/cwd.
+    if (!prev || mtime >= prev.mtime) {
+      byId.set(id, { sessionId: id, title: display, cwd: ws, mtime });
+    }
+  }
+  let out = [...byId.values()];
+  if (cwd) out = out.filter((s) => _samePath(s.cwd, cwd));
+  out.sort((a, b) => b.mtime - a.mtime);
+  return out;
+}
+
 function getSessionJsonlPath(sessionId, cwd, agent) {
   // Phase 0: antigravity (agy) stores conversations as protobuf blobs inside a
   // SQLite db (~/.gemini/antigravity-cli/conversations/<id>.db), not jsonl — the
@@ -327,6 +398,7 @@ module.exports = {
   getSessionJsonlPath,
   findLatestKiroSessionPath,
   listKiroSessions,
+  listAntigravitySessions,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,

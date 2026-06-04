@@ -471,6 +471,10 @@ function createPanel(context, extensionPath, session, opts) {
     // v: kiro Tree-resume flag. When true, sessionId is the real kiro id on
     // disk, so restartPty resumes via --resume-id instead of cwd-latest.
     isKiroResume: !!(session && session.isKiroResume),
+    // antigravity Tree-resume flag. When true, sessionId is a real agy
+    // conversation id, so createPanel/restartPty resume via `--conversation
+    // <id>` instead of `--continue` (cwd-latest).
+    isAntigravityResume: !!(session && session.isAntigravityResume),
     state: 'running',
     idleTimer: null,
     backend: backend,

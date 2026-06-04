@@ -179,12 +179,13 @@ test('_relTime helper exists with the expected branch ladder', () => {
 
 test('No CollapsibleState.None on session/trash item rows', () => {
   // Legitimate `.None` leaf rows: the shared metadata row (live + trash),
-  // the kiro session item, and the kiro trash item. Caret-bearing rows
-  // (groups, sessions with children) must use Collapsed/Expanded instead.
+  // the kiro session item, the kiro trash item, and the antigravity session
+  // item. Caret-bearing rows (groups, sessions with children) must use
+  // Collapsed/Expanded instead.
   const noneCount = (treeSrc.match(/TreeItemCollapsibleState\.None/g) || []).length;
   assert.ok(
-    noneCount <= 4,
-    `expected ≤ 4 None usages (metadata row + kiro session + kiro trash leaf), got ${noneCount}`,
+    noneCount <= 5,
+    `expected ≤ 5 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf), got ${noneCount}`,
   );
 });
 

@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.15",
+  "version": "3.7.16",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -40,6 +40,12 @@
       {
         "command": "claudeCodeLauncher.newKiro",
         "title": "New Kiro Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.newAntigravity",
+        "title": "New Antigravity Session",
         "icon": "$(add)",
         "category": "Claude"
       },
@@ -298,6 +304,11 @@
           "when": "claudeCodeLauncher.kiroAvailable"
         },
         {
+          "id": "claudeCodeLauncher.antigravitySessions",
+          "name": "Antigravity Sessions",
+          "when": "claudeCodeLauncher.antigravityAvailable"
+        },
+        {
           "id": "claudeCodeLauncher.ccgPanel",
           "name": "CCG",
           "when": "claudeCodeLauncher.omcModeActive"
@@ -318,6 +329,10 @@
         },
         {
           "command": "claudeCodeLauncher.newKiro",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.newAntigravity",
           "when": "false"
         },
         {
@@ -498,6 +513,61 @@
           "command": "claudeCodeLauncher.moveGroupDown",
           "when": "view == claudeCodeLauncher.kiroSessions && viewItem == customGroup",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameSessionTitle",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "group": "inline@0"
+        },
+        {
+          "command": "claudeCodeLauncher.moveToGroup",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionUp",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionDown",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.moveUnderSession",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "group": "2_nest@1"
+        },
+        {
+          "command": "claudeCodeLauncher.removeSessionParent",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "group": "2_nest@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameGroup",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == customGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.deleteGroup",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == customGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeLauncher.addSubGroup",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == customGroup",
+          "group": "inline@3"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupUp",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == customGroup",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupDown",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == customGroup",
+          "group": "1_order@2"
         }
       ],
       "view/title": [
@@ -525,6 +595,16 @@
           "command": "claudeCodeLauncher.refreshSessions",
           "group": "navigation@2",
           "when": "view == claudeCodeLauncher.kiroSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.newAntigravity",
+          "group": "navigation@1",
+          "when": "view == claudeCodeLauncher.antigravitySessions"
+        },
+        {
+          "command": "claudeCodeLauncher.refreshSessions",
+          "group": "navigation@2",
+          "when": "view == claudeCodeLauncher.antigravitySessions"
         },
         {
           "command": "claudeCodeLauncher.ccg.refresh",

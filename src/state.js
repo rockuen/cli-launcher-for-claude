@@ -9,6 +9,7 @@ const state = {
   statusBar: null,         // vscode.StatusBarItem
   sessionTreeProvider: null,  // 'Claude Sessions' view provider (agentMode 'claude')
   kiroTreeProvider: null,     // 'Kiro Sessions' view provider (agentMode 'kiro')
+  antigravityTreeProvider: null, // 'Antigravity Sessions' view provider (agentMode 'antigravity')
   quickActionsProvider: null, // 'Quick Actions' top-of-container view provider
   context: null,           // ExtensionContext, injected at activate()
   isDeactivating: false,
@@ -20,6 +21,7 @@ const state = {
   refreshSessionTrees() {
     if (this.sessionTreeProvider) this.sessionTreeProvider.refresh();
     if (this.kiroTreeProvider) this.kiroTreeProvider.refresh();
+    if (this.antigravityTreeProvider) this.antigravityTreeProvider.refresh();
   },
   // v3.6.2: opt-in Diagnostics instance. Null when
   // claudeCodeLauncher.diagnostics.enabled is false. createPanel.js's

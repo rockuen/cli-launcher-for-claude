@@ -17,7 +17,7 @@ const fs = require('fs');
 const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
-const { getSessionJsonlPath, extractMessages, listKiroSessions } = require('./lib/sessionJsonl');
+const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions } = require('./lib/sessionJsonl');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
@@ -68,10 +68,13 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.newKiro', () => {
       createPanel(context, extensionPath, null, { agent: 'kiro' });
     }),
+    vscode.commands.registerCommand('claudeCodeLauncher.newAntigravity', () => {
+      createPanel(context, extensionPath, null, { agent: 'antigravity' });
+    }),
     // Unified new-session command — backs the Quick Actions view rows (one per
     // installed + enabled agent). Tree-item only (hidden from the palette via
-    // package.json menus); newClaude/newKiro stay as the session-view + button
-    // entry points.
+    // package.json menus); newClaude/newKiro/newAntigravity stay as the
+    // session-view + button entry points.
     vscode.commands.registerCommand('claudeCodeLauncher.newSession', (agentId) => {
       createPanel(context, extensionPath, null, { agent: agentId || 'claude' });
     })
@@ -196,14 +199,29 @@ function activate(context) {
   });
   context.subscriptions.push(kiroTreeView);
 
+  // 'Antigravity Sessions' (claudeCodeLauncher.antigravitySessions) — agy
+  // conversations only, hidden via the antigravityAvailable context key when
+  // agy isn't installed/enabled. Same shape as the kiro view.
+  state.antigravityTreeProvider = new SessionTreeDataProvider(context, 'antigravity');
+  const antigravityTreeView = vscode.window.createTreeView('claudeCodeLauncher.antigravitySessions', {
+    treeDataProvider: state.antigravityTreeProvider,
+    dragAndDropController: state.antigravityTreeProvider,
+    canSelectMany: true
+  });
+  context.subscriptions.push(antigravityTreeView);
+
   // Resolve which provider a group/session command targets. Items dragged or
-  // right-clicked in the Kiro Sessions view carry kiro markers (kiroSession
-  // contextValue, or a customGroup node tagged _agentMode === 'kiro'); anything
-  // else routes to the claude provider. Keeps kiro/claude group ops fully
-  // separate so a command fired from one view can never mutate the other's store.
+  // right-clicked in the Kiro / Antigravity Sessions views carry agent markers
+  // (kiroSession / antigravitySession contextValue, or a customGroup node
+  // tagged _agentMode); anything else routes to the claude provider. Keeps each
+  // agent's group ops fully separate so a command fired from one view can never
+  // mutate another's store.
   const providerForItem = (item) => {
     if (item && (item.contextValue === 'kiroSession' || item._agentMode === 'kiro')) {
       return state.kiroTreeProvider;
+    }
+    if (item && (item.contextValue === 'antigravitySession' || item._agentMode === 'antigravity')) {
+      return state.antigravityTreeProvider;
     }
     return state.sessionTreeProvider;
   };
@@ -216,6 +234,16 @@ function activate(context) {
   kiroTreeView.onDidCollapseElement(e => {
     const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.kiroTreeProvider._expandedGroups.delete(key);
+  });
+
+  // Antigravity view — same expand/collapse tracking.
+  antigravityTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.antigravityTreeProvider._expandedGroups.add(key);
+  });
+  antigravityTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.antigravityTreeProvider._expandedGroups.delete(key);
   });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
@@ -241,6 +269,19 @@ function activate(context) {
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.kiroAvailable', available);
   }
   refreshKiroAvailable();
+
+  // antigravityAvailable context key — drives the 'Antigravity Sessions' view
+  // visibility. True only when agy is installed AND 'antigravity' is in
+  // enabledAgents. Refreshed on enabledAgents config changes below.
+  function refreshAntigravityAvailable() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('enabledAgents', ['claude']);
+    const agyInstalled = listAgents().some(a => a.id === 'antigravity' && a.installed);
+    const available = agyInstalled && enabled.includes('antigravity');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.antigravityAvailable', available);
+  }
+  refreshAntigravityAvailable();
 
   // v3.5.8: size-based decoration. Yellows 5+ MB session labels, reds 10+ MB
   // ones. SessionTreeDataProvider tags each session item with a custom
@@ -269,6 +310,7 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.refreshSessions', () => {
       state.sessionTreeProvider.refresh();
       if (state.kiroTreeProvider) state.kiroTreeProvider.refresh();
+      if (state.antigravityTreeProvider) state.antigravityTreeProvider.refresh();
     })
   );
 
@@ -278,6 +320,7 @@ function activate(context) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeCodeLauncher.enabledAgents')) {
         refreshKiroAvailable();
+        refreshAntigravityAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
       }
     })
@@ -304,6 +347,18 @@ function activate(context) {
           context,
           extensionPath,
           { sessionId, cwd: opts.cwd, agent: 'kiro', isKiroResume: true },
+          {}
+        );
+        return;
+      }
+      // Antigravity resume: sessionId is a real agy conversation id, resumed via
+      // `agy --conversation <id>` in its own cwd. Like kiro, no claude-side
+      // title/savedSessions bookkeeping (antigravity has its own store keys).
+      if (opts && opts.agent === 'antigravity') {
+        createPanel(
+          context,
+          extensionPath,
+          { sessionId, cwd: opts.cwd, agent: 'antigravity', isAntigravityResume: true },
           {}
         );
         return;
@@ -659,6 +714,7 @@ function activate(context) {
       if (!sid) return;
       const prov = providerForItem(item);
       const isKiro = prov === state.kiroTreeProvider;
+      const isAntigravity = prov === state.antigravityTreeProvider;
       // Build candidate list: top-level sessions only (parent empty), not self.
       const parents = sessionStoreGet(prov._storeKey('parent'), {});
       const titleMap = sessionStoreGet(prov._storeKey('titles'), {});
@@ -673,6 +729,10 @@ function activate(context) {
         const kiroCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
         const kiroList = kiroCwd ? listKiroSessions(kiroCwd) : [];
         candidateIds = kiroList.map(s => ({ id: s.sessionId, title: s.title }));
+      } else if (isAntigravity) {
+        const agyCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+        const agyList = agyCwd ? listAntigravitySessions(agyCwd) : [];
+        candidateIds = agyList.map(s => ({ id: s.sessionId, title: s.title }));
       } else {
         const projDir = state.sessionTreeProvider._getProjectDir();
         if (!projDir) return;

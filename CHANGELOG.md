@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.7.16] - 2026-06-04
+
+### Added
+- **Antigravity CLI (`agy`) — Phase 1: sidebar session tree.** A dedicated **Antigravity Sessions** view (alongside Claude/Kiro), shown when `agy` is installed *and* enabled. It lists this workspace's `agy` conversations newest-first — each row is one conversation (keyed by its conversation id, labelled by the agy display title or your rename), filtered to the current folder. Click a row to resume it with `agy --conversation <id>`. Conversations can be grouped, reordered, nested, and renamed exactly like Kiro sessions, all under an antigravity-only store namespace. The card reader stays off for `agy` this phase (its transcripts are protobuf-in-SQLite, not jsonl) — that's a later phase.
+
+### Implementation
+- `lib/sessionJsonl.js`: `listAntigravitySessions(cwd, _file?)` parses `~/.gemini/antigravity-cli/history.jsonl` — dedupes by conversation id (append-only log → latest record wins), filters by cwd (drive-case + slash insensitive for Windows), sorts newest-first, and tolerates field-name drift (`conversation_id`/`cwd`/`title`/`updated_at`) + ISO/epoch-s/epoch-ms timestamps.
+- `tree/SessionTreeDataProvider.js`: `antigravity` agentMode — `STORE_KEYS.antigravity` (fully separate group/parent/sortOrder/titles keys), `_buildAntigravitySessions()` (mirrors `_buildKiroSessions`, reuses `_buildAgentGroups`), `_loadSessionIds()` branch, antigravity-scoped DnD MIME pair, and `antigravitySession` recognized in `handleDrag`/`handleDrop`.
+- `activation.js`: registers the `antigravitySessions` tree view + provider, `newAntigravity` command, `antigravityAvailable` context key (refreshed on `enabledAgents` change), `resumeSession` antigravity branch (`isAntigravityResume` → `agy --conversation <id>`), `providerForItem` + `moveUnderSession` routing.
+- `panel/createPanel.js`: entry carries `isAntigravityResume` so a panel restart re-resumes via `--conversation <id>` (the spawn branches for `agy` already shipped in Phase 0). `state.js`: `antigravityTreeProvider` + `refreshSessionTrees()` includes it.
+- `package.json`: `antigravitySessions` view (gated on `antigravityAvailable`), `newAntigravity` command + view-title `+`/refresh, and the session/group context-menu set (no Trash — agy's history.jsonl is an append-only log, not per-session files).
+
+### Tests
+- 287 node (+14 new) + 36 vitest passing. New `test/unit/antigravitySessions.test.ts` covers the parser (cwd filter, dedupe, field/timestamp drift, malformed/missing-file handling, Windows path matching) and the provider in `antigravity` mode (store-key isolation vs claude/kiro, group build + Recent Sessions, the conversation-resume command payload, nesting, DnD MIME scoping).
+
+### Notes
+- The `history.jsonl` path + line schema are from the work-PC handoff (agy v1.0.5). The parser is fixture-verified here; an end-to-end check needs a logged-in `agy` that actually writes the file (on a logged-out machine `agy` never creates it).
+
 ## [3.7.15] - 2026-06-04
 
 ### Added

@@ -26,7 +26,7 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
-const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions } = require('../lib/sessionJsonl');
+const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions } = require('../lib/sessionJsonl');
 const { formatBytes } = require('../lib/sizeFormat');
 const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_THRESHOLD: SIZE_ERROR, formatMB } = require('./SessionDecorationProvider');
 
@@ -71,6 +71,12 @@ const DND_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.groups';
 // cross-view session/group mixing.
 const DND_KIRO_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.kirosessions';
 const DND_KIRO_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.kirogroups';
+// antigravity gets its own MIME pair too, for the same cross-view isolation
+// reason as kiro: a drag started in the Antigravity Sessions view can only drop
+// back into that view (VSCode matches the DataTransfer MIME to the target
+// provider's declared dropMimeTypes).
+const DND_AGY_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.antigravitysessions';
+const DND_AGY_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.antigravitygroups';
 
 // Per-agent store-key map. claude keeps its historical keys (no migration);
 // kiro gets a parallel, fully separate set so the two agents' custom groups,
@@ -95,14 +101,26 @@ const STORE_KEYS = {
     archived: 'kiroSessionGroupArchived',
     titles: 'kiroSessionTitles',
   },
+  antigravity: {
+    // Fully separate antigravity key namespace, same shape as kiro — custom
+    // groups, membership, ordering, nesting + per-session rename titles never
+    // mix with claude's or kiro's store.
+    groups: 'antigravitySessionGroups',
+    saved: 'antigravitySavedSessions',
+    parent: 'antigravitySessionParent',
+    sortOrder: 'antigravitySessionSortOrder',
+    archived: 'antigravitySessionGroupArchived',
+    titles: 'antigravitySessionTitles',
+  },
 };
 
 class SessionTreeDataProvider {
-  // agentMode: 'claude' (default — full claude groups, kiro excluded) or
-  // 'kiro' (root children are kiro sessions only). Splitting the one sidebar
-  // tree into two agent-scoped views ('Claude Sessions' + 'Kiro Sessions')
-  // lets each view own its header actions and lets the kiro view hide itself
-  // when kiro isn't installed/enabled (kiroAvailable context key).
+  // agentMode: 'claude' (default — full claude groups, other agents excluded),
+  // 'kiro' (root children are kiro sessions only), or 'antigravity' (root
+  // children are agy conversations only). Splitting the one sidebar tree into
+  // agent-scoped views ('Claude Sessions' / 'Kiro Sessions' / 'Antigravity
+  // Sessions') lets each view own its header actions and hide itself when its
+  // CLI isn't installed/enabled (kiroAvailable / antigravityAvailable keys).
   constructor(context, agentMode = 'claude') {
     this._context = context;
     this._agentMode = agentMode;
@@ -130,9 +148,13 @@ class SessionTreeDataProvider {
     this._FILE_META_CACHE_MAX = 100;
 
     // TreeDragAndDropController interface (read by createTreeView(options)).
-    // MIME pair is agent-scoped so a drag in one view can't drop in the other.
-    this._sessionMime = agentMode === 'kiro' ? DND_KIRO_SESSION_MIME : DND_SESSION_MIME;
-    this._groupMime = agentMode === 'kiro' ? DND_KIRO_GROUP_MIME : DND_GROUP_MIME;
+    // MIME pair is agent-scoped so a drag in one view can't drop in another.
+    this._sessionMime = agentMode === 'kiro' ? DND_KIRO_SESSION_MIME
+      : agentMode === 'antigravity' ? DND_AGY_SESSION_MIME
+      : DND_SESSION_MIME;
+    this._groupMime = agentMode === 'kiro' ? DND_KIRO_GROUP_MIME
+      : agentMode === 'antigravity' ? DND_AGY_GROUP_MIME
+      : DND_GROUP_MIME;
     this.dropMimeTypes = [this._sessionMime, this._groupMime];
     this.dragMimeTypes = [this._sessionMime, this._groupMime];
   }
@@ -188,7 +210,9 @@ class SessionTreeDataProvider {
       if (this._cache) return this._cache;
       this._cache = this._agentMode === 'kiro'
         ? this._buildKiroSessions()
-        : this._buildGroups();
+        : this._agentMode === 'antigravity'
+          ? this._buildAntigravitySessions()
+          : this._buildGroups();
       return this._cache;
     }
     // v3.5.9: lazy metadata row. Session items carry _jsonlPath + _mtime +
@@ -550,8 +574,53 @@ class SessionTreeDataProvider {
     return this._buildAgentGroups(itemMap, mtimeMap);
   }
 
-  // Shared "custom groups + ungrouped sessions" builder used by the kiro view
-  // (and any future agent view). claude keeps its richer _buildGroups (Resume
+  // Antigravity Sessions — used by the dedicated 'Antigravity Sessions' view
+  // (agentMode 'antigravity'). Root children are the workspace's agy
+  // conversations, parsed from ~/.gemini/antigravity-cli/history.jsonl
+  // (listAntigravitySessions) and filtered to the current cwd, newest first.
+  // Mirrors _buildKiroSessions: each conversation is one leaf keyed by its
+  // conversationId, labelled by the launcher rename store → agy display title →
+  // id prefix. Click → resume via `agy --conversation <id>` (the resumeSession
+  // command's antigravity branch). No reader pane in Phase 1 — agy stores the
+  // transcript as protobuf-in-SQLite (getSessionJsonlPath returns null), so the
+  // reader is gated off until a later phase. Returns [] with no conversations
+  // (view hidden via antigravityAvailable when agy isn't installed/enabled).
+  _buildAntigravitySessions() {
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    if (!cwd) return [];
+    const sessions = listAntigravitySessions(cwd);
+    // Launcher-side rename wins over the agy display title (parallel to kiro).
+    const titleMap = sessionStoreGet(this._storeKey('titles'), {});
+
+    const itemMap = new Map();
+    const mtimeMap = new Map();
+    for (const s of sessions) {
+      const label = titleMap[s.sessionId] || s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      const mtime = s.mtime || 0;
+      item.description = mtime ? _relTime(mtime) : '';
+      item.iconPath = new vscode.ThemeIcon('comment-discussion');
+      item.contextValue = 'antigravitySession';
+      item.tooltip = `Antigravity conversation: ${s.sessionId}\n${s.cwd || ''}`;
+      item._sessionId = s.sessionId;
+      item._mtime = mtime;
+      item.command = {
+        command: 'claudeCodeLauncher.resumeSession',
+        title: 'Resume',
+        // antigravityResume → exact `agy --conversation <id>` resume in its cwd.
+        arguments: [s.sessionId, { agent: 'antigravity', antigravityResume: true, cwd: s.cwd }],
+      };
+      itemMap.set(s.sessionId, item);
+      mtimeMap.set(s.sessionId, mtime);
+    }
+
+    // Same custom-groups + Recent Sessions builder as kiro (no Trash — agy's
+    // history.jsonl is an append-only log, not per-session files to move).
+    return this._buildAgentGroups(itemMap, mtimeMap);
+  }
+
+  // Shared "custom groups + ungrouped sessions" builder used by the kiro and
+  // antigravity views. claude keeps its richer _buildGroups (Resume
   // Later / Recent / Trash / archive) — this is the generalised subset:
   //   [ ...customGroupNodes, ...ungroupedSessionItems ]
   // All store reads go through _storeKey so the agent's own keys are used.
@@ -886,6 +955,15 @@ class SessionTreeDataProvider {
         _mtime: Date.parse(s.updatedAt || '') || 0,
       }));
     }
+    if (this._agentMode === 'antigravity') {
+      const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      if (!cwd) return [];
+      // listAntigravitySessions already returns mtime as epoch-ms.
+      return listAntigravitySessions(cwd).map(s => ({
+        _sessionId: s.sessionId,
+        _mtime: s.mtime || 0,
+      }));
+    }
     return this._loadSessions();
   }
 
@@ -995,7 +1073,7 @@ class SessionTreeDataProvider {
     // The MIME is agent-scoped (_sessionMime), so a kiro drag carries the kiro
     // MIME and can only land in a target view that lists that MIME.
     const sessionIds = source
-      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession'))
+      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession' || it.contextValue === 'antigravitySession'))
       .map(it => it._sessionId)
       .filter(Boolean);
     if (sessionIds.length > 0) {
@@ -1047,8 +1125,9 @@ class SessionTreeDataProvider {
     }
 
     // Drop on another session → reorder: insert before target, inherit scope.
-    // kiroSession included so kiro sessions reorder/regroup like claude ones.
-    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession')) {
+    // kiroSession + antigravitySession included so those agents' sessions
+    // reorder/regroup like claude ones.
+    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession' || target.contextValue === 'antigravitySession')) {
       this._reorderBefore(ids, target._sessionId);
       this.refresh();
       return;
