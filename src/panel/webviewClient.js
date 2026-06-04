@@ -12,7 +12,7 @@ function getClientScript(ctx) {
     const SETTINGS = ${JSON.stringify(settings)};
     // Which backend this panel runs. Kiro renders full-screen frames in the
     // normal buffer (CSI 2J + cursor-home redraws), which needs a different
-    // bottom-follow strategy than Claude's inline output — see kiroStick below.
+    // bottom-follow strategy than Claude's inline output — see scrollback below.
     const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
@@ -75,7 +75,12 @@ function getClientScript(ctx) {
       // minutes on a long task; once full, xterm.js drops oldest lines,
       // breaking history navigation on background sessions. 5000 covers most
       // real-world sessions while keeping the per-line memory cost bounded.
-      scrollback: 5000,
+      // v3.7.13: kiro is a full-screen TUI in the NORMAL buffer (CSI 2J +
+      // cursor-home redraws, no alt-screen). With scrollback, every redraw
+      // piles a stale frame into history and the viewport drifts to the top;
+      // scrollback 0 gives it alt-screen-like behavior (repaint in place, no
+      // room to drift) — this is the real fix for "kiro keeps jumping to top".
+      scrollback: IS_KIRO ? 0 : 5000,
       allowProposedApi: true
     });
 
@@ -98,18 +103,12 @@ function getClientScript(ctx) {
     fitAddon.fit();
 
     // Kiro renders a full-screen frame in the NORMAL buffer (no alt-screen):
-    // it clears with CSI 2J and redraws via cursor-home, so the pre-write
-    // "was I at the bottom?" snapshot used for Claude can go stale mid-redraw
-    // and the viewport drifts up off the input line. For kiro we keep an
-    // explicit follow flag driven by real scroll gestures instead: stick to
-    // the bottom on every write unless the user scrolled up, re-arming when
-    // they scroll back down to the bottom.
-    let kiroStick = true;
-    if (IS_KIRO) {
-      term.onScroll(() => {
-        kiroStick = term.buffer.active.viewportY >= term.buffer.active.baseY;
-      });
-    }
+    // it clears with CSI 2J and redraws via cursor-home. The earlier onScroll
+    // follow-flag approach (v3.7.3) backfired — kiro's own redraws scroll the
+    // viewport programmatically, which onScroll cannot tell apart from a user
+    // scroll, so the flag flipped off and the view stuck at the top. The fix
+    // is now upstream (scrollback: 0 above leaves no room to drift) plus an
+    // unconditional scrollToBottom after each kiro write (see the output path).
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──
     // Claude CLI's fullscreen mode uses alternate screen buffer + mouse
@@ -1042,10 +1041,10 @@ function getClientScript(ctx) {
         checkMouseMode(msg.data);
         const cleaned = stripMouseMode(msg.data);
         if (IS_KIRO) {
-          // Kiro: follow the bottom on every write unless the user scrolled up
-          // (kiroStick, driven by onScroll). Robust against the 2J full-redraw
-          // perturbing xterm's buffer position mid-write.
-          term.write(cleaned, () => { if (kiroStick) term.scrollToBottom(); });
+          // Kiro: full-screen redraw TUI — always snap to the bottom after the
+          // write. scrollback is 0, so this just re-pins the live frame and
+          // never strands the viewport at the top after a 2J redraw.
+          term.write(cleaned, () => term.scrollToBottom());
         } else {
           const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
           term.write(cleaned, () => {

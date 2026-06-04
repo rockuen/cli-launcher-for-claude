@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.7.13] - 2026-06-04
+
+### Fixed
+- **Kiro no longer drifts to the top of the terminal.** Kiro is a full-screen TUI that redraws in the *normal* buffer (`CSI 2J` + cursor-home, no alt-screen). The v3.7.3 fix tracked "is the user at the bottom?" via `onScroll`, but Kiro's own redraws scroll the viewport programmatically and `onScroll` can't distinguish that from a user scroll — so the follow flag flipped off and the view stuck at the top. The real fix is upstream: Kiro terminals now use `scrollback: 0`, giving them alt-screen-like behavior (repaint in place, no scrollback for stale frames to pile into and no room for the viewport to drift), plus an unconditional `scrollToBottom()` after each Kiro write. Claude's inline-output path is unchanged.
+
+### Implementation
+- `webviewClient.js`: `new Terminal({ scrollback: IS_KIRO ? 0 : 5000 })`; removed the `kiroStick`/`onScroll` follow flag; Kiro's output handler now `term.write(cleaned, () => term.scrollToBottom())`.
+
+### Tests
+- 273 node + 36 vitest passing; rendered the webview client for both agents and asserted the `scrollback` branch, the unconditional Kiro scroll-to-bottom, and that no `kiroStick` references remain.
+
 ## [3.7.12] - 2026-06-04
 
 ### Fixed
