@@ -256,7 +256,12 @@ function createPanel(context, extensionPath, session, opts) {
   const bypassPermissions = config.get('claude.bypassPermissions', false);
   const repoSyncEnabled = config.get('repoSync.enabled', false);
   const repoSyncPath = config.get('repoSync.path', '');
-  const splitLayoutDefault = config.get('splitLayoutDefault', false);
+  // antigravity has no reader yet (transcripts are protobuf-in-SQLite), so the
+  // split layout would just show an empty/welcome reader pane — force it off so
+  // agy tabs open as a plain terminal. The per-tab 👁 toggle can still flip it.
+  const splitLayoutDefault = agent === 'antigravity'
+    ? false
+    : config.get('splitLayoutDefault', false);
   const pasteToFileThreshold = config.get('pasteToFileThreshold', 2000);
   const pasteTableAsMarkdown = config.get('pasteTableAsMarkdown', true);
   const defaultBackend = config.get('terminal.defaultBackend', 'webview');

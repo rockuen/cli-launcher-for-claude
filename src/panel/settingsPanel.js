@@ -446,6 +446,26 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(trust);
         }
 
+        // Antigravity-only: --dangerously-skip-permissions toggle (bypass tool
+        // permission prompts). Bound to claudeCodeLauncher.antigravity.trustAllTools;
+        // applies to newly opened and restarted Antigravity sessions.
+        if (a.id === 'antigravity') {
+          const bypass = document.createElement('label');
+          bypass.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          bypass.title = 'Run Antigravity with --dangerously-skip-permissions so agy auto-approves all tool permission requests without prompting. Applies to newly opened and restarted Antigravity sessions.';
+          const bcb = document.createElement('input');
+          bcb.type = 'checkbox';
+          bcb.checked = !!GLOBALS.antigravityTrustAllTools;
+          bcb.addEventListener('change', () => {
+            vscode.postMessage({ type: 'set-global', key: 'antigravity.trustAllTools', value: bcb.checked });
+          });
+          const bypassText = document.createElement('span');
+          bypassText.textContent = 'Bypass permissions (--dangerously-skip-permissions)';
+          bypass.appendChild(bcb);
+          bypass.appendChild(bypassText);
+          main.appendChild(bypass);
+        }
+
         // Claude-only: startup flags — Effort max (--effort max) + Bypass
         // permissions (--dangerously-skip-permissions). Bound to globals;
         // applied to newly opened and restarted Claude sessions.
@@ -674,6 +694,7 @@ function openGlobalSettings(context) {
     autoEffortMax: cfg.get('autoEffortMax', false),
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
+    antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
     customSlashCommands: cfg.get('customSlashCommands', []),
@@ -691,6 +712,7 @@ function openGlobalSettings(context) {
     'autoEffortMax',
     'claude.bypassPermissions',
     'kiro.trustAllTools',
+    'antigravity.trustAllTools',
     'repoSync.enabled',
     'repoSync.path',
     'customSlashCommands',

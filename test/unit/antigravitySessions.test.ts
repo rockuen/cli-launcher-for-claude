@@ -83,7 +83,7 @@ const origUserProfile = process.env.USERPROFILE;
 process.env.HOME = tmpRoot;
 process.env.USERPROFILE = tmpRoot;
 
-const { listAntigravitySessions } = require('../../src/lib/sessionJsonl');
+const { listAntigravitySessions, listKiroSessions } = require('../../src/lib/sessionJsonl');
 const { sessionStoreGet, sessionStoreUpdate } = require('../../src/store/sessionStore');
 const { SessionTreeDataProvider } = require('../../src/tree/SessionTreeDataProvider');
 
@@ -173,6 +173,35 @@ test('listAntigravitySessions cwd match is drive-case + slash insensitive (Windo
   assert.equal(listAntigravitySessions('c:/Proj/App', file).length, 1);
   assert.equal(listAntigravitySessions('C:\\Proj\\App', file).length, 1);
   assert.equal(listAntigravitySessions('C:\\Other', file).length, 0);
+});
+
+test('listAntigravitySessions matches the same workspace across OSes by basename', (t) => {
+  // Cross-platform OneDrive-synced vault: a session created on Windows carries a
+  // Windows workspace path; the same vault on macOS has a different absolute
+  // path but the same leaf folder name, so the basename fallback should match.
+  const file = path.join(tmpRoot, 'xplat-agy.jsonl');
+  fs.writeFileSync(file, JSON.stringify({
+    conversationId: 'xp', workspace: "c:\\Obsidian\\Won's 2nd Brain", display: 'Cross', timestamp: T0,
+  }) + '\n');
+  t.after(() => { try { fs.unlinkSync(file); } catch {} });
+  assert.equal(listAntigravitySessions("/Users/rockuen/obsidian/Won's 2nd Brain", file).length, 1);
+  assert.equal(listAntigravitySessions('/Users/rockuen/obsidian/other-vault', file).length, 0);
+});
+
+test('listKiroSessions matches the same workspace across OSes by basename', (t) => {
+  // Same cross-platform basename fallback for the Kiro session list.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiro-xplat-'));
+  fs.writeFileSync(path.join(dir, 'k1.json'), JSON.stringify({
+    session_id: 'k1', title: 'Win session', cwd: "c:\\Obsidian\\Won's 2nd Brain",
+    updated_at: new Date(T0).toISOString(),
+  }));
+  t.after(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
+  // Same vault, macOS path → basename "won's 2nd brain" matches.
+  assert.equal(listKiroSessions("/Users/rockuen/obsidian/Won's 2nd Brain", dir).length, 1);
+  // Exact Windows path still matches.
+  assert.equal(listKiroSessions("c:/Obsidian/Won's 2nd Brain", dir).length, 1);
+  // Different workspace basename → no match.
+  assert.equal(listKiroSessions('/Users/rockuen/obsidian/iloom-workspace', dir).length, 0);
 });
 
 // ─── Provider: agentMode 'antigravity' ──────────────────────────────────────

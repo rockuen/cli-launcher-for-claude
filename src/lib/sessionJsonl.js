@@ -55,7 +55,7 @@ function listKiroSessions(cwd, _dir) {
   for (const m of files) {
     let meta;
     try { meta = JSON.parse(fs.readFileSync(path.join(dir, m), 'utf-8')); } catch { continue; }
-    if (cwd && meta.cwd !== cwd) continue;
+    if (!_cwdMatch(meta.cwd, cwd)) continue;
     out.push({
       sessionId: meta.session_id || m.replace(/\.json$/, ''),
       title: meta.title || '',
@@ -86,6 +86,38 @@ function _antigravityTs(v) {
 function _samePath(a, b) {
   const norm = (p) => String(p || '').replace(/[\/\\]+/g, '\\').replace(/\\+$/, '').toLowerCase();
   return norm(a) === norm(b);
+}
+
+// Last `n` path segments, lower-cased, separators normalized. Drops a trailing
+// slash and empty segments. e.g. ("c:\\Obsidian\\Won's 2nd Brain", 2) →
+// ["obsidian", "won's 2nd brain"].
+function _tailSegs(p, n) {
+  const segs = String(p || '')
+    .replace(/[\/\\]+$/, '')
+    .split(/[\/\\]+/)
+    .filter(Boolean)
+    .map((s) => s.toLowerCase());
+  return segs.slice(-n);
+}
+
+// cwd match used by the Kiro / Antigravity session lists. Exact (normalized)
+// match for same-OS devices, with a CROSS-OS fallback so a workspace synced
+// across platforms shows the same sessions even though the absolute cwd differs
+// by OS — e.g. a session created on Windows (`c:\Obsidian\Won's 2nd Brain`) is
+// resumable from the same vault on macOS (`/Users/rockuen/obsidian/Won's 2nd
+// Brain`) once the session files sync (OneDrive symlink). The fallback compares
+// the last TWO segments (parent + leaf, case-insensitive) rather than a bare
+// basename, so unrelated workspaces that merely share a leaf name (`/my/project`
+// vs `/other/project`) don't collide. Only the per-agent views use this;
+// claude's project-dir encoding is unaffected. No filter when cwd is falsy.
+function _cwdMatch(metaCwd, cwd) {
+  if (!cwd) return true;
+  if (!metaCwd) return false;
+  if (_samePath(metaCwd, cwd)) return true;
+  const a = _tailSegs(metaCwd, 2);
+  const b = _tailSegs(cwd, 2);
+  if (a.length < 2 || b.length < 2) return false; // need parent+leaf to fall back
+  return a[0] === b[0] && a[1] === b[1];
 }
 
 // List Antigravity (agy) CLI conversations for a given cwd, newest first.
@@ -133,7 +165,7 @@ function listAntigravitySessions(cwd, _file) {
     }
   }
   let out = [...byId.values()];
-  if (cwd) out = out.filter((s) => _samePath(s.cwd, cwd));
+  if (cwd) out = out.filter((s) => _cwdMatch(s.cwd, cwd));
   out.sort((a, b) => b.mtime - a.mtime);
   return out;
 }

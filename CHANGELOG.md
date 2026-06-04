@@ -1,5 +1,26 @@
 # Changelog
 
+## [3.7.17] - 2026-06-04
+
+### Added
+- **Antigravity bypass-permissions toggle.** Settings → Agent now has a "Bypass permissions (--dangerously-skip-permissions)" checkbox for Antigravity, matching Claude's bypass toggle and Kiro's trust-all-tools. Bound to `claudeCodeLauncher.antigravity.trustAllTools` (the config existed since Phase 0; this surfaces it in the UI). Applies to newly opened and restarted agy sessions.
+- **Cross-device session sync via OneDrive symlink (Kiro + Antigravity).** The Kiro and Antigravity session lists now match the same workspace across operating systems, so sessions synced through a OneDrive-symlinked CLI session dir (the same way Claude's `~/.claude/projects/<cwd>` is symlinked to OneDrive) show up — and resume — on every device. The cwd filter falls back from an exact path match to the last two path segments (parent + leaf, case-insensitive), so a vault at `c:\Obsidian\Won's 2nd Brain` (Windows) and `/Users/<me>/obsidian/Won's 2nd Brain` (macOS) are treated as the same workspace, while unrelated `/my/project` vs `/other/project` still don't collide. (Setting up the OneDrive symlinks themselves is a per-device infra step, documented in the repo notes — no extension code routes the files.)
+
+### Changed
+- **Antigravity sessions open as a plain terminal, not split view.** Since agy has no reader yet (its transcripts are protobuf-in-SQLite), the split layout would only show an empty reader pane — so antigravity tabs now ignore `splitLayoutDefault` and open terminal-only. The per-tab 👁 toggle still flips it.
+
+### Fixed
+- **Antigravity session titles now persist.** `saveSessions()` only wrote claude/kiro titles to their per-agent title stores; antigravity titles were dropped, so a renamed agy tab didn't keep its name. Added the `antigravitySessionTitles` branch (+ persists `isAntigravityResume` across Reload Window so the exact `--conversation <id>` resume survives, like kiro's `--resume-id`).
+
+### Implementation
+- `panel/settingsPanel.js`: antigravity `--dangerously-skip-permissions` checkbox in the Agent category; `antigravityTrustAllTools` added to `globals` + `ALLOWED_GLOBAL_KEYS`.
+- `panel/createPanel.js`: `splitLayoutDefault` forced `false` when `agent === 'antigravity'`.
+- `lib/sessionJsonl.js`: `_cwdMatch()` (exact-normalized → last-two-segment fallback) used by `listKiroSessions` + `listAntigravitySessions`.
+- `store/sessionManager.js`: `antigravitySessionTitles` write branch + `isAntigravityResume` persistence.
+
+### Tests
+- 289 node (+2) + 36 vitest passing. New cases: cross-OS basename/segment matching for both `listKiroSessions` and `listAntigravitySessions`; the existing exact-cwd filter test still passes (no over-match on shared leaf names).
+
 ## [3.7.16] - 2026-06-04
 
 ### Added

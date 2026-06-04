@@ -27,6 +27,9 @@ function saveSessions() {
         // Persist kiro Tree-resume flag so a Reload Window keeps the exact
         // --resume-id path instead of falling back to cwd-latest --resume.
         ...(entry.isKiroResume ? { isKiroResume: true } : {}),
+        // Same for antigravity: keep the exact --conversation <id> resume
+        // instead of falling back to --continue (most-recent) on reload.
+        ...(entry.isAntigravityResume ? { isAntigravityResume: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
@@ -41,15 +44,20 @@ function saveSessions() {
   // 스토어로 가 사이드바에 반영되지 않는다 (실제 버그였음).
   const claudeTitles = sessionStoreGet('claudeSessionTitles', {});
   const kiroTitles = sessionStoreGet('kiroSessionTitles', {});
+  const antigravityTitles = sessionStoreGet('antigravitySessionTitles', {});
   for (const s of sessions) {
     if (!s.sessionId || !s.title) continue;
-    // 기본 탭 이름(Claude Code / Kiro 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
+    // 기본 탭 이름(Claude Code / Kiro / Antigravity 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
     if (isDefaultTabTitle(s.title)) continue;
+    // agent별 title 스토어 분리 — 각 에이전트의 Sessions 트리가 자기 스토어를
+    // 라벨로 읽으므로, 안 나누면 rename이 사이드바에 반영되지 않는다.
     if (s.agent === 'kiro') kiroTitles[s.sessionId] = s.title;
+    else if (s.agent === 'antigravity') antigravityTitles[s.sessionId] = s.title;
     else claudeTitles[s.sessionId] = s.title;
   }
   sessionStoreUpdate('claudeSessionTitles', claudeTitles);
   sessionStoreUpdate('kiroSessionTitles', kiroTitles);
+  sessionStoreUpdate('antigravitySessionTitles', antigravityTitles);
   state.refreshSessionTrees();
 }
 
