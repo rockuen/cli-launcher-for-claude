@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.7.5] - 2026-06-04
+
+### Changed
+- **The Kiro tone now extends to the reader's welcome robot and the assistant message accent.** In a Kiro tab the empty-state welcome robot and the vertical accent line on the left of assistant messages were still coral; they now follow the agent theme (purple for Kiro, coral for Claude), matching the input area added in 3.7.4. The standalone reader window (which has no agent theme) keeps the coral fallback.
+
+### Implementation
+- `lib/readerRender.js`: the welcome robot SVG's 5 coral fills/stroke became `currentColor` (the 3 white eye/mouth shapes are unchanged), so the robot takes its color from CSS.
+- `webviewStyles.js` + `readerView.js`: `.rw-robot` gains `color: var(--accent, #D97757)`; `#reader-area .msg-assistant .msg-body`'s left border uses `var(--accent-glow-strong, …)` (the 0.5-alpha accent, matching the previous coral softness).
+
+### Tests
+- 273 node + 36 vitest passing. `renderWelcome()` verified (5 `currentColor` shapes, 3 white eyes kept, no hardcoded coral remaining).
+
 ## [3.7.4] - 2026-06-04
 
 ### Changed

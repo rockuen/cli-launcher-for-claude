@@ -396,7 +396,7 @@ function getStyles(ctx) {
       gap: 16px;
       padding-bottom: 7%;
     }
-    .rw-robot { width: 56px; height: 56px; opacity: 0.95; }
+    .rw-robot { width: 56px; height: 56px; opacity: 0.95; color: var(--accent, #D97757); }
     .rw-msg {
       color: ${statusGray};
       font-size: 0.92em;
@@ -457,7 +457,7 @@ function getStyles(ctx) {
       color: ${fg};
     }
     #reader-area .msg-user .msg-body { border-left-color: ${isDark ? 'rgba(79,193,255,0.45)' : 'rgba(0,102,204,0.4)'}; }
-    #reader-area .msg-assistant .msg-body { border-left-color: ${isDark ? 'rgba(217,119,87,0.5)' : 'rgba(201,100,66,0.45)'}; }
+    #reader-area .msg-assistant .msg-body { border-left-color: var(--accent-glow-strong, ${isDark ? 'rgba(217,119,87,0.5)' : 'rgba(201,100,66,0.45)'}); }
     #reader-area .msg-body > :first-child { margin-top: 0; }
     #reader-area .msg-body > :last-child { margin-bottom: 0; }
     #reader-area .msg-body p { margin: 0.4em 0; }

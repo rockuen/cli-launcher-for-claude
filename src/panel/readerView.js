@@ -371,7 +371,7 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   .reader-welcome-brand { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; color: var(--fg); opacity: 0.9; }
   .reader-welcome-brand .rw-spark { color: #D97757; margin-right: 3px; }
   .reader-welcome-hero { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 16px; padding-bottom: 7%; }
-  .rw-robot { width: 56px; height: 56px; opacity: 0.95; }
+  .rw-robot { width: 56px; height: 56px; opacity: 0.95; color: var(--accent, #D97757); }
   .rw-msg { color: var(--fg-muted); font-size: 13px; line-height: 1.7; max-width: 300px; }
 
   .reader-actions {
