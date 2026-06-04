@@ -6,7 +6,9 @@
 //     enabled (claudeCodeLauncher.enabledAgents) — derived from listAgents() so
 //     toggling kiro off in settings drops its row automatically (call refresh()
 //     from the enabledAgents config-change handler).
-//   - a "Hand off to other agent" row (claude↔kiro handoff).
+//   - a "Hand off to other agent" row (hands the current session's context off
+//     to any other enabled+installed agent — Claude / Kiro / Antigravity — via a
+//     picker; not a fixed claude↔kiro toggle).
 //
 // The settings ⚙ lives in this view's view/title (navigation@0); the per-agent
 // session views no longer carry the ⚙ — it's consolidated here. Rows fire the

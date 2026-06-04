@@ -90,8 +90,10 @@ function activate(context) {
     })
   );
 
-  // v3.6.15 — handoff: extract current session's conversation and inject it
-  // as context into a new tab running the opposite agent (claude↔kiro).
+  // v3.6.15 — handoff: extract the current session's conversation and inject it
+  // as context into a new tab running ANOTHER agent. v3.7.20 — the target is
+  // chosen from all enabled+installed agents (Claude / Kiro / Antigravity) other
+  // than the source, instead of a fixed claude↔kiro toggle.
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.handoffToOther', async () => {
       // (a) Find the active (focused) panel entry.
@@ -107,7 +109,13 @@ function activate(context) {
       // (b) Resolve jsonl path and extract messages.
       const jsonlPath = getSessionJsonlPath(activeEntry.sessionId, activeEntry.cwd, activeEntry.agent);
       if (!jsonlPath) {
-        vscode.window.showInformationMessage('Claude Launcher: 세션 파일 경로를 찾을 수 없습니다.');
+        // antigravity (agy) keeps transcripts as protobuf-in-SQLite, not jsonl,
+        // so it can't be a handoff SOURCE yet (extraction needs the .db parser).
+        // Handing off TO antigravity works fine — only extracting FROM it doesn't.
+        const msg = activeEntry.agent === 'antigravity'
+          ? 'Claude Launcher: Antigravity 세션은 아직 핸드오프 소스(대화 추출)를 지원하지 않습니다 — Claude/Kiro 세션에서 핸드오프하세요.'
+          : 'Claude Launcher: 세션 파일 경로를 찾을 수 없습니다.';
+        vscode.window.showInformationMessage(msg);
         return;
       }
       let messages;
@@ -125,8 +133,29 @@ function activate(context) {
       // (c) Build handoff note (PoC: raw text; swap buildHandoffNote for AI summary later).
       const note = buildHandoffNote(messages, { fromAgent: activeEntry.agent, cwd: activeEntry.cwd });
 
-      // (d) Determine opposite agent and open new tab.
-      const targetAgent = activeEntry.agent === 'claude' ? 'kiro' : 'claude';
+      // (d) Pick the target agent — any enabled+installed agent other than the
+      // current one (Claude / Kiro / Antigravity) — and open a new tab with it.
+      // Pre-compute the eligible list so "no other agent enabled" is told apart
+      // from a user cancel (Esc): empty list → guide the user; cancel → silent.
+      const enabledIds = vscode.workspace
+        .getConfiguration('claudeCodeLauncher')
+        .get('enabledAgents', ['claude']);
+      const others = listAgents().filter(
+        (a) => enabledIds.includes(a.id) && a.installed && a.id !== activeEntry.agent
+      );
+      if (others.length === 0) {
+        vscode.window.showInformationMessage(
+          'Claude Launcher: 핸드오프할 다른 에이전트가 없습니다 — 설정 → Agent에서 다른 에이전트를 켜세요.'
+        );
+        return;
+      }
+      const targetAgent = others.length === 1
+        ? others[0].id
+        : await pickAgent({
+            exclude: activeEntry.agent,
+            placeHolder: `Hand off from ${activeEntry.agent} — pick the target agent`,
+          });
+      if (!targetAgent) return; // user cancelled the picker
       createPanel(context, extensionPath, { cwd: activeEntry.cwd }, { agent: targetAgent });
 
       // (e) Inject note once the new entry's PTY is ready.

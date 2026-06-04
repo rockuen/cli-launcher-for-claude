@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.7.20] - 2026-06-04
+
+### Changed
+- **Hand off to any agent, not just claude↔kiro.** "Hand off to other agent" now lets you pick the target from **all enabled+installed agents other than the current one** (Claude / Kiro / Antigravity) instead of a fixed claude↔kiro toggle. With exactly one other agent it hands off directly; with two+ it shows a picker; with none it tells you to enable another agent in Settings → Agent. Esc cancels silently.
+
+### Notes
+- Handing off **to** Antigravity works (the note is injected into the agy prompt). Handing off **from** Antigravity isn't supported yet — agy transcripts are protobuf-in-SQLite (no jsonl), so the conversation can't be extracted; that path now shows a clear message instead of a generic "session file not found".
+
+### Implementation
+- `handlers/pickAgent.js`: `pickAgent({ exclude, placeHolder })` — optional `exclude` drops an agent from the candidate list (returns null when nothing's left, rather than the claude fallback); backward-compatible no-arg call unchanged.
+- `activation.js` (`handoffToOther`): target resolved via the eligible-others list + `pickAgent({ exclude: source })` instead of `agent === 'claude' ? 'kiro' : 'claude'`; antigravity-source gets a specific "extraction not supported yet" message.
+
+### Tests
+- 291 node + 36 vitest passing (command-wiring change; no test logic affected).
+
 ## [3.7.19] - 2026-06-04
 
 ### Changed
