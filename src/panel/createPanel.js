@@ -251,6 +251,7 @@ function createPanel(context, extensionPath, session, opts) {
   const soundEnabled = config.get('soundEnabled', true);
   const particlesEnabled = config.get('particlesEnabled', true);
   const autoEffortMax = config.get('autoEffortMax', false);
+  const bypassPermissions = config.get('claude.bypassPermissions', false);
   const repoSyncEnabled = config.get('repoSync.enabled', false);
   const repoSyncPath = config.get('repoSync.path', '');
   const splitLayoutDefault = config.get('splitLayoutDefault', false);
@@ -365,7 +366,7 @@ function createPanel(context, extensionPath, session, opts) {
     const claudeArgs = session?.sessionId
       ? ['--resume', session.sessionId]
       : ['--session-id', sessionId];
-    args = [...resolved.args, ...claudeArgs, ...(autoEffortMax ? ['--effort', 'max'] : [])];
+    args = [...resolved.args, ...claudeArgs, ...(autoEffortMax ? ['--effort', 'max'] : []), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
   }
 
   // Multiplexer wrap: keep the webview UI, but spawn an attached tmux/psmux

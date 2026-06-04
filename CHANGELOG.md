@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.7.7] - 2026-06-04
+
+### Added
+- **Per-agent startup flags under Settings → Agent.** The Claude agent row now carries two launch toggles, matching Kiro's Trust-all-tools layout:
+  - **Effort max (`--effort max`)** — relocated from Settings → General ("Auto Effort Max") to sit next to the agent. Same config key (`claudeCodeLauncher.autoEffortMax`), so your existing setting is preserved.
+  - **Bypass permissions (`--dangerously-skip-permissions`)** — new. Launches Claude sessions in bypass-permissions mode (skips tool/permission prompts) without `shift+tab` each time. Off by default; use with care. Config key `claudeCodeLauncher.claude.bypassPermissions`.
+  Both apply to newly opened and restarted Claude sessions; the Agent section is now symmetric per agent (Claude: effort/bypass, Kiro: trust-all-tools).
+
+### Implementation
+- `panel/createPanel.js` + `panel/restartPty.js`: claude spawn args append `--dangerously-skip-permissions` when `claude.bypassPermissions` is set (alongside the existing `--effort max`).
+- `panel/settingsPanel.js`: the Auto Effort Max field is removed from General; the Claude agent row renders Effort-max + Bypass-permissions toggles (added to the settings globals + the write allowlist).
+- `package.json`: new `claudeCodeLauncher.claude.bypassPermissions` boolean (default false); `autoEffortMax` description updated (it's a spawn flag now, not an idle-send).
+
+### Tests
+- 273 node + 36 vitest passing. The settings panel was rendered and its client script syntax-checked (Effort/Bypass toggles present, kiro block intact, the General field removed).
+
 ## [3.7.6] - 2026-06-04
 
 ### Fixed

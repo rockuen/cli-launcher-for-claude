@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude",
   "description": "Run Claude Code CLI in a Webview tab with status icons, session management, and rich terminal features.",
-  "version": "3.7.6",
+  "version": "3.7.7",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -542,7 +542,12 @@
         "claudeCodeLauncher.autoEffortMax": {
           "type": "boolean",
           "default": false,
-          "description": "Automatically send '/effort max' the first time each session becomes idle. Useful to ensure max effort after reload window restores sessions."
+          "description": "Launch Claude sessions with '--effort max' (maximum effort). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Claude sessions."
+        },
+        "claudeCodeLauncher.claude.bypassPermissions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Launch Claude sessions with '--dangerously-skip-permissions' (bypass-permissions mode — skips tool/permission prompts). Off by default; use with care. Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Claude sessions."
         },
         "claudeCodeLauncher.pasteToFileThreshold": {
           "type": "number",

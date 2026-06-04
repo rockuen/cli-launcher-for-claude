@@ -272,11 +272,6 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             <option value="detached">Leave detached</option>
           </select>
         </div>
-        <div class="field">
-          <div class="field-label">Auto Effort Max</div>
-          <div class="field-desc">Send <code>/effort max</code> automatically on first idle after a session starts.</div>
-          <label class="g-toggle" id="set-autoeffortmax"><span class="track"></span><span>Enabled</span></label>
-        </div>
       </div>
 
       <div class="panel" data-cat="sync">
@@ -451,6 +446,30 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(trust);
         }
 
+        // Claude-only: startup flags — Effort max (--effort max) + Bypass
+        // permissions (--dangerously-skip-permissions). Bound to globals;
+        // applied to newly opened and restarted Claude sessions.
+        if (a.id === 'claude') {
+          const addClaudeFlag = (checked, text, title, key) => {
+            const lab = document.createElement('label');
+            lab.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+            lab.title = title;
+            const cbx = document.createElement('input');
+            cbx.type = 'checkbox';
+            cbx.checked = !!checked;
+            cbx.addEventListener('change', () => {
+              vscode.postMessage({ type: 'set-global', key, value: cbx.checked });
+            });
+            const txt = document.createElement('span');
+            txt.textContent = text;
+            lab.appendChild(cbx);
+            lab.appendChild(txt);
+            main.appendChild(lab);
+          };
+          addClaudeFlag(GLOBALS.autoEffortMax, 'Effort max (--effort max)', 'Start Claude sessions at maximum effort (--effort max). Applies to newly opened and restarted Claude sessions.', 'autoEffortMax');
+          addClaudeFlag(GLOBALS.claudeBypassPermissions, 'Bypass permissions (--dangerously-skip-permissions)', 'Start Claude sessions in bypass-permissions mode (--dangerously-skip-permissions), skipping tool/permission prompts. Use with care. Applies to newly opened and restarted Claude sessions.', 'claude.bypassPermissions');
+        }
+
         // Enable toggle — disabled when not installed.
         const sw = document.createElement('label');
         sw.className = 'switch' + (a.installed ? '' : ' disabled');
@@ -508,8 +527,6 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
         setGlobal(key, on);
       });
     }
-    wireToggle('set-autoeffortmax', 'autoEffortMax', GLOBALS.autoEffortMax);
-
     // ---- Sync ----
     wireToggle('set-repo-sync-enabled', 'repoSync.enabled', GLOBALS.repoSyncEnabled);
 
@@ -655,6 +672,7 @@ function openGlobalSettings(context) {
     defaultBackend: cfg.get('terminal.defaultBackend', 'webview'),
     multiplexerLifecycle: cfg.get('terminal.multiplexerLifecycle', 'kill-on-close'),
     autoEffortMax: cfg.get('autoEffortMax', false),
+    claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
@@ -671,6 +689,7 @@ function openGlobalSettings(context) {
     'terminal.defaultBackend',
     'terminal.multiplexerLifecycle',
     'autoEffortMax',
+    'claude.bypassPermissions',
     'kiro.trustAllTools',
     'repoSync.enabled',
     'repoSync.path',

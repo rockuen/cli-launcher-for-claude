@@ -58,8 +58,10 @@ function restartPty(entry, panel, context, extensionPath) {
       return;
     }
     shell = resolved.shell;
-    const autoEffortMax = vscode.workspace.getConfiguration('claudeCodeLauncher').get('autoEffortMax', false);
-    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : [])];
+    const claudeCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+    const autoEffortMax = claudeCfg.get('autoEffortMax', false);
+    const bypassPermissions = claudeCfg.get('claude.bypassPermissions', false);
+    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : []), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
   }
 
   // Kill old PTY before spawning new one to prevent orphaned processes
