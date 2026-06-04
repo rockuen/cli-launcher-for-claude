@@ -46,14 +46,24 @@ function activate(context) {
   context.subscriptions.push(state.statusBar);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('claudeCodeLauncher.open', (opts) => {
-      // The "new session" affordances (editor-title icon, status bar, command
-      // palette, welcome link) launch the DEFAULT agent directly — no agent
-      // QuickPick. The default is claudeCodeLauncher.agent (Settings → Agent →
-      // "Default for new sessions"); createPanel falls back to it when no agent
-      // is forced. Pick a specific non-default agent via the Quick Actions
-      // header or the per-agent session views instead.
-      createPanel(context, extensionPath, null, Object.assign({}, opts || {}));
+    vscode.commands.registerCommand('claudeCodeLauncher.open', async (opts) => {
+      // The robot icon (editor/title openTerminal), status bar, and welcome link
+      // route through here — they show the AGENT PICKER so the user chooses
+      // which agent (Claude / Kiro / Antigravity) to launch. pickAgent no-ops
+      // to the single candidate when only one agent is enabled+installed (and to
+      // 'claude' with none), so the QuickPick only appears when there's a real
+      // choice. Esc cancels (no session). An already-forced agent (opts.agent —
+      // e.g. agent-scoped commands or openInMultiplexer) skips the picker.
+      // NOTE: the in-session toolbar "+" (handlers/toolbar.js 'new-tab') does NOT
+      // route through here — it intentionally launches the DEFAULT agent directly
+      // for a fast new tab.
+      const merged = Object.assign({}, opts || {});
+      if (!merged.agent) {
+        const picked = await pickAgent();
+        if (!picked) return; // user cancelled the picker
+        merged.agent = picked;
+      }
+      createPanel(context, extensionPath, null, merged);
     })
   );
 

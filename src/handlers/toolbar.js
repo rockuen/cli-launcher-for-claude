@@ -10,10 +10,14 @@ async function handleToolbar(action, entry, context, extensionPath, createPanel,
       if (entry.pty) entry.pty.write('/clear\r');
       break;
     case 'new-tab': {
-      // Launch the default agent directly (claudeCodeLauncher.agent) — no agent
-      // QuickPick. createPanel resolves the default when none is forced. (The
-      // pickAgent param is kept for signature compatibility but no longer used.)
-      createPanel(context, extensionPath, null, {});
+      // The in-session toolbar "+" opens a new tab with the SAME agent as the
+      // current session (entry.agent) — clicking "+" in a Kiro tab opens
+      // another Kiro tab, in an Antigravity tab another Antigravity tab, etc.
+      // No agent QuickPick — it inherits the current session's agent for a fast
+      // same-agent new tab. (Contrast the robot/editor-title icon, which routes
+      // through claudeCodeLauncher.open and DOES show the agent picker. The
+      // pickAgent param is kept for signature compatibility but unused here.)
+      createPanel(context, extensionPath, null, { agent: entry.agent });
       break;
     }
   }

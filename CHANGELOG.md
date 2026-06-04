@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.7.19] - 2026-06-04
+
+### Changed
+- **Robot icon → agent picker; in-session "+" → current session's agent.** Reverts the v3.7.15 "everything launches the default agent" behavior into two distinct affordances:
+  - The **robot icon** (editor/title) — and the status bar / welcome link, which share `claudeCodeLauncher.open` — now show the **agent picker** again (Claude / Kiro / Antigravity). The QuickPick only appears when 2+ agents are enabled+installed; with one it launches that, with none it falls back to claude. Esc cancels.
+  - The **in-session toolbar "+"** now opens a new tab with the **same agent as the current session** (`entry.agent`) — clicking "+" in a Kiro tab opens another Kiro tab, etc. — instead of always the default agent.
+
+### Implementation
+- `activation.js` (`claudeCodeLauncher.open`): restored `pickAgent()` when no agent is forced in `opts` (agent-scoped commands / `openInMultiplexer` still bypass it via `opts.agent`).
+- `handlers/toolbar.js` (`new-tab`): `createPanel(..., { agent: entry.agent })` instead of `{}`.
+
+### Tests
+- 291 node + 36 vitest passing (no test logic affected — command-wiring change).
+
 ## [3.7.18] - 2026-06-04
 
 ### Fixed
