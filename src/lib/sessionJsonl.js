@@ -121,53 +121,90 @@ function _cwdMatch(metaCwd, cwd) {
 }
 
 // List Antigravity (agy) CLI conversations for a given cwd, newest first.
-// agy logs every conversation to ~/.gemini/antigravity-cli/history.jsonl — one
-// JSON object per line carrying { conversationId, workspace (cwd), display
-// (title), timestamp }. The file is append-only, so a single conversation can
-// appear on multiple lines as it grows; we dedupe by conversationId keeping the
-// latest record (max timestamp / last write wins). Field names are read with
-// fallbacks (conversation_id/id, cwd/workspaceDir, title/summary/name,
-// updatedAt/updated_at) so a minor agy schema drift degrades gracefully rather
-// than emptying the tree. Each entry is { sessionId, title, cwd, mtime } where
-// mtime is epoch-ms (0 when unknown) — the shape SessionTreeDataProvider's
-// agent-group builder consumes. Returns [] when the file is absent or empty
-// (e.g. agy installed but never run / not logged in). The `_file` arg is
-// test-only injection; production callers pass cwd alone.
 //
-// NOTE: the history.jsonl path + line schema are from the work-PC handoff
-// (agy v1.0.5, logged in). On a logged-out machine agy never writes the file,
-// so this is verified against fixtures here and needs a live agy login to
-// confirm end-to-end. See Phase 1 notes.
-function listAntigravitySessions(cwd, _file) {
-  const file = _file || path.join(os.homedir(), '.gemini', 'antigravity-cli', 'history.jsonl');
-  let text;
-  try { text = fs.readFileSync(file, 'utf-8'); } catch { return []; }
-  const byId = new Map();
-  for (const line of text.split(/\r?\n/)) {
-    const s = line.trim();
-    if (!s) continue;
-    let d;
-    try { d = JSON.parse(s); } catch { continue; }
-    if (!d || typeof d !== 'object') continue;
-    const id = d.conversationId || d.conversation_id || d.id;
-    if (!id) continue;
-    const ws = d.workspace || d.cwd || d.workspaceDir || d.workspace_dir || '';
-    const display = d.display || d.title || d.summary || d.name || '';
-    const mtime = _antigravityTs(
-      d.timestamp != null ? d.timestamp
-        : (d.updatedAt != null ? d.updatedAt : d.updated_at)
-    );
-    const prev = byId.get(id);
-    // Latest record per conversation wins. `>=` so a later line with an equal
-    // (or missing → 0) timestamp still overwrites with the freshest title/cwd.
-    if (!prev || mtime >= prev.mtime) {
-      byId.set(id, { sessionId: id, title: display, cwd: ws, mtime });
+// agy v1.0.5 (verified on a logged-in machine) splits a conversation across two
+// places:
+//   - ~/.gemini/antigravity-cli/history.jsonl — one JSON object per session
+//     carrying { display (title), workspace (cwd), timestamp }. NOTE: the line
+//     does NOT contain the conversation id.
+//   - ~/.gemini/antigravity-cli/conversations/<id>.db — one SQLite file per
+//     conversation; the FILENAME is the id `agy --conversation <id>` resumes.
+//
+// So the resumable id lives on the .db filename, the human metadata lives in
+// history.jsonl, and nothing links the two explicitly. We pair them by recency
+// rank (both newest-first): the newest history entry ↔ the newest .db, etc.
+// This is correct for the common create-in-order case; resuming a much older
+// session bumps its .db mtime and can mis-rank it, which only MISLABELS a row
+// (never loses one or resumes a non-existent id). If a future agy build does
+// put an explicit id on the history line, it's honored directly (no pairing).
+//
+// Each entry is { sessionId (the .db id), title, cwd, mtime (epoch-ms) } — the
+// shape SessionTreeDataProvider's agent-group builder consumes. Returns [] when
+// neither history nor conversations exist (agy never run / not logged in). The
+// `_file` / `_convDir` args are test-only injection; production passes cwd alone.
+function listAntigravitySessions(cwd, _file, _convDir) {
+  const baseDir = path.join(os.homedir(), '.gemini', 'antigravity-cli');
+  const file = _file || path.join(baseDir, 'history.jsonl');
+  const convDir = _convDir || path.join(baseDir, 'conversations');
+
+  // history.jsonl metadata (display / workspace / timestamp), in file order.
+  const hist = [];
+  try {
+    const text = fs.readFileSync(file, 'utf-8');
+    for (const line of text.split(/\r?\n/)) {
+      const s = line.trim();
+      if (!s) continue;
+      let d;
+      try { d = JSON.parse(s); } catch { continue; }
+      if (!d || typeof d !== 'object') continue;
+      hist.push({
+        // Honor an explicit id if a future build adds one; else pair via .db.
+        id: d.conversationId || d.conversation_id || d.id || null,
+        display: d.display || d.title || d.summary || d.name || '',
+        workspace: d.workspace || d.cwd || d.workspaceDir || d.workspace_dir || '',
+        mtime: _antigravityTs(
+          d.timestamp != null ? d.timestamp
+            : (d.updatedAt != null ? d.updatedAt : d.updated_at)
+        ),
+      });
     }
+  } catch { /* no history yet */ }
+
+  // conversations/<id>.db — authoritative resumable ids (+ mtime fallback).
+  let dbs = [];
+  try {
+    dbs = fs.readdirSync(convDir)
+      .filter((f) => f.endsWith('.db'))
+      .map((f) => {
+        let mt = 0;
+        try { mt = fs.statSync(path.join(convDir, f)).mtimeMs; } catch (_) {}
+        return { id: f.slice(0, -3), mtime: mt };
+      });
+  } catch { /* no conversations dir */ }
+
+  const out = [];
+  // Explicit-id entries (future-proof) pair directly.
+  const explicit = hist.filter((h) => h.id);
+  for (const h of explicit) {
+    out.push({ sessionId: h.id, title: h.display, cwd: h.workspace, mtime: h.mtime });
   }
-  let out = [...byId.values()];
-  if (cwd) out = out.filter((s) => _cwdMatch(s.cwd, cwd));
-  out.sort((a, b) => b.mtime - a.mtime);
-  return out;
+  // Everything else pairs to a .db by recency rank.
+  const usedIds = new Set(explicit.map((h) => h.id));
+  const implicit = hist.filter((h) => !h.id).sort((a, b) => b.mtime - a.mtime);
+  const freeDbs = dbs.filter((d) => !usedIds.has(d.id)).sort((a, b) => b.mtime - a.mtime);
+  for (let i = 0; i < implicit.length && i < freeDbs.length; i++) {
+    out.push({
+      sessionId: freeDbs[i].id,
+      title: implicit[i].display,
+      cwd: implicit[i].workspace,
+      mtime: implicit[i].mtime || freeDbs[i].mtime,
+    });
+  }
+
+  let result = out.filter((s) => s.sessionId);
+  if (cwd) result = result.filter((s) => _cwdMatch(s.cwd, cwd));
+  result.sort((a, b) => b.mtime - a.mtime);
+  return result;
 }
 
 function getSessionJsonlPath(sessionId, cwd, agent) {

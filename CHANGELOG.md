@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.7.18] - 2026-06-04
+
+### Fixed
+- **Antigravity sessions now actually appear in the sidebar (real on-disk format).** The Phase 1 parser assumed each `history.jsonl` line carried a `conversationId`, but the real agy v1.0.5 format (verified on a logged-in machine) is `{ "display": "…", "timestamp": <epoch-ms>, "workspace": "…" }` with **no id** — the resumable id is the `conversations/<id>.db` *filename*. The old parser skipped every id-less line, so the Antigravity Sessions view was always empty. `listAntigravitySessions` now reads the metadata from `history.jsonl` and pairs it with the `.db` ids by recency rank (newest history entry ↔ newest `.db`); an explicit id on the line is still honored if a future build adds one. Verified against the real `history.jsonl` + `.db` (one session "테스트" → resumes via `agy --conversation <id>`).
+
+### Implementation
+- `lib/sessionJsonl.js`: `listAntigravitySessions(cwd, _file?, _convDir?)` rewritten — history metadata + `conversations/*.db` id pairing, recency-rank match, explicit-id fast path, `.db`-less → empty (no resumable id).
+
+### Tests
+- 291 node (+2, antigravity parser cases reworked to the real format: `.db`-id pairing, no-`.db` empty, explicit-id, field/timestamp drift, malformed, cross-OS) + 36 vitest passing.
+
+### Notes
+- Cross-device sync uses a OneDrive symlink of the CLI session dirs (same as Claude's `~/.claude/projects/<cwd>` → OneDrive). Kiro's dir was symlinked on this device; Antigravity's symlink + the macOS/other-device setup are documented as a manual per-device step.
+
 ## [3.7.17] - 2026-06-04
 
 ### Added
