@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.7.10] - 2026-06-04
+
+### Changed
+- **Status bar now says "Agent" instead of "Claude".** The IDE status bar item read `Claude Running` / `Claude Needs Attention` / `Claude Idle` (plus `Claude Done` / `Claude Error`, and `Claude Code` at rest), but the launcher now runs non-Claude agents (Kiro) too, so a hard-coded "Claude" was misleading. The status bar aggregates every open agent tab, so it now reads `Agent Running` / `Agent Idle` / `Agent Needs Attention` / `Agent Done` / `Agent Error`, with `Agent` as the resting (no-tabs) label — both EN and KO locales.
+
+### Implementation
+- `i18n/en.js` + `i18n/ko.js`: `sbIdle` / `sbRunning` / `sbAttention` / `sbDone` / `sbError` reworded Claude → Agent.
+- `panel/statusIndicator.js`: the no-panel resting label `$(hubot) Claude Code` → `$(hubot) Agent`.
+
+### Tests
+- 273 node + 36 vitest passing (no test references the status strings; the unrelated `Claude Code` agent-label tests are unchanged).
+
 ## [3.7.9] - 2026-06-04
 
 ### Added

@@ -85,7 +85,7 @@ function updateStatusBar() {
 function setStatusBar(nextState) {
   if (!state.statusBar) return;
   const config = {
-    idle:              { text: '$(hubot) Claude Code', bg: undefined },
+    idle:              { text: '$(hubot) Agent', bg: undefined },
     waiting:           { text: t('sbIdle'),      bg: undefined },
     running:           { text: t('sbRunning'),   bg: 'statusBarItem.warningBackground' },
     'needs-attention': { text: t('sbAttention'), bg: 'statusBarItem.prominentBackground' },
