@@ -703,15 +703,17 @@
             "auto",
             "claude",
             "kiro",
-            "antigravity"
+            "antigravity",
+            "codex"
           ],
           "enumDescriptions": [
-            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure)",
+            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure, Codex → slate)",
             "Claude Dark — coral input tone for every panel",
             "Kiro Purple — purple input tone for every panel",
-            "Antigravity Spectrum — azure input tone for every panel"
+            "Antigravity Spectrum — azure input tone for every panel",
+            "Codex Slate — slate input tone for every panel"
           ],
-          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity' pin one tone for all panels."
+          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity'/'codex' pin one tone for all panels."
         },
         "claudeCodeLauncher.defaultFontSize": {
           "type": "number",

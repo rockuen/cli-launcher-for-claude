@@ -15,14 +15,15 @@ function getClientScript(ctx) {
     // bottom-follow strategy than Claude's inline output — see scrollback below.
     const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
     const IS_ANTIGRAVITY = ${JSON.stringify(agent === 'antigravity')};
+    const IS_CODEX = ${JSON.stringify(agent === 'codex')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
     // colors. 'auto' (the default) follows the agent: claude -> coral,
-    // kiro -> purple, antigravity -> azure. An explicit claude/kiro/antigravity
-    // pick in Settings pins one tone for all panels; legacy values
-    // (default/midnight/...) resolve to 'auto'.
+    // kiro -> purple, antigravity -> azure, codex -> slate. An explicit
+    // claude/kiro/antigravity/codex pick in Settings pins one tone for all
+    // panels; legacy values (default/midnight/...) resolve to 'auto'.
     const initialPanelTheme =
-      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity')
+      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex')
         ? SETTINGS.defaultTheme
         : 'auto';
     let currentThemeName = initialPanelTheme;
@@ -857,6 +858,13 @@ function getClientScript(ctx) {
       antigravity: {
         dark:  { accent: '#34c2e0', accentStrong: '#5bd2ec', accentDeep: '#1fa0be', panelBg: '#15222b', inputBg: '#0e1820', glow: 'rgba(52,194,224,0.3)', glowStrong: 'rgba(52,194,224,0.5)', muted: '#6a8794' },
         light: { accent: '#1496b6', accentStrong: '#34c2e0', accentDeep: '#0c7491', panelBg: '#ecf7fb', inputBg: '#ffffff', glow: 'rgba(20,150,182,0.2)', glowStrong: 'rgba(20,150,182,0.35)', muted: '#5a8594' }
+      },
+      codex: {
+        // Slate — the only achromatic tone (OpenAI's black-based identity), so
+        // a codex tab is identifiable at a glance against the three chromatic
+        // agents (claude coral / kiro purple / antigravity azure).
+        dark:  { accent: '#64748b', accentStrong: '#94a3b8', accentDeep: '#475569', panelBg: '#20262e', inputBg: '#161b21', glow: 'rgba(100,116,139,0.3)', glowStrong: 'rgba(100,116,139,0.5)', muted: '#7d8896' },
+        light: { accent: '#475569', accentStrong: '#64748b', accentDeep: '#334155', panelBg: '#f1f5f9', inputBg: '#ffffff', glow: 'rgba(71,85,105,0.2)', glowStrong: 'rgba(71,85,105,0.35)', muted: '#94a3b8' }
       }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
@@ -875,8 +883,8 @@ function getClientScript(ctx) {
     // changes tone.
     function applyTheme(themeName) {
       // 'auto' resolves to this panel's agent tone (claude coral / kiro purple /
-      // antigravity azure).
-      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : 'claude') : themeName;
+      // antigravity azure / codex slate).
+      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : 'claude') : themeName;
       const def = themes[resolvedName];
       if (!def) return;
       const t = IS_DARK ? def.dark : def.light;
