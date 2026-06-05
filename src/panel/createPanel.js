@@ -26,7 +26,7 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
-const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions } = require('../lib/sessionJsonl');
+const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions } = require('../lib/sessionJsonl');
 const { buildMeta, renderBlocks, renderWelcome } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
@@ -50,6 +50,14 @@ const IDLE_DELAY_MS = 3000;
 // its reader reads that exact transcript instead of cwd-latest. This module-
 // level set stops two fresh panels in the same cwd from claiming one id.
 const _claimedKiroIds = new Set();
+
+// Codex fresh-session id ownership — same pattern as kiro. A new `codex` TUI
+// accepts no session id; the id codex assigns (the rollout filename's trailing
+// UUID) isn't known until it writes the rollout. Each fresh codex panel
+// snapshots the ids that already existed for its cwd, then claims the first NEW
+// rollout that appears and pins it (entry.sessionId), so its reader reads that
+// exact rollout. This set stops two fresh panels in one cwd claiming one id.
+const _claimedCodexIds = new Set();
 
 // Split-layout reader watcher: tail the active session's jsonl and broadcast
 // rendered blocks to the webview so the in-panel reader stays in sync with
@@ -96,14 +104,50 @@ function startReaderWatch(entry, panel) {
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro');
   };
 
+  // Codex id discovery mirrors kiro. A Tree-resume already carries the real
+  // rollout id → own it immediately. A fresh codex panel snapshots the cwd's
+  // existing rollout ids, then claims the first NEW one codex writes.
+  if (entry.agent === 'codex' && entry.isCodexResume && entry.sessionId) {
+    entry._codexPinned = true;
+    _claimedCodexIds.add(entry.sessionId);
+  }
+  const codexPreIds = (entry.agent === 'codex' && !entry._codexPinned)
+    ? new Set(listCodexSessions(entry.cwd).map(s => s.sessionId))
+    : null;
+  const resolveCodexPath = () => {
+    if (!entry._codexPinned) {
+      // The first NEW (post-spawn), unclaimed rollout for this cwd is ours.
+      const fresh = listCodexSessions(entry.cwd)
+        .find(s => !codexPreIds.has(s.sessionId) && !_claimedCodexIds.has(s.sessionId));
+      if (!fresh) return null; // codex hasn't written its rollout yet
+      entry.sessionId = fresh.sessionId; // promote placeholder → real id
+      entry.isCodexResume = true;        // restartPty now resumes via `resume <id>`
+      entry._codexPinned = true;
+      _claimedCodexIds.add(fresh.sessionId);
+      try { saveSessions(); } catch (_) {}
+      try { state.refreshSessionTrees(); } catch (_) {}
+      console.log('[panel-reader] codex session pinned:', fresh.sessionId);
+    }
+    return getSessionJsonlPath(entry.sessionId, entry.cwd, 'codex');
+  };
+
   const watchTarget = entry.agent === 'kiro'
     ? path.join(os.homedir(), '.kiro', 'sessions', 'cli')
-    : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
+    : entry.agent === 'codex'
+      // Fresh codex: watch the whole rollout tree to catch the new file appear.
+      // Pinned/resume codex: the exact rollout path (cheaper poll, deep tree).
+      ? (entry._codexPinned
+          ? getSessionJsonlPath(entry.sessionId, entry.cwd, 'codex')
+          : path.join(os.homedir(), '.codex', 'sessions'))
+      : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
   if (!watchTarget) return null;
 
-  // Dynamic path resolution: kiro re-evaluates on every render; claude keeps
-  // the fixed path (avoids repeated stat/scan on the common hot path).
-  const resolvePath = entry.agent === 'kiro' ? resolveKiroPath : () => watchTarget;
+  // Dynamic path resolution: kiro / codex re-evaluate on every render to
+  // discover + pin a fresh session id; claude keeps the fixed path (avoids
+  // repeated stat/scan on the common hot path).
+  const resolvePath = entry.agent === 'kiro' ? resolveKiroPath
+    : entry.agent === 'codex' ? resolveCodexPath
+    : () => watchTarget;
 
   let debounceTimer = null;
   // v3.5.7: defer renders on hidden panels. renderBlocks() on a multi-MB
@@ -181,6 +225,10 @@ function startReaderWatch(entry, panel) {
     // Release this panel's kiro id so a later session can reuse it.
     if (entry.agent === 'kiro' && entry._kiroPinned && entry.sessionId) {
       _claimedKiroIds.delete(entry.sessionId);
+    }
+    // Same for codex.
+    if (entry.agent === 'codex' && entry._codexPinned && entry.sessionId) {
+      _claimedCodexIds.delete(entry.sessionId);
     }
   };
 }
