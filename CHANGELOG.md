@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.8.0] - 2026-06-05
+
+### Added
+- **Codex (OpenAI) CLI as the 4th agent.** Full integration alongside Claude / Kiro / Antigravity: auto-detection, a dedicated **"Codex Sessions"** sidebar view, new-session + resume (`codex resume <id>`), a **live reader pane** (rollouts are jsonl, so the conversation renders), and handoff to/from Codex. Enable it in **Settings → Agent** — the view appears once Codex is installed + enabled. Codex stores sessions as `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`; the AI tone is **slate** (the only achromatic agent, matching OpenAI's identity).
+- **Codex bypass toggle.** Settings → Agent → Codex → **"Bypass approvals + sandbox"** runs Codex with `--dangerously-bypass-approvals-and-sandbox` (skips all approval prompts and sandboxing). Off by default; **EXTREMELY DANGEROUS** — use only on trusted work. Mirrors the Kiro/Antigravity trust toggles.
+- **Customizable reader sender names.** `claudeCodeLauncher.readerNames`: one global **"your name"** shown for your messages in every reader, plus a **per-agent AI name** (Claude / Kiro / Codex). Set them in Settings → Agent. Empty values fall back to "You" and the agent's label; names render verbatim (no forced uppercase) and are HTML-escaped.
+
+### Fixed
+- **Codex reader for restored + new sessions.** A restored Codex session — and the first new session opened after it — could show an empty reader: a restored session carries a real rollout id but no resume flag, so it stayed in fresh-discovery mode, never matched itself, and hijacked the next session's rollout. Sessions whose id resolves on disk now pin immediately, and spawn args use `resume <id>` so the terminal and reader stay in sync.
+- **Codex Sessions tree refresh.** New Codex sessions now appear in the sidebar automatically (the shared tree-refresh helper was missing the Codex provider). Codex tab renames + exact-resume flags now persist across a window reload.
+- **Defensive panel setup.** A throw in session-save / reader-watch can no longer abort wiring up a panel's PTY output handlers — previously this left a spawned terminal with a blinking cursor and no output.
+
+### Implementation
+- `agents/registry.js` + `pty/resolveCli.js`: `resolveCodexCli` + codex registry entry. `lib/sessionJsonl.js`: `listCodexSessions` / `findCodexSessionPath` + codex extraction (reads `event_msg` user/agent turns only — `response_item` duplicates assistant text and carries `<environment_context>`). `tree/SessionTreeDataProvider.js` + `activation.js` + `panel/createPanel.js` + `panel/restartPty.js`: Codex Sessions view, spawn, fresh-id pinning, bypass flag. `lib/readerRender.js`: `resolveReaderNames` + `renderBlocks` `names` option; `.role` uppercase dropped.
+
+### Tests
+- 309 node + 36 vitest passing (codex registry / codexSessions / readerNames suites added).
+
 ## [3.7.20] - 2026-06-04
 
 ### Changed
