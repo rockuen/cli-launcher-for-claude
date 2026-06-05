@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Kiro & Antigravity",
   "description": "Run Claude Code, Codex, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.8.0",
+  "version": "3.8.1",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {

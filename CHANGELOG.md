@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.8.1] - 2026-06-05
+
+### Changed
+- **Rebranded to "CLI Launcher for Claude, Codex, Kiro & Antigravity".** The display name, description, in-app messages (`Claude Launcher:` → `CLI Launcher:`), command-palette titles, account-save notice, and README now reflect the 4-agent scope instead of Claude only. The extension id (`cli-launcher-for-claude`), all settings keys (`claudeCodeLauncher.*`), and the repository are intentionally unchanged, so existing installs, settings, and sessions carry over untouched.
+
+### Notes
+- Display/branding only — no functional code changes from 3.8.0.
+
 ## [3.8.0] - 2026-06-05
 
 ### Added

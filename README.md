@@ -5,13 +5,13 @@
 <h1 align="center">CLI Launcher for Claude, Codex, Kiro & Antigravity</h1>
 
 <p align="center">
-  <strong>Run Claude Code inside a rich Webview tab — with status icons, session management,
-  themes, optional tmux/psmux backend, and OMC integration.</strong>
+  <strong>Run Claude Code, Codex, Kiro & Antigravity inside rich Webview tabs — with status icons,
+  per-agent reader panes, session management, themes, optional tmux/psmux backend, and OMC integration.</strong>
 </p>
 
 <p align="center">
   <em>VSCode / Antigravity extension for the
-  <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code CLI</a>.</em>
+  <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code</a>, Codex, Kiro, and Antigravity CLIs.</em>
 </p>
 
 <p align="center">
@@ -22,12 +22,14 @@
 
 ## Why this exists
 
-Claude Code is great in a plain terminal, but a terminal is a thin host: no per-session
-status, no save/restore, no themes, no quick way to switch backends, no place to surface
-OMC artifacts. **CLI Launcher** wraps the CLI in a Webview tab so each session has its
-own icon-aware lifecycle, lives in a sidebar tree you can group and re-attach to, and can
-optionally run inside a tmux/psmux session for power-user workflows. OMC integration is
-gated behind a single mode toggle so non-OMC users never see the extra surface.
+AI coding CLIs — Claude Code, Codex, Kiro, Antigravity — are great in a plain terminal,
+but a terminal is a thin host: no per-session status, no save/restore, no reader, no
+themes, no quick way to switch backends, no place to surface OMC artifacts.
+**CLI Launcher** wraps each CLI in a Webview tab so every session has its own icon-aware
+lifecycle, a live markdown reader, and a sidebar tree you can group and re-attach to —
+and can optionally run inside a tmux/psmux session for power-user workflows. Each agent
+gets its own sessions view; OMC integration is gated behind a single mode toggle so
+non-OMC users never see the extra surface.
 
 ## Install
 
@@ -50,8 +52,8 @@ official standalone install).
 
 ## Quick start
 
-- **Open a session**: `Cmd/Ctrl+Shift+;` or click the Claude icon in the editor title bar.
-- **Resume a session**: click any entry in the **Sessions** sidebar (sidebar → Claude Code activity).
+- **Open a session**: `Cmd/Ctrl+Shift+;` or click the launcher icon in the editor title bar, then pick the agent (Claude / Kiro / Antigravity / Codex).
+- **Resume a session**: click any entry in the per-agent **Sessions** sidebar (sidebar → CLI Launcher activity).
 - **Settings**: gear icon (⚙) at the top of the launcher panel.
 
 ## Features
