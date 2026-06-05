@@ -5,6 +5,7 @@ const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
 const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli } = require('../pty/resolveCli');
+const { findCodexSessionPath } = require('../lib/sessionJsonl');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
@@ -86,7 +87,7 @@ function restartPty(entry, panel, context, extensionPath) {
     // codex resume args, same precedence as createPanel: Tree-resume (real
     // rollout UUID) → resume <id>; known sessionId (auto-restore) → resume
     // --last; neither → [] (fresh TUI session).
-    const codexArgs = entry.isCodexResume
+    const codexArgs = (entry.isCodexResume || (entry.sessionId && findCodexSessionPath(entry.sessionId)))
       ? ['resume', entry.sessionId]
       : (entry.sessionId ? ['resume', '--last'] : []);
     // --dangerously-bypass-approvals-and-sandbox (opt-in via codex.trustAllTools),

@@ -26,7 +26,7 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
-const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions } = require('../lib/sessionJsonl');
+const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath } = require('../lib/sessionJsonl');
 const { buildMeta, renderBlocks, renderWelcome } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
@@ -104,11 +104,19 @@ function startReaderWatch(entry, panel) {
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro');
   };
 
-  // Codex id discovery mirrors kiro. A Tree-resume already carries the real
-  // rollout id → own it immediately. A fresh codex panel snapshots the cwd's
-  // existing rollout ids, then claims the first NEW one codex writes.
-  if (entry.agent === 'codex' && entry.isCodexResume && entry.sessionId) {
+  // Codex id discovery mirrors kiro. Pin immediately when entry.sessionId is
+  // already a REAL rollout id — either a Tree-resume (isCodexResume) OR a
+  // restored session (resume --last, NO flag, but its saved sessionId is a real
+  // rollout on disk). Without the findCodexSessionPath check a restored session
+  // fell into discovery mode and (a) never showed its own reader — its id is
+  // already in codexPreIds, so it can't match itself as "new" — and (b)
+  // hijacked the NEXT fresh session's rollout as its own. Fresh panels carry a
+  // placeholder UUID that findCodexSessionPath can't resolve, so they correctly
+  // stay in discovery mode. Mark isCodexResume so restart/save use `resume <id>`.
+  if (entry.agent === 'codex' && !entry._codexPinned && entry.sessionId
+      && (entry.isCodexResume || findCodexSessionPath(entry.sessionId))) {
     entry._codexPinned = true;
+    entry.isCodexResume = true;
     _claimedCodexIds.add(entry.sessionId);
   }
   const codexPreIds = (entry.agent === 'codex' && !entry._codexPinned)
@@ -455,7 +463,11 @@ function createPanel(context, extensionPath, session, opts) {
     //   - sessionId without the flag (auto-restore; our random UUID is never
     //     a codex id) → ['resume', '--last'] (most recent session, no picker).
     //   - neither → [] (fresh TUI session).
-    const codexArgs = session?.isCodexResume
+    // Resume the EXACT session when sessionId is a real rollout on disk — a
+    // Tree-resume (isCodexResume) or a restored session whose saved id resolves.
+    // `resume --last` is only a fallback for a not-yet-pinned placeholder id, so
+    // the spawned codex matches what the reader pins to (no session/reader skew).
+    const codexArgs = (session?.isCodexResume || (session?.sessionId && findCodexSessionPath(session.sessionId)))
       ? ['resume', session.sessionId]
       : (session?.sessionId ? ['resume', '--last'] : []);
     // --dangerously-bypass-approvals-and-sandbox (opt-in via codex.trustAllTools):
@@ -574,9 +586,20 @@ function createPanel(context, extensionPath, session, opts) {
     muxSessionName: muxSessionName
   };
   state.panels.set(tabId, entry);
-  saveSessions();
+  // Defensive: a throw in saveSessions / startReaderWatch must NOT abort panel
+  // setup — the PTY data/exit handlers are wired up further down, so an
+  // exception here would leave the terminal spawned but with no output piped to
+  // the webview ("cursor blinking, nothing renders"). Log + continue instead.
+  try { saveSessions(); } catch (e) {
+    console.error('[Claude Launcher] saveSessions failed (non-fatal):', (e && e.stack) || e);
+  }
 
-  entry._stopReaderWatch = startReaderWatch(entry, panel);
+  try {
+    entry._stopReaderWatch = startReaderWatch(entry, panel);
+  } catch (e) {
+    console.error('[Claude Launcher] startReaderWatch failed (non-fatal):', (e && e.stack) || e);
+    entry._stopReaderWatch = null;
+  }
 
   // v2.6.6: title blink while needs-attention AND tab not focused.
   // Self-stops via state polling, so external state changes don't need
