@@ -30,6 +30,9 @@ function saveSessions() {
         // Same for antigravity: keep the exact --conversation <id> resume
         // instead of falling back to --continue (most-recent) on reload.
         ...(entry.isAntigravityResume ? { isAntigravityResume: true } : {}),
+        // Same for codex: keep the exact `resume <id>` instead of falling back
+        // to `resume --last` (most-recent) on reload.
+        ...(entry.isCodexResume ? { isCodexResume: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
@@ -45,6 +48,7 @@ function saveSessions() {
   const claudeTitles = sessionStoreGet('claudeSessionTitles', {});
   const kiroTitles = sessionStoreGet('kiroSessionTitles', {});
   const antigravityTitles = sessionStoreGet('antigravitySessionTitles', {});
+  const codexTitles = sessionStoreGet('codexSessionTitles', {});
   for (const s of sessions) {
     if (!s.sessionId || !s.title) continue;
     // 기본 탭 이름(Claude Code / Kiro / Antigravity 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
@@ -53,11 +57,13 @@ function saveSessions() {
     // 라벨로 읽으므로, 안 나누면 rename이 사이드바에 반영되지 않는다.
     if (s.agent === 'kiro') kiroTitles[s.sessionId] = s.title;
     else if (s.agent === 'antigravity') antigravityTitles[s.sessionId] = s.title;
+    else if (s.agent === 'codex') codexTitles[s.sessionId] = s.title;
     else claudeTitles[s.sessionId] = s.title;
   }
   sessionStoreUpdate('claudeSessionTitles', claudeTitles);
   sessionStoreUpdate('kiroSessionTitles', kiroTitles);
   sessionStoreUpdate('antigravitySessionTitles', antigravityTitles);
+  sessionStoreUpdate('codexSessionTitles', codexTitles);
   state.refreshSessionTrees();
 }
 

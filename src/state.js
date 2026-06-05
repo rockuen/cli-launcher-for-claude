@@ -10,6 +10,7 @@ const state = {
   sessionTreeProvider: null,  // 'Claude Sessions' view provider (agentMode 'claude')
   kiroTreeProvider: null,     // 'Kiro Sessions' view provider (agentMode 'kiro')
   antigravityTreeProvider: null, // 'Antigravity Sessions' view provider (agentMode 'antigravity')
+  codexTreeProvider: null,    // 'Codex Sessions' view provider (agentMode 'codex')
   quickActionsProvider: null, // 'Quick Actions' top-of-container view provider
   context: null,           // ExtensionContext, injected at activate()
   isDeactivating: false,
@@ -22,6 +23,7 @@ const state = {
     if (this.sessionTreeProvider) this.sessionTreeProvider.refresh();
     if (this.kiroTreeProvider) this.kiroTreeProvider.refresh();
     if (this.antigravityTreeProvider) this.antigravityTreeProvider.refresh();
+    if (this.codexTreeProvider) this.codexTreeProvider.refresh();
   },
   // v3.6.2: opt-in Diagnostics instance. Null when
   // claudeCodeLauncher.diagnostics.enabled is false. createPanel.js's
