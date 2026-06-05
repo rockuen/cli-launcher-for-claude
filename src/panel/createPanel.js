@@ -18,7 +18,7 @@ const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
@@ -384,6 +384,33 @@ function createPanel(context, extensionPath, session, opts) {
       agyArgs.push('--dangerously-skip-permissions');
     }
     args = [...resolvedAgy.args, ...agyArgs];
+  } else if (agent === 'codex') {
+    const resolvedCodex = resolveCodexCli();
+    if (!resolvedCodex) {
+      const install = 'Install Codex CLI';
+      vscode.window.showErrorMessage(
+        'Codex CLI (codex) not found. Please install it first.',
+        install
+      ).then(choice => {
+        if (choice === install) {
+          vscode.env.openExternal(vscode.Uri.parse('https://developers.openai.com/codex/cli'));
+        }
+      });
+      panel.dispose();
+      return;
+    }
+    shell = resolvedCodex.shell;
+    // codex args by precedence (codex assigns its own session ids — the
+    // rollout filename's trailing UUID — like kiro/agy):
+    //   - isCodexResume (Tree resume; sessionId is a REAL rollout UUID on
+    //     disk) → ['resume', <id>] for an exact resume.
+    //   - sessionId without the flag (auto-restore; our random UUID is never
+    //     a codex id) → ['resume', '--last'] (most recent session, no picker).
+    //   - neither → [] (fresh TUI session).
+    const codexArgs = session?.isCodexResume
+      ? ['resume', session.sessionId]
+      : (session?.sessionId ? ['resume', '--last'] : []);
+    args = [...resolvedCodex.args, ...codexArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
     const resolved = resolveClaudeCli();
@@ -480,6 +507,10 @@ function createPanel(context, extensionPath, session, opts) {
     // conversation id, so createPanel/restartPty resume via `--conversation
     // <id>` instead of `--continue` (cwd-latest).
     isAntigravityResume: !!(session && session.isAntigravityResume),
+    // codex Tree-resume flag. When true, sessionId is a real codex rollout
+    // UUID, so createPanel/restartPty resume via `resume <id>` instead of
+    // `resume --last` — and the reader can resolve the exact rollout jsonl.
+    isCodexResume: !!(session && session.isCodexResume),
     state: 'running',
     idleTimer: null,
     backend: backend,

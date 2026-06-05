@@ -81,6 +81,9 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.newAntigravity', () => {
       createPanel(context, extensionPath, null, { agent: 'antigravity' });
     }),
+    vscode.commands.registerCommand('claudeCodeLauncher.newCodex', () => {
+      createPanel(context, extensionPath, null, { agent: 'codex' });
+    }),
     // Unified new-session command — backs the Quick Actions view rows (one per
     // installed + enabled agent). Tree-item only (hidden from the palette via
     // package.json menus); newClaude/newKiro/newAntigravity stay as the
@@ -249,6 +252,17 @@ function activate(context) {
   });
   context.subscriptions.push(antigravityTreeView);
 
+  // 'Codex Sessions' (claudeCodeLauncher.codexSessions) — codex rollouts only,
+  // hidden via the codexAvailable context key when codex isn't installed/
+  // enabled. Same shape as the kiro/antigravity views.
+  state.codexTreeProvider = new SessionTreeDataProvider(context, 'codex');
+  const codexTreeView = vscode.window.createTreeView('claudeCodeLauncher.codexSessions', {
+    treeDataProvider: state.codexTreeProvider,
+    dragAndDropController: state.codexTreeProvider,
+    canSelectMany: true
+  });
+  context.subscriptions.push(codexTreeView);
+
   // Resolve which provider a group/session command targets. Items dragged or
   // right-clicked in the Kiro / Antigravity Sessions views carry agent markers
   // (kiroSession / antigravitySession contextValue, or a customGroup node
@@ -261,6 +275,9 @@ function activate(context) {
     }
     if (item && (item.contextValue === 'antigravitySession' || item._agentMode === 'antigravity')) {
       return state.antigravityTreeProvider;
+    }
+    if (item && (item.contextValue === 'codexSession' || item._agentMode === 'codex')) {
+      return state.codexTreeProvider;
     }
     return state.sessionTreeProvider;
   };
@@ -283,6 +300,16 @@ function activate(context) {
   antigravityTreeView.onDidCollapseElement(e => {
     const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.antigravityTreeProvider._expandedGroups.delete(key);
+  });
+
+  // Codex view — same expand/collapse tracking.
+  codexTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.codexTreeProvider._expandedGroups.add(key);
+  });
+  codexTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.codexTreeProvider._expandedGroups.delete(key);
   });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
@@ -322,6 +349,19 @@ function activate(context) {
   }
   refreshAntigravityAvailable();
 
+  // codexAvailable context key — drives the 'Codex Sessions' view visibility.
+  // True only when codex is installed AND 'codex' is in enabledAgents.
+  // Refreshed on enabledAgents config changes below.
+  function refreshCodexAvailable() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('enabledAgents', ['claude']);
+    const codexInstalled = listAgents().some(a => a.id === 'codex' && a.installed);
+    const available = codexInstalled && enabled.includes('codex');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.codexAvailable', available);
+  }
+  refreshCodexAvailable();
+
   // v3.5.8: size-based decoration. Yellows 5+ MB session labels, reds 10+ MB
   // ones. SessionTreeDataProvider tags each session item with a custom
   // resourceUri whose query carries size + trashed flag; the decoration
@@ -350,6 +390,7 @@ function activate(context) {
       state.sessionTreeProvider.refresh();
       if (state.kiroTreeProvider) state.kiroTreeProvider.refresh();
       if (state.antigravityTreeProvider) state.antigravityTreeProvider.refresh();
+      if (state.codexTreeProvider) state.codexTreeProvider.refresh();
     })
   );
 
@@ -360,6 +401,7 @@ function activate(context) {
       if (e.affectsConfiguration('claudeCodeLauncher.enabledAgents')) {
         refreshKiroAvailable();
         refreshAntigravityAvailable();
+        refreshCodexAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
       }
     })
@@ -398,6 +440,18 @@ function activate(context) {
           context,
           extensionPath,
           { sessionId, cwd: opts.cwd, agent: 'antigravity', isAntigravityResume: true },
+          {}
+        );
+        return;
+      }
+      // Codex resume: sessionId is a real codex rollout UUID, resumed via
+      // `codex resume <id>` in its own cwd. Like kiro/antigravity, no
+      // claude-side title/savedSessions bookkeeping (codex has its own keys).
+      if (opts && opts.agent === 'codex') {
+        createPanel(
+          context,
+          extensionPath,
+          { sessionId, cwd: opts.cwd, agent: 'codex', isCodexResume: true },
           {}
         );
         return;

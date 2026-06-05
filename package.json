@@ -50,6 +50,12 @@
         "category": "Claude"
       },
       {
+        "command": "claudeCodeLauncher.newCodex",
+        "title": "New Codex Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
         "command": "claudeCodeLauncher.newSession",
         "title": "New Session",
         "icon": "$(add)",
@@ -309,6 +315,11 @@
           "when": "claudeCodeLauncher.antigravityAvailable"
         },
         {
+          "id": "claudeCodeLauncher.codexSessions",
+          "name": "Codex Sessions",
+          "when": "claudeCodeLauncher.codexAvailable"
+        },
+        {
           "id": "claudeCodeLauncher.ccgPanel",
           "name": "CCG",
           "when": "claudeCodeLauncher.omcModeActive"
@@ -333,6 +344,10 @@
         },
         {
           "command": "claudeCodeLauncher.newAntigravity",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.newCodex",
           "when": "false"
         },
         {
@@ -568,6 +583,61 @@
           "command": "claudeCodeLauncher.moveGroupDown",
           "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == customGroup",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameSessionTitle",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "group": "inline@0"
+        },
+        {
+          "command": "claudeCodeLauncher.moveToGroup",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionUp",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionDown",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.moveUnderSession",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "group": "2_nest@1"
+        },
+        {
+          "command": "claudeCodeLauncher.removeSessionParent",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "group": "2_nest@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameGroup",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == customGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.deleteGroup",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == customGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeLauncher.addSubGroup",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == customGroup",
+          "group": "inline@3"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupUp",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == customGroup",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupDown",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == customGroup",
+          "group": "1_order@2"
         }
       ],
       "view/title": [
@@ -605,6 +675,16 @@
           "command": "claudeCodeLauncher.refreshSessions",
           "group": "navigation@2",
           "when": "view == claudeCodeLauncher.antigravitySessions"
+        },
+        {
+          "command": "claudeCodeLauncher.newCodex",
+          "group": "navigation@1",
+          "when": "view == claudeCodeLauncher.codexSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.refreshSessions",
+          "group": "navigation@2",
+          "when": "view == claudeCodeLauncher.codexSessions"
         },
         {
           "command": "claudeCodeLauncher.ccg.refresh",

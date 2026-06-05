@@ -207,11 +207,139 @@ function listAntigravitySessions(cwd, _file, _convDir) {
   return result;
 }
 
+// --- Codex (OpenAI) CLI sessions --------------------------------------------
+//
+// Codex stores each conversation as a rollout jsonl under date-sharded dirs:
+//   ~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl
+// The resumable id (`codex resume <id>`) is the trailing UUID of the FILENAME;
+// line 1 of every rollout is a `session_meta` record whose payload carries
+// { id, cwd, timestamp, ... } (verified against codex-cli 0.137 on-disk data;
+// the format is identical back to the 2026-03 builds). Session titles live
+// OUTSIDE the rollout in ~/.codex/session_index.jsonl: { id, thread_name,
+// updated_at } — paired by explicit id (unlike agy's rank pairing).
+const CODEX_ROLLOUT_RE = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
+
+// session_meta is always line 1, but it embeds base_instructions (observed up
+// to ~22 KB) — read a 64 KB head so the first line is never truncated.
+const CODEX_META_CHUNK = 65536;
+
+function _codexSessionsDir() {
+  return path.join(os.homedir(), '.codex', 'sessions');
+}
+
+// Walk the date-sharded sessions tree (YYYY/MM/DD — the only layout codex
+// writes), newest shard first so id lookups touch recent days early. Returns
+// absolute rollout paths; [] when the tree doesn't exist (codex never run).
+function _walkCodexRollouts(dir) {
+  const out = [];
+  let years;
+  try { years = fs.readdirSync(dir).sort().reverse(); } catch { return out; }
+  for (const y of years) {
+    let months;
+    try { months = fs.readdirSync(path.join(dir, y)).sort().reverse(); } catch { continue; }
+    for (const m of months) {
+      let days;
+      try { days = fs.readdirSync(path.join(dir, y, m)).sort().reverse(); } catch { continue; }
+      for (const d of days) {
+        let files;
+        try { files = fs.readdirSync(path.join(dir, y, m, d)); } catch { continue; }
+        for (const f of files) {
+          if (CODEX_ROLLOUT_RE.test(f)) out.push(path.join(dir, y, m, d, f));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// Resolve a codex session id to its rollout jsonl path (or null). The filename
+// embeds the id, so this is a directory walk + suffix match — no file reads.
+function findCodexSessionPath(sessionId, _dir) {
+  if (!sessionId) return null;
+  const dir = _dir || _codexSessionsDir();
+  const needle = String(sessionId).toLowerCase();
+  for (const p of _walkCodexRollouts(dir)) {
+    const m = p.match(CODEX_ROLLOUT_RE);
+    if (m && m[1].toLowerCase() === needle) return p;
+  }
+  return null;
+}
+
+// List codex sessions for a cwd, newest first. For each rollout we read only
+// the 64 KB head (session_meta is line 1) to get the recorded cwd, falling
+// back to the head's first user_message for the title when session_index has
+// no thread_name for the id. Entry shape matches the other agent lists:
+// { sessionId, title, cwd, mtime }. The `_dir` / `_indexFile` args are
+// test-only injection; production callers pass cwd alone.
+function listCodexSessions(cwd, _dir, _indexFile) {
+  const dir = _dir || _codexSessionsDir();
+  const indexFile = _indexFile || path.join(os.homedir(), '.codex', 'session_index.jsonl');
+
+  // id → thread_name from session_index.jsonl (last write wins).
+  const titles = new Map();
+  try {
+    const text = fs.readFileSync(indexFile, 'utf-8');
+    for (const line of text.split(/\r?\n/)) {
+      const s = line.trim();
+      if (!s) continue;
+      let d;
+      try { d = JSON.parse(s); } catch { continue; }
+      if (d && d.id && typeof d.thread_name === 'string' && d.thread_name.trim()) {
+        titles.set(String(d.id).toLowerCase(), d.thread_name.trim());
+      }
+    }
+  } catch { /* no index yet */ }
+
+  const out = [];
+  for (const p of _walkCodexRollouts(dir)) {
+    const m = p.match(CODEX_ROLLOUT_RE);
+    if (!m) continue;
+    let stat;
+    try { stat = fs.statSync(p); } catch { continue; }
+    let metaCwd = '';
+    let metaId = m[1];
+    let firstMsg = '';
+    try {
+      const head = _splitJsonLines(_readChunk(p, CODEX_META_CHUNK));
+      for (const d of head) {
+        if (d && d.type === 'session_meta' && d.payload) {
+          if (d.payload.cwd) metaCwd = d.payload.cwd;
+          if (d.payload.id) metaId = d.payload.id;
+        } else if (!firstMsg && d && d.type === 'event_msg' && d.payload
+                   && d.payload.type === 'user_message' && typeof d.payload.message === 'string') {
+          firstMsg = d.payload.message.trim().split('\n')[0].trim();
+        }
+      }
+    } catch { continue; }
+    out.push({
+      sessionId: metaId,
+      title: titles.get(String(metaId).toLowerCase()) || firstMsg || '',
+      cwd: metaCwd,
+      mtime: stat.mtimeMs,
+    });
+  }
+
+  let result = out;
+  if (cwd) result = result.filter((s) => _cwdMatch(s.cwd, cwd));
+  result.sort((a, b) => b.mtime - a.mtime);
+  return result;
+}
+
 function getSessionJsonlPath(sessionId, cwd, agent) {
   // Phase 0: antigravity (agy) stores conversations as protobuf blobs inside a
   // SQLite db (~/.gemini/antigravity-cli/conversations/<id>.db), not jsonl — the
   // reader can't parse that yet, so resolve to no transcript (no reader pane).
   if (agent === 'antigravity') return null;
+  if (agent === 'codex') {
+    // Codex assigns its own session ids (the rollout filename's trailing UUID).
+    // A Tree-resume carries the real id → exact rollout path, so the reader
+    // works for resumed sessions. A fresh session's placeholder UUID never
+    // matches a rollout on disk → null (no reader until kiro-style id-discovery
+    // pinning lands in a later phase). No cwd-latest fallback on purpose — it
+    // would bleed sibling sessions sharing the cwd into the reader (the exact
+    // bug the kiro pinning work fixed).
+    return findCodexSessionPath(sessionId);
+  }
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids. Once we know the REAL id — a
     // Tree-resume, or a fresh session whose id the reader has discovered and
@@ -356,10 +484,35 @@ function _extractKiroMessages(lines) {
   return out;
 }
 
+// Codex JSONL parser helper. Rollout records are { timestamp, type, payload }.
+// The conversation surfaces TWICE in a rollout: response_item carries the raw
+// model items (role=user lines include <environment_context> injections, and
+// role=assistant texts duplicate the agent_message events), while event_msg
+// carries the clean TUI-level turn events. We read event_msg ONLY —
+// user_message ↔ agent_message are exactly the visible dialogue turns
+// (verified on codex-cli 0.137 rollouts; identical shape back to 2026-03).
+function _extractCodexMessages(lines) {
+  const out = [];
+  for (const d of lines) {
+    if (!d || d.type !== 'event_msg' || !d.payload) continue;
+    const pt = d.payload.type;
+    if (pt !== 'user_message' && pt !== 'agent_message') continue;
+    const text = typeof d.payload.message === 'string' ? d.payload.message : '';
+    if (!text.trim()) continue;
+    out.push({
+      role: pt === 'user_message' ? 'user' : 'assistant',
+      text,
+      timestamp: d.timestamp || null,
+    });
+  }
+  return out;
+}
+
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
-// Kiro sessions have no title line in the jsonl; return null for them.
+// Kiro and codex sessions have no title line in the jsonl; return null for them
+// (codex titles come from session_index.jsonl via listCodexSessions).
 function extractAiTitle(filePath, agent) {
-  if (agent === 'kiro') return null;
+  if (agent === 'kiro' || agent === 'codex') return null;
   const lines = _readLinesCached(filePath);
   if (!lines) return null;
   let title = null;
@@ -405,6 +558,7 @@ function extractMessages(filePath, agent) {
   const lines = _readLinesCached(filePath);
   if (!lines) return [];
   if (agent === 'kiro') return _extractKiroMessages(lines);
+  if (agent === 'codex') return _extractCodexMessages(lines);
   const out = [];
   try {
     for (const d of lines) {
@@ -441,6 +595,7 @@ function extractMessageCount(filePath, agent) {
   const lines = _readLinesCached(filePath);
   if (!lines) return 0;
   if (agent === 'kiro') return _extractKiroMessages(lines).length;
+  if (agent === 'codex') return _extractCodexMessages(lines).length;
   let n = 0;
   try {
     for (const d of lines) {
@@ -468,6 +623,8 @@ module.exports = {
   findLatestKiroSessionPath,
   listKiroSessions,
   listAntigravitySessions,
+  listCodexSessions,
+  findCodexSessionPath,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,

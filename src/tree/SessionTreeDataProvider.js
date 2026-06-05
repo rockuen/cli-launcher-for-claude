@@ -26,7 +26,7 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
-const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions } = require('../lib/sessionJsonl');
+const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions, listCodexSessions } = require('../lib/sessionJsonl');
 const { formatBytes } = require('../lib/sizeFormat');
 const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_THRESHOLD: SIZE_ERROR, formatMB } = require('./SessionDecorationProvider');
 
@@ -77,6 +77,9 @@ const DND_KIRO_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.kirogr
 // provider's declared dropMimeTypes).
 const DND_AGY_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.antigravitysessions';
 const DND_AGY_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.antigravitygroups';
+// codex gets its own MIME pair for the same cross-view isolation reason.
+const DND_CODEX_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.codexsessions';
+const DND_CODEX_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.codexgroups';
 
 // Per-agent store-key map. claude keeps its historical keys (no migration);
 // kiro gets a parallel, fully separate set so the two agents' custom groups,
@@ -111,6 +114,15 @@ const STORE_KEYS = {
     sortOrder: 'antigravitySessionSortOrder',
     archived: 'antigravitySessionGroupArchived',
     titles: 'antigravitySessionTitles',
+  },
+  codex: {
+    // Fully separate codex key namespace, same shape as kiro/antigravity.
+    groups: 'codexSessionGroups',
+    saved: 'codexSavedSessions',
+    parent: 'codexSessionParent',
+    sortOrder: 'codexSessionSortOrder',
+    archived: 'codexSessionGroupArchived',
+    titles: 'codexSessionTitles',
   },
 };
 
@@ -151,9 +163,11 @@ class SessionTreeDataProvider {
     // MIME pair is agent-scoped so a drag in one view can't drop in another.
     this._sessionMime = agentMode === 'kiro' ? DND_KIRO_SESSION_MIME
       : agentMode === 'antigravity' ? DND_AGY_SESSION_MIME
+      : agentMode === 'codex' ? DND_CODEX_SESSION_MIME
       : DND_SESSION_MIME;
     this._groupMime = agentMode === 'kiro' ? DND_KIRO_GROUP_MIME
       : agentMode === 'antigravity' ? DND_AGY_GROUP_MIME
+      : agentMode === 'codex' ? DND_CODEX_GROUP_MIME
       : DND_GROUP_MIME;
     this.dropMimeTypes = [this._sessionMime, this._groupMime];
     this.dragMimeTypes = [this._sessionMime, this._groupMime];
@@ -212,7 +226,9 @@ class SessionTreeDataProvider {
         ? this._buildKiroSessions()
         : this._agentMode === 'antigravity'
           ? this._buildAntigravitySessions()
-          : this._buildGroups();
+          : this._agentMode === 'codex'
+            ? this._buildCodexSessions()
+            : this._buildGroups();
       return this._cache;
     }
     // v3.5.9: lazy metadata row. Session items carry _jsonlPath + _mtime +
@@ -616,6 +632,51 @@ class SessionTreeDataProvider {
 
     // Same custom-groups + Recent Sessions builder as kiro (no Trash — agy's
     // history.jsonl is an append-only log, not per-session files to move).
+    return this._buildAgentGroups(itemMap, mtimeMap);
+  }
+
+  // Codex Sessions — used by the dedicated 'Codex Sessions' view (agentMode
+  // 'codex'). Root children are the workspace's codex rollouts, listed from
+  // ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl (listCodexSessions: cwd from
+  // each rollout's line-1 session_meta, title from session_index.jsonl) and
+  // filtered to the current cwd, newest first. Mirrors _buildKiroSessions /
+  // _buildAntigravitySessions: one leaf per session keyed by the rollout UUID,
+  // labelled launcher rename store → thread_name/first message → id prefix.
+  // Click → resume via `codex resume <id>` (the resumeSession command's codex
+  // branch). Rollouts ARE jsonl, so resumed sessions get a working reader
+  // (unlike antigravity). Returns [] with no sessions (view hidden via
+  // codexAvailable when codex isn't installed/enabled).
+  _buildCodexSessions() {
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    if (!cwd) return [];
+    const sessions = listCodexSessions(cwd);
+    // Launcher-side rename wins over the codex thread_name (parallel to kiro).
+    const titleMap = sessionStoreGet(this._storeKey('titles'), {});
+
+    const itemMap = new Map();
+    const mtimeMap = new Map();
+    for (const s of sessions) {
+      const label = titleMap[s.sessionId] || s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      const mtime = s.mtime || 0;
+      item.description = mtime ? _relTime(mtime) : '';
+      item.iconPath = new vscode.ThemeIcon('comment-discussion');
+      item.contextValue = 'codexSession';
+      item.tooltip = `Codex session: ${s.sessionId}\n${s.cwd || ''}`;
+      item._sessionId = s.sessionId;
+      item._mtime = mtime;
+      item.command = {
+        command: 'claudeCodeLauncher.resumeSession',
+        title: 'Resume',
+        // codexResume → exact `codex resume <id>` resume in its cwd.
+        arguments: [s.sessionId, { agent: 'codex', codexResume: true, cwd: s.cwd }],
+      };
+      itemMap.set(s.sessionId, item);
+      mtimeMap.set(s.sessionId, mtime);
+    }
+
+    // Same custom-groups + ungrouped builder as kiro/antigravity (no Trash —
+    // rollouts live in codex's own date-sharded tree; we don't move its files).
     return this._buildAgentGroups(itemMap, mtimeMap);
   }
 

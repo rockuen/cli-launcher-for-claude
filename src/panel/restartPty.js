@@ -4,7 +4,7 @@
 const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
@@ -27,7 +27,15 @@ function restartPty(entry, panel, context, extensionPath) {
     return;
   }
 
-  const agent = vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
+  // Restart with the PANEL's agent, not the global default. Reading the
+  // claudeCodeLauncher.agent setting here (the original code) respawned a
+  // kiro/antigravity tab as whatever the global default was — e.g. a kiro tab
+  // restarted while the default is claude ran `claude --resume <kiro-id>`.
+  // entry.agent is set by createPanel for every panel; the setting remains a
+  // fallback for entries restored from a pre-agent-field session store.
+  const agent = entry.agent
+    || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent')
+    || 'claude';
   let shell, args;
   if (agent === 'kiro') {
     const resolvedKiro = resolveKiroCli();
@@ -67,6 +75,21 @@ function restartPty(entry, panel, context, extensionPath) {
       agyArgs.push('--dangerously-skip-permissions');
     }
     args = [...resolvedAgy.args, ...agyArgs];
+  } else if (agent === 'codex') {
+    const resolvedCodex = resolveCodexCli();
+    if (!resolvedCodex) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Codex CLI (codex) not found.');
+      return;
+    }
+    shell = resolvedCodex.shell;
+    // codex resume args, same precedence as createPanel: Tree-resume (real
+    // rollout UUID) → resume <id>; known sessionId (auto-restore) → resume
+    // --last; neither → [] (fresh TUI session).
+    const codexArgs = entry.isCodexResume
+      ? ['resume', entry.sessionId]
+      : (entry.sessionId ? ['resume', '--last'] : []);
+    args = [...resolvedCodex.args, ...codexArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved
     const resolved = resolveClaudeCli();
