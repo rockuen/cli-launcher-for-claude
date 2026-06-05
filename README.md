@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icons/icon-128.png" alt="CLI Launcher for Claude" width="96" height="96"/>
+  <img src="icons/icon-128.png" alt="CLI Launcher for Claude, Codex, Kiro & Antigravity" width="96" height="96"/>
 </p>
 
-<h1 align="center">CLI Launcher for Claude</h1>
+<h1 align="center">CLI Launcher for Claude, Codex, Kiro & Antigravity</h1>
 
 <p align="center">
   <strong>Run Claude Code inside a rich Webview tab — with status icons, session management,
@@ -33,7 +33,7 @@ gated behind a single mode toggle so non-OMC users never see the extra surface.
 
 Three ways to install:
 
-1. **Open VSX**: search for *CLI Launcher for Claude* in the Extensions view (Antigravity)
+1. **Open VSX**: search for *CLI Launcher for Claude, Codex, Kiro & Antigravity* in the Extensions view (Antigravity)
    or VSCode (with the [Open VSX gallery](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude)).
 2. **VSIX**: download the latest `cli-launcher-for-claude-<platform>-<version>.vsix` from
    [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases) and

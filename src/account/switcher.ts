@@ -77,7 +77,7 @@ async function ensureDisclaimerAcked(
     {
       modal: true,
       detail:
-        "CLI Launcher for Claude will copy your OAuth tokens from ~/.claude.json and ~/.claude/.credentials.json into ~/.claude/account-switcher/ so you can switch back to this account later. Tokens are stored in plain text — same format Claude CLI uses. Treat that folder as sensitive. This notice is shown once.",
+        "CLI Launcher will copy your OAuth tokens from ~/.claude.json and ~/.claude/.credentials.json into ~/.claude/account-switcher/ so you can switch back to this account later. Tokens are stored in plain text — same format Claude CLI uses. Treat that folder as sensitive. This notice is shown once.",
     },
     "Understood, save",
   );

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icons/icon-128.png" alt="CLI Launcher for Claude" width="96" height="96"/>
+  <img src="icons/icon-128.png" alt="CLI Launcher for Claude, Codex, Kiro & Antigravity" width="96" height="96"/>
 </p>
 
-<h1 align="center">CLI Launcher for Claude</h1>
+<h1 align="center">CLI Launcher for Claude, Codex, Kiro & Antigravity</h1>
 
 <p align="center">
   <strong>Claude Code를 VSCode 안에서 띄우고, 대화도 markdown으로 같이 보고,
@@ -92,7 +92,7 @@ paste도 마찬가지다. 클립보드에 이미지가 있으면 그대로 `Cmd+
 세 가지 방법:
 
 1. **Open VSX**: Antigravity 또는 (Open VSX 갤러리가 등록된) VSCode 의 Extensions 뷰에서
-   *CLI Launcher for Claude* 검색 — [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
+   *CLI Launcher for Claude, Codex, Kiro & Antigravity* 검색 — [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
 2. **VSIX**: [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases)
    에서 최신 `cli-launcher-for-claude-<platform>-<version>.vsix` 다운로드 →
    *Extensions: Install from VSIX...* 로 설치.
