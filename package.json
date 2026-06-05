@@ -275,12 +275,12 @@
       },
       {
         "command": "claudeCodeLauncher.handoffToOther",
-        "title": "Claude Launcher: Hand off session to other agent",
+        "title": "CLI Launcher: Hand off session to other agent",
         "category": "Claude"
       },
       {
         "command": "claudeCodeLauncher.openSettings",
-        "title": "Claude Launcher: Settings",
+        "title": "CLI Launcher: Settings",
         "category": "Claude",
         "icon": "$(gear)"
       }
