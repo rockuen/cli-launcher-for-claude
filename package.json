@@ -959,6 +959,11 @@
           "type": "boolean",
           "default": false,
           "description": "Run Antigravity sessions with `agy --dangerously-skip-permissions` so agy auto-approves all tool permission requests without prompting. Off by default (agy asks for confirmation). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Antigravity sessions."
+        },
+        "claudeCodeLauncher.codex.trustAllTools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run Codex sessions with `--dangerously-bypass-approvals-and-sandbox` so Codex skips all confirmation prompts and runs commands without sandboxing. EXTREMELY DANGEROUS — off by default (Codex asks for approval). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Codex sessions."
         }
       }
     },

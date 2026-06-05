@@ -466,6 +466,26 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(bypass);
         }
 
+        // Codex-only: --dangerously-bypass-approvals-and-sandbox toggle (skip
+        // all approval prompts + sandboxing). Bound to claudeCodeLauncher.codex
+        // .trustAllTools; applies to newly opened and restarted Codex sessions.
+        if (a.id === 'codex') {
+          const cbypass = document.createElement('label');
+          cbypass.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          cbypass.title = 'Run Codex with --dangerously-bypass-approvals-and-sandbox so it skips all confirmation prompts and runs commands without sandboxing. EXTREMELY DANGEROUS. Applies to newly opened and restarted Codex sessions.';
+          const ccb = document.createElement('input');
+          ccb.type = 'checkbox';
+          ccb.checked = !!GLOBALS.codexTrustAllTools;
+          ccb.addEventListener('change', () => {
+            vscode.postMessage({ type: 'set-global', key: 'codex.trustAllTools', value: ccb.checked });
+          });
+          const cbypassText = document.createElement('span');
+          cbypassText.textContent = 'Bypass approvals + sandbox (--dangerously-bypass-approvals-and-sandbox)';
+          cbypass.appendChild(ccb);
+          cbypass.appendChild(cbypassText);
+          main.appendChild(cbypass);
+        }
+
         // Claude-only: startup flags — Effort max (--effort max) + Bypass
         // permissions (--dangerously-skip-permissions). Bound to globals;
         // applied to newly opened and restarted Claude sessions.
@@ -695,6 +715,7 @@ function openGlobalSettings(context) {
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
+    codexTrustAllTools: cfg.get('codex.trustAllTools', false),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
     customSlashCommands: cfg.get('customSlashCommands', []),
@@ -713,6 +734,7 @@ function openGlobalSettings(context) {
     'claude.bypassPermissions',
     'kiro.trustAllTools',
     'antigravity.trustAllTools',
+    'codex.trustAllTools',
     'repoSync.enabled',
     'repoSync.path',
     'customSlashCommands',

@@ -89,6 +89,12 @@ function restartPty(entry, panel, context, extensionPath) {
     const codexArgs = entry.isCodexResume
       ? ['resume', entry.sessionId]
       : (entry.sessionId ? ['resume', '--last'] : []);
+    // --dangerously-bypass-approvals-and-sandbox (opt-in via codex.trustAllTools),
+    // same as createPanel: skip all approval prompts + sandbox. Global flag, so
+    // it works after the resume subcommand too.
+    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('codex.trustAllTools', false)) {
+      codexArgs.push('--dangerously-bypass-approvals-and-sandbox');
+    }
     args = [...resolvedCodex.args, ...codexArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved

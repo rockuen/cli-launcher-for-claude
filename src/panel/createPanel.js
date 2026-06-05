@@ -458,6 +458,15 @@ function createPanel(context, extensionPath, session, opts) {
     const codexArgs = session?.isCodexResume
       ? ['resume', session.sessionId]
       : (session?.sessionId ? ['resume', '--last'] : []);
+    // --dangerously-bypass-approvals-and-sandbox (opt-in via codex.trustAllTools):
+    // skip ALL confirmation prompts + run commands without sandboxing. This is
+    // codex's equivalent of kiro --trust-all-tools / agy --dangerously-skip-
+    // permissions. Accepted as a global flag after the `resume` subcommand too
+    // (verified in `codex resume --help`), so a single push covers fresh +
+    // resume. EXTREMELY DANGEROUS — off by default.
+    if (config.get('codex.trustAllTools', false)) {
+      codexArgs.push('--dangerously-bypass-approvals-and-sandbox');
+    }
     args = [...resolvedCodex.args, ...codexArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
