@@ -964,6 +964,17 @@
           "type": "boolean",
           "default": false,
           "description": "Run Codex sessions with `--dangerously-bypass-approvals-and-sandbox` so Codex skips all confirmation prompts and runs commands without sandboxing. EXTREMELY DANGEROUS — off by default (Codex asks for approval). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Codex sessions."
+        },
+        "claudeCodeLauncher.readerNames": {
+          "type": "object",
+          "default": {},
+          "description": "Custom sender names shown in the reader pane. 'user' = your name (one for every agent); 'claude'/'kiro'/'codex' = each agent's AI name. Empty values fall back to 'You' and the agent's label. Edit in CLI Launcher Settings → Agent.",
+          "properties": {
+            "user": { "type": "string", "description": "Your name, shown for your messages in every reader." },
+            "claude": { "type": "string", "description": "AI name shown for Claude replies." },
+            "kiro": { "type": "string", "description": "AI name shown for Kiro replies." },
+            "codex": { "type": "string", "description": "AI name shown for Codex replies." }
+          }
         }
       }
     },

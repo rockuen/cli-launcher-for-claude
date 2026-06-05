@@ -29,11 +29,23 @@ const {
   formatStamp,
   buildMeta,
   renderBlocks,
+  resolveReaderNames,
 } = require('../lib/readerRender');
+const { listAgents } = require('../agents/registry');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
 const LIVE_DEBOUNCE_MS = 200;
+
+// Resolve { user, assistant } reader display names for an agent (global user
+// name + per-agent AI name; see readerRender.resolveReaderNames).
+function _readerNamesFor(agent) {
+  return resolveReaderNames(
+    vscode.workspace.getConfiguration('claudeCodeLauncher').get('readerNames', {}),
+    agent,
+    (listAgents().find((a) => a.id === agent) || {}).label
+  );
+}
 
 let activePanel = null;
 let _context = null;
@@ -124,7 +136,7 @@ function renderLive() {
     activePanel.webview.postMessage({
       type: 'messages-updated',
       meta: buildMeta(currentEntry, aiTitle, messages),
-      blocksHtml: renderBlocks(messages, { cap: readerCap }),
+      blocksHtml: renderBlocks(messages, { cap: readerCap, names: _readerNamesFor(currentEntry.agent) }),
       lastRole,
     });
     console.log('[reader] posted messages-updated count=' + messages.length + ' lastRole=' + lastRole);
@@ -330,7 +342,7 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   const readerCap = vscode.workspace
     .getConfiguration('claudeCodeLauncher')
     .get('readerMessageCap', 200);
-  const blocks = renderBlocks(messages, { cap: readerCap });
+  const blocks = renderBlocks(messages, { cap: readerCap, names: _readerNamesFor(entry.agent) });
 
   const toggleIcon = theme === 'dark' ? '☀' : '🌙';
   const toggleTitle = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
@@ -435,7 +447,7 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
 
   .msg { margin-bottom: 28px; }
   .msg-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; font-size: 11px; }
-  .msg-head .role { text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+  .msg-head .role { font-weight: 600; letter-spacing: 0.5px; }
   .msg-user .role { color: var(--user); }
   .msg-assistant .role { color: var(--assistant); }
   .msg-head .ts { color: var(--ts); font-family: ui-monospace, SFMono-Regular, "D2Coding", Consolas, monospace; }

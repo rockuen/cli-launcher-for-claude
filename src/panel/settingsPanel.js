@@ -251,6 +251,11 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           enabled <em>and</em> installed agents appear in the picker. The
           <strong>default</strong> agent is pre-selected. Existing tabs keep their agent.
         </div>
+        <div class="field" style="margin-bottom:16px;max-width:560px;">
+          <label style="display:block;margin-bottom:6px;font-size:12px;opacity:0.85;">Your name (reader)</label>
+          <input id="set-reader-user" class="settings-input" style="width:200px;" placeholder="You" />
+          <div class="field-desc" style="margin-top:4px;">Shown as the sender of your messages in every reader pane. Empty = "You".</div>
+        </div>
         <div id="agent-list"></div>
       </div>
 
@@ -345,6 +350,9 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     let enabledAgents = ${JSON.stringify(enabledAgents)};
     let defaultAgent = ${JSON.stringify(currentAgent)} || 'claude';
     const GLOBALS = ${JSON.stringify(globals)};
+    // Mutable copy of the reader display-name map (global 'user' + per-agent AI
+    // names). Inputs below patch a key then post the whole object back.
+    let readerNames = (GLOBALS.readerNames && typeof GLOBALS.readerNames === 'object') ? { ...GLOBALS.readerNames } : {};
 
     function escapeHtml(s) {
       return String(s == null ? '' : s)
@@ -510,6 +518,31 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           addClaudeFlag(GLOBALS.claudeBypassPermissions, 'Bypass permissions (--dangerously-skip-permissions)', 'Start Claude sessions in bypass-permissions mode (--dangerously-skip-permissions), skipping tool/permission prompts. Use with care. Applies to newly opened and restarted Claude sessions.', 'claude.bypassPermissions');
         }
 
+        // Reader AI name — display name for this agent's replies in the reader
+        // pane. Empty falls back to the agent label. Antigravity has no reader
+        // (protobuf transcript), so it gets no name field.
+        if (a.id !== 'antigravity') {
+          const nameWrap = document.createElement('label');
+          nameWrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          nameWrap.title = 'Name shown as the sender of ' + a.label + ' replies in the reader pane. Empty = "' + a.label + '".';
+          const nameTxt = document.createElement('span');
+          nameTxt.textContent = 'AI name (reader)';
+          const nameInput = document.createElement('input');
+          nameInput.type = 'text';
+          nameInput.className = 'settings-input';
+          nameInput.style.cssText = 'width:150px;margin-left:8px;';
+          nameInput.placeholder = a.label;
+          nameInput.value = (typeof readerNames[a.id] === 'string') ? readerNames[a.id] : '';
+          nameInput.addEventListener('change', () => {
+            const v = nameInput.value.trim();
+            if (v) readerNames[a.id] = v; else delete readerNames[a.id];
+            vscode.postMessage({ type: 'set-global', key: 'readerNames', value: readerNames });
+          });
+          nameWrap.appendChild(nameTxt);
+          nameWrap.appendChild(nameInput);
+          main.appendChild(nameWrap);
+        }
+
         // Enable toggle — disabled when not installed.
         const sw = document.createElement('label');
         sw.className = 'switch' + (a.installed ? '' : ' disabled');
@@ -538,6 +571,17 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     }
 
     render();
+
+    // Global reader user name (one sender name for every agent's reader).
+    const setReaderUser = document.getElementById('set-reader-user');
+    if (setReaderUser) {
+      setReaderUser.value = (typeof readerNames.user === 'string') ? readerNames.user : '';
+      setReaderUser.addEventListener('change', () => {
+        const v = setReaderUser.value.trim();
+        if (v) readerNames.user = v; else delete readerNames.user;
+        vscode.postMessage({ type: 'set-global', key: 'readerNames', value: readerNames });
+      });
+    }
 
     // ---- General ----
     const setDefaultBackend = document.getElementById('set-default-backend');
@@ -716,6 +760,7 @@ function openGlobalSettings(context) {
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
     codexTrustAllTools: cfg.get('codex.trustAllTools', false),
+    readerNames: cfg.get('readerNames', {}),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
     customSlashCommands: cfg.get('customSlashCommands', []),
@@ -735,6 +780,7 @@ function openGlobalSettings(context) {
     'kiro.trustAllTools',
     'antigravity.trustAllTools',
     'codex.trustAllTools',
+    'readerNames',
     'repoSync.enabled',
     'repoSync.path',
     'customSlashCommands',

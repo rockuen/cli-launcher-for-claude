@@ -442,7 +442,7 @@ function getStyles(ctx) {
       margin-bottom: 4px; font-size: 0.85em;
     }
     #reader-area .msg-head .role {
-      text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;
+      font-weight: 600; letter-spacing: 0.5px;
     }
     #reader-area .msg-user .role { color: ${isDark ? '#4fc1ff' : '#0066cc'}; }
     #reader-area .msg-assistant .role { color: var(--accent, ${isDark ? '#D97757' : '#C96442'}); }

@@ -27,7 +27,7 @@ const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath } = require('../lib/sessionJsonl');
-const { buildMeta, renderBlocks, renderWelcome } = require('../lib/readerRender');
+const { buildMeta, renderBlocks, renderWelcome, resolveReaderNames } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
@@ -182,14 +182,19 @@ function startReaderWatch(entry, panel) {
     // v3.6.6: cap render to the most recent N messages so long sessions
     // don't grow reader-area DOM unboundedly. Re-read per render so a
     // settings.json edit takes effect without a panel reload.
-    const readerCap = vscode.workspace
-      .getConfiguration('claudeCodeLauncher')
-      .get('readerMessageCap', 200);
+    const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+    const readerCap = cfg.get('readerMessageCap', 200);
+    // Per-reader display names re-read each render so a settings edit applies
+    // without a panel reload (same pattern as readerCap).
+    const readerNames = resolveReaderNames(
+      cfg.get('readerNames', {}), entry.agent,
+      (listAgents().find((a) => a.id === entry.agent) || {}).label
+    );
     try {
       panel.webview.postMessage({
         type: 'reader-update',
         meta: buildMeta(entry, aiTitle, messages),
-        blocksHtml: renderBlocks(messages, { cap: readerCap }),
+        blocksHtml: renderBlocks(messages, { cap: readerCap, names: readerNames }),
         lastRole,
       });
     } catch (_) {}
