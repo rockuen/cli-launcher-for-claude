@@ -101,4 +101,28 @@ function resolveAntigravityCli() {
   return null;
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli };
+// @module pty/resolveCli — locates the OpenAI Codex CLI binary.
+// Priority: ~/.local/bin/codex → %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (Windows installer) → PATH.
+function resolveCodexCli() {
+  const isWin = process.platform === 'win32';
+
+  // 1) ~/.local/bin/codex(.exe) — official install script (macOS/Linux)
+  const localBin = isWin
+    ? path.join(os.homedir(), '.local', 'bin', 'codex.exe')
+    : path.join(os.homedir(), '.local', 'bin', 'codex');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+
+  // 2) Windows installer location: %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe (verified)
+  if (isWin) {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    const winInstall = path.join(localAppData, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe');
+    if (fs.existsSync(winInstall)) return { shell: winInstall, args: [] };
+  }
+
+  // 3) PATH — resolved to an absolute path on Windows (node-pty needs it)
+  const onPath = resolveOnPath('codex');
+  if (onPath) return { shell: onPath, args: [] };
+  return null;
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli };

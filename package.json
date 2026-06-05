@@ -858,9 +858,9 @@
         },
         "claudeCodeLauncher.agent": {
           "type": "string",
-          "enum": ["claude", "kiro", "antigravity"],
+          "enum": ["claude", "kiro", "antigravity", "codex"],
           "default": "claude",
-          "description": "Which CLI agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). The agent's CLI must be installed."
+          "description": "Which CLI agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). 'codex' = OpenAI Codex CLI (codex, https://developers.openai.com/codex/cli). The agent's CLI must be installed."
         },
         "claudeCodeLauncher.enabledAgents": {
           "type": "array",

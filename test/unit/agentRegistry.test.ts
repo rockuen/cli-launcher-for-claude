@@ -29,10 +29,14 @@ test('listAgents: returns one entry per registered agent with the expected shape
   const ids = agents.map((a) => a.id);
   assert.ok(ids.includes('claude'));
   assert.ok(ids.includes('kiro'));
+  assert.ok(ids.includes('antigravity'));
+  assert.ok(ids.includes('codex'));
 });
 
 test('isKnownAgent: true for registered ids, false otherwise', () => {
   assert.equal(isKnownAgent('claude'), true);
   assert.equal(isKnownAgent('kiro'), true);
+  assert.equal(isKnownAgent('antigravity'), true);
+  assert.equal(isKnownAgent('codex'), true);
   assert.equal(isKnownAgent('nope'), false);
 });
