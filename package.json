@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Kiro & Antigravity",
   "description": "Run Claude Code, Codex, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.8.1",
+  "version": "3.8.2",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -940,14 +940,23 @@
         },
         "claudeCodeLauncher.agent": {
           "type": "string",
-          "enum": ["claude", "kiro", "antigravity", "codex"],
+          "enum": [
+            "claude",
+            "kiro",
+            "antigravity",
+            "codex"
+          ],
           "default": "claude",
           "description": "Which CLI agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). 'codex' = OpenAI Codex CLI (codex, https://developers.openai.com/codex/cli). The agent's CLI must be installed."
         },
         "claudeCodeLauncher.enabledAgents": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["claude"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "claude"
+          ],
           "description": "Agents shown when creating a new session. Toggle agents on/off in CLI Launcher Settings → Agent. Only enabled agents that are also installed appear in the new-session picker."
         },
         "claudeCodeLauncher.kiro.trustAllTools": {
@@ -970,10 +979,22 @@
           "default": {},
           "description": "Custom sender names shown in the reader pane. 'user' = your name (one for every agent); 'claude'/'kiro'/'codex' = each agent's AI name. Empty values fall back to 'You' and the agent's label. Edit in CLI Launcher Settings → Agent.",
           "properties": {
-            "user": { "type": "string", "description": "Your name, shown for your messages in every reader." },
-            "claude": { "type": "string", "description": "AI name shown for Claude replies." },
-            "kiro": { "type": "string", "description": "AI name shown for Kiro replies." },
-            "codex": { "type": "string", "description": "AI name shown for Codex replies." }
+            "user": {
+              "type": "string",
+              "description": "Your name, shown for your messages in every reader."
+            },
+            "claude": {
+              "type": "string",
+              "description": "AI name shown for Claude replies."
+            },
+            "kiro": {
+              "type": "string",
+              "description": "AI name shown for Kiro replies."
+            },
+            "codex": {
+              "type": "string",
+              "description": "AI name shown for Codex replies."
+            }
           }
         }
       }

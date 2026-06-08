@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.8.2] - 2026-06-08
+
+### Added
+- **macOS Keychain backend for multi-account switching.** On macOS, Claude Code stores its OAuth tokens in the login Keychain (service `Claude Code-credentials`), not in `~/.claude/.credentials.json` — so the file-based account switcher always saw "no active account" and could neither save nor switch profiles on a Mac. The switcher now reads and writes the live credentials through the Keychain (`security` CLI) on macOS and through the file elsewhere, chosen by a `credsBackend()` helper (override with the `CLI_LAUNCHER_CREDS_BACKEND` env var). Saved-profile snapshots and `.claude.json` stay plain files on every OS; only the *live* credentials transport is backend-aware. `switchProfile` swaps `.claude.json` (file rename + rollback) and then writes the Keychain, restoring the identity file if the Keychain write fails so the pair never ends up split (identity from one account, tokens from another).
+
+### Changed
+- **README rewritten (English + Korean) for the 4-agent scope.** The intro, a new "four agents" section, the feature list, and the honest-notes now cover Claude / Codex / Kiro / Antigravity instead of Claude only — each agent's reader support, input tone, and permission toggle laid out in a table — and stale version/command references were corrected. The Korean README keeps its first-person narrative voice.
+
+### Implementation
+- New `src/account/liveCreds.ts`: `credsBackend` / `readLiveCredsRaw` / `writeLiveCredsRaw` / `liveCredsExist` over `security find/add-generic-password` (run via `execFileSync`, no shell; the `-U` write reuses the existing item's account name so it never forks a duplicate). `profiles.ts`: a backend-aware `liveCredsHash` plus `readLivePairRaceSafe` / `readLiveIdentity` / `getActiveProfileSlug` / `syncActiveProfile`, and an `applyLiveSwap` dispatcher (file two-file swap vs `.claude.json`-then-Keychain swap, both with rollback).
+
+### Tests
+- 309 node + 54 vitest passing. New `test/account/liveCreds.test.ts` (15 cases — backend selection, Keychain read/write/exist round-trip via a mocked `security`, file fallback) and 3 new Keychain-switch cases in `profiles.test.ts` (write into the Keychain, `.claude.json` rollback on write failure, active-slug via the Keychain secret); the existing 36 profile cases are pinned to the file backend.
+
 ## [3.8.1] - 2026-06-05
 
 ### Changed
