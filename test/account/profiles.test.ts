@@ -3,8 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-// Hoist temp dirs so vi.mock factories can see them.
-const { CLAUDE_DIR, PROFILES_DIR, CLAUDE_JSON_PATH, CREDENTIALS_PATH } = vi.hoisted(() => {
+// Hoist temp dirs + an in-memory Keychain so vi.mock factories can see them.
+const { CLAUDE_DIR, PROFILES_DIR, CLAUDE_JSON_PATH, CREDENTIALS_PATH, keychain } = vi.hoisted(() => {
   const _path = require("path") as typeof import("path");
   const _os = require("os") as typeof import("os");
   const homeTmp = _path.join(_os.tmpdir(), ".claude-test-profiles-home");
@@ -15,6 +15,11 @@ const { CLAUDE_DIR, PROFILES_DIR, CLAUDE_JSON_PATH, CREDENTIALS_PATH } = vi.hois
     CLAUDE_JSON_PATH: _path.join(homeTmp, ".claude.json"),
     CREDENTIALS_PATH: _path.join(claudeDir, ".credentials.json"),
     HOME: homeTmp,
+    keychain: {
+      secret: null as string | null,
+      account: null as string | null,
+      failWrite: false,
+    },
   };
 });
 
@@ -23,12 +28,44 @@ vi.mock("../../src/account/config", () => ({
   CLAUDE_DIR,
 }));
 
-// Redirect os.homedir so the CLAUDE_JSON constant resolves into our temp.
+// Redirect os.homedir so the CLAUDE_JSON constant resolves into our temp;
+// pin userInfo().username for the Keychain fallback-account path.
 vi.mock("os", async () => {
   const actual = (await vi.importActual<typeof import("os")>("os"));
   const homeTmp = path.dirname(CLAUDE_DIR);
-  return { ...actual, homedir: () => homeTmp };
+  return {
+    ...actual,
+    homedir: () => homeTmp,
+    userInfo: () => ({ ...actual.userInfo(), username: "testuser" }),
+  };
 });
+
+// Simulate the macOS `security` CLI so the Keychain-backend switch path
+// can be exercised. The file-backend suites never reach security, so the
+// mock is inert for them.
+vi.mock("child_process", () => ({
+  execFileSync: vi.fn((cmd: string, args: string[]) => {
+    if (cmd !== "security") throw new Error(`unexpected command: ${cmd}`);
+    const sub = args[0];
+    if (sub === "find-generic-password") {
+      if (keychain.secret === null) throw new Error("item not found");
+      if (args.includes("-w")) return keychain.secret + "\n";
+      return `    "acct"<blob>="${keychain.account}"\n`;
+    }
+    if (sub === "add-generic-password") {
+      if (keychain.failWrite) {
+        keychain.failWrite = false;
+        throw new Error("keychain write denied");
+      }
+      const aIdx = args.indexOf("-a");
+      const wIdx = args.indexOf("-w");
+      keychain.account = aIdx >= 0 ? args[aIdx + 1] : null;
+      keychain.secret = wIdx >= 0 ? args[wIdx + 1] : null;
+      return "";
+    }
+    throw new Error(`unexpected security subcommand: ${sub}`);
+  }),
+}));
 
 // Import under test AFTER mocks.
 import {
@@ -88,8 +125,16 @@ function makeJwt(claims: Record<string, unknown>): string {
   return `${header}.${payload}.`;
 }
 
-beforeEach(resetTmp);
+beforeEach(() => {
+  // Force the file backend so these file-based fixtures stay on the
+  // file path even when the suite runs on a darwin host (where the
+  // default would reach for the real Keychain). The Keychain backend
+  // has its own suite in liveCreds.test.ts.
+  process.env.CLI_LAUNCHER_CREDS_BACKEND = "file";
+  resetTmp();
+});
 afterEach(() => {
+  delete process.env.CLI_LAUNCHER_CREDS_BACKEND;
   fs.rmSync(path.dirname(CLAUDE_DIR), { recursive: true, force: true });
 });
 
@@ -746,5 +791,74 @@ describe("saveProfile — dedupe", () => {
     );
     expect(saveProfile("Bravo").ok).toBe(true);
     expect(listProfiles()).toHaveLength(2);
+  });
+});
+
+describe("switchProfile — keychain backend (macOS)", () => {
+  // Live state where the tokens live in the (mocked) Keychain and only
+  // .claude.json is a file — the real macOS shape.
+  function writeLiveKeychain(claudeJson: unknown, credentials: unknown): void {
+    fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(claudeJson));
+    keychain.account = "testuser";
+    keychain.secret = JSON.stringify(credentials);
+  }
+
+  beforeEach(() => {
+    process.env.CLI_LAUNCHER_CREDS_BACKEND = "keychain";
+    keychain.secret = null;
+    keychain.account = null;
+    keychain.failWrite = false;
+  });
+
+  it("writes the slot's creds into the Keychain and swaps .claude.json identity", () => {
+    writeLiveKeychain(CLAUDE_JSON_SAMPLE, CREDENTIALS_SAMPLE);
+    saveProfile("A");
+    writeLiveKeychain(
+      { oauthAccount: { emailAddress: "b@b.com" }, userID: "b-id" },
+      { claudeAiOauth: { accessToken: "tok-b", refreshToken: "r", expiresAt: 0 } },
+    );
+    saveProfile("B");
+
+    const res = switchProfile("a");
+    expect(res.ok).toBe(true);
+    // Tokens went into the Keychain, not a live file.
+    expect(fs.existsSync(CREDENTIALS_PATH)).toBe(false);
+    const liveCreds = JSON.parse(keychain.secret as string) as {
+      claudeAiOauth: { accessToken: string };
+    };
+    expect(liveCreds.claudeAiOauth.accessToken).toBe("access-token-abc");
+    // .claude.json identity swapped to A.
+    const liveJson = JSON.parse(fs.readFileSync(CLAUDE_JSON_PATH, "utf-8")) as {
+      oauthAccount: { emailAddress: string };
+    };
+    expect(liveJson.oauthAccount.emailAddress).toBe("alice@example.com");
+  });
+
+  it("rolls .claude.json back when the Keychain write fails (no split state)", () => {
+    writeLiveKeychain(CLAUDE_JSON_SAMPLE, CREDENTIALS_SAMPLE);
+    saveProfile("A");
+    writeLiveKeychain(
+      { oauthAccount: { emailAddress: "b@b.com" }, userID: "b-id" },
+      { claudeAiOauth: { accessToken: "tok-b", refreshToken: "r", expiresAt: 0 } },
+    );
+    saveProfile("B");
+
+    const jsonBefore = fs.readFileSync(CLAUDE_JSON_PATH, "utf-8");
+    const keychainBefore = keychain.secret;
+    keychain.failWrite = true; // next add-generic-password throws
+
+    const res = switchProfile("a");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe("copy-failed");
+    // .claude.json restored to B; Keychain untouched — the pair never
+    // ends up split (identity from one account, tokens from another).
+    expect(fs.readFileSync(CLAUDE_JSON_PATH, "utf-8")).toBe(jsonBefore);
+    expect(keychain.secret).toBe(keychainBefore);
+  });
+
+  it("getActiveProfileSlug resolves via the Keychain secret", () => {
+    writeLiveKeychain(CLAUDE_JSON_SAMPLE, CREDENTIALS_SAMPLE);
+    saveProfile("A");
+    expect(getActiveProfileSlug()).toBe("a");
   });
 });

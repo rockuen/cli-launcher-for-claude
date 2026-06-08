@@ -48,6 +48,7 @@ import * as os from "os";
 import * as crypto from "crypto";
 import { CLAUDE_DIR } from "./config";
 import { createMtimeCache } from "./mtimeCache";
+import { credsBackend, readLiveCredsRaw, writeLiveCredsRaw } from "./liveCreds";
 
 /**
  * Cache SHA-256 hashes by file path. listProfiles() can run on every
@@ -137,6 +138,20 @@ function hashFile(filePath: string): string {
 }
 
 /**
+ * SHA-256 hex of the *live* credentials, or "" when none exist. On the
+ * file backend this stays mtime-cached through `hashFile`; on the
+ * Keychain backend (macOS — no file, no mtime) it fetches the secret
+ * and hashes it directly each call, which is the cost of not having a
+ * cheap change signal there.
+ */
+function liveCredsHash(): string {
+  if (credsBackend() === "file") return hashFile(CREDENTIALS_FILE);
+  const raw = readLiveCredsRaw();
+  if (raw === null) return "";
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+/**
  * Read the two live identity files in a race-safe way: hash first,
  * read both, hash again. If the creds file mutated between hashes
  * (Claude CLI mid-refresh), retry once. Returns null on unrecoverable
@@ -150,6 +165,21 @@ function readLivePairRaceSafe(): {
   claudeJsonRaw: string;
   credsRaw: string;
 } | null {
+  if (credsBackend() === "keychain") {
+    // Keychain reads are atomic — there's no mid-write file race to
+    // guard against, so the pre/post-hash retry is unnecessary. Only
+    // .claude.json is a file on this backend.
+    const credsRaw = readLiveCredsRaw();
+    if (!credsRaw || !credsRaw.trim()) return null;
+    let claudeJsonRaw: string;
+    try {
+      claudeJsonRaw = fs.readFileSync(CLAUDE_JSON, "utf-8");
+    } catch {
+      return null;
+    }
+    if (!claudeJsonRaw.trim()) return null;
+    return { claudeJsonRaw, credsRaw };
+  }
   for (let attempt = 0; attempt < 2; attempt++) {
     const preHash = hashFile(CREDENTIALS_FILE);
     if (!preHash) return null;
@@ -346,12 +376,8 @@ export function listProfiles(): SavedProfile[] {
  * state path. Returns null when no identity can be derived.
  */
 function readLiveIdentity(): LiveIdentity | null {
-  let credsRaw: string;
-  try {
-    credsRaw = fs.readFileSync(CREDENTIALS_FILE, "utf-8");
-  } catch {
-    return null;
-  }
+  const credsRaw = readLiveCredsRaw();
+  if (credsRaw === null) return null;
   const tokenIdentity = extractIdentityFromToken(credsRaw);
   if (tokenIdentity) return tokenIdentity;
   try {
@@ -377,7 +403,7 @@ function readLiveIdentity(): LiveIdentity | null {
  * though the account is unchanged.
  */
 export function getActiveProfileSlug(): string | null {
-  const liveHash = hashFile(CREDENTIALS_FILE);
+  const liveHash = liveCredsHash();
   if (!liveHash) return null;
 
   const profiles = listProfiles();
@@ -678,9 +704,128 @@ export function syncActiveProfile(): string | null {
   // Skip when already byte-identical: avoids spurious mtime bumps and
   // a self-triggering loop if the caller is running from a watcher.
   const slotCreds = path.join(PROFILES_DIR, slug, ".credentials.json");
-  if (hashFile(slotCreds) === hashFile(CREDENTIALS_FILE)) return slug;
+  if (hashFile(slotCreds) === liveCredsHash()) return slug;
   const result = updateProfile(slug);
   return result.ok ? slug : null;
+}
+
+/**
+ * Swap the live identity file + credentials to new values, with
+ * rollback so the pair never ends up split (identity from one account,
+ * tokens from another). Throws on failure; the caller maps that to
+ * `copy-failed`. Dispatches by backend — files on Windows/Linux, the
+ * Keychain on macOS.
+ */
+function applyLiveSwap(mergedClaudeJson: string, credsRaw: string): void {
+  if (credsBackend() === "keychain") {
+    applyLiveSwapKeychain(mergedClaudeJson, credsRaw);
+  } else {
+    applyLiveSwapFiles(mergedClaudeJson, credsRaw);
+  }
+}
+
+/**
+ * File backend (Windows/Linux): two-file atomic-ish swap with rollback.
+ * Write both tmps first so a disk-full aborts before any live file is
+ * touched. Back up live files, then rename in sequence; if either
+ * rename throws, restore from the backup so we never leave the pair
+ * out of sync.
+ */
+function applyLiveSwapFiles(mergedClaudeJson: string, credsRaw: string): void {
+  const claudeJsonTmp = CLAUDE_JSON + ".tmp";
+  const credsTmp = CREDENTIALS_FILE + ".tmp";
+  const claudeJsonBak = CLAUDE_JSON + ".bak";
+  const credsBak = CREDENTIALS_FILE + ".bak";
+
+  // Clean up any prior stragglers so writes below don't race with them.
+  for (const p of [claudeJsonTmp, credsTmp, claudeJsonBak, credsBak]) {
+    try { fs.rmSync(p, { force: true }); } catch { /* ignore */ }
+  }
+
+  fs.writeFileSync(claudeJsonTmp, mergedClaudeJson);
+  fs.writeFileSync(credsTmp, credsRaw);
+
+  // Back up live files before renaming. Use copyFile so we can restore
+  // even if the rename partially succeeded.
+  const claudeJsonExists = fs.existsSync(CLAUDE_JSON);
+  const credsExists = fs.existsSync(CREDENTIALS_FILE);
+  if (claudeJsonExists) fs.copyFileSync(CLAUDE_JSON, claudeJsonBak);
+  if (credsExists) fs.copyFileSync(CREDENTIALS_FILE, credsBak);
+
+  try {
+    fs.renameSync(claudeJsonTmp, CLAUDE_JSON);
+  } catch (err) {
+    // First rename failed — nothing to roll back, just clean up.
+    try { fs.rmSync(claudeJsonTmp, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(credsTmp, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(credsBak, { force: true }); } catch { /* ignore */ }
+    throw err;
+  }
+
+  try {
+    fs.renameSync(credsTmp, CREDENTIALS_FILE);
+  } catch (err) {
+    // Second rename failed — restore .claude.json from backup so
+    // identity + tokens don't end up out of sync.
+    if (claudeJsonExists) {
+      try { fs.copyFileSync(claudeJsonBak, CLAUDE_JSON); } catch { /* best-effort */ }
+    }
+    try { fs.rmSync(credsTmp, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(credsBak, { force: true }); } catch { /* ignore */ }
+    throw err;
+  }
+
+  // Success — drop backups.
+  try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
+  try { fs.rmSync(credsBak, { force: true }); } catch { /* ignore */ }
+}
+
+/**
+ * Keychain backend (macOS): `.claude.json` is a file, but the tokens
+ * live in the login Keychain. Swap the identity file first (atomic
+ * rename with a backup), then write the tokens to the Keychain. If the
+ * Keychain write fails, roll `.claude.json` back so identity + tokens
+ * never belong to different accounts. The Keychain item is untouched
+ * until `writeLiveCredsRaw` succeeds, so a failure before that point
+ * needs no token rollback.
+ */
+function applyLiveSwapKeychain(mergedClaudeJson: string, credsRaw: string): void {
+  const claudeJsonTmp = CLAUDE_JSON + ".tmp";
+  const claudeJsonBak = CLAUDE_JSON + ".bak";
+  for (const p of [claudeJsonTmp, claudeJsonBak]) {
+    try { fs.rmSync(p, { force: true }); } catch { /* ignore */ }
+  }
+
+  fs.writeFileSync(claudeJsonTmp, mergedClaudeJson);
+  const claudeJsonExists = fs.existsSync(CLAUDE_JSON);
+  if (claudeJsonExists) fs.copyFileSync(CLAUDE_JSON, claudeJsonBak);
+
+  try {
+    fs.renameSync(claudeJsonTmp, CLAUDE_JSON);
+  } catch (err) {
+    // Identity rename failed before the Keychain was touched — clean
+    // up, nothing to roll back.
+    try { fs.rmSync(claudeJsonTmp, { force: true }); } catch { /* ignore */ }
+    try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
+    throw err;
+  }
+
+  try {
+    writeLiveCredsRaw(credsRaw);
+  } catch (err) {
+    // Keychain write failed after the identity swap — restore
+    // .claude.json so the pair stays consistent.
+    if (claudeJsonExists) {
+      try { fs.copyFileSync(claudeJsonBak, CLAUDE_JSON); } catch { /* best-effort */ }
+    }
+    try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
+    throw err;
+  }
+
+  // Success — drop the backup.
+  try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
 }
 
 /**
@@ -782,59 +927,10 @@ export function switchProfile(slug: string): ProfileResult<SavedProfile> {
     };
   }
 
-  // Two-file atomic-ish swap with rollback. Write both tmps first so
-  // disk-full aborts before any live file is touched. Back up live
-  // files, then rename in sequence; if either rename throws, restore
-  // from the backup so we never leave the pair out of sync.
-  const claudeJsonTmp = CLAUDE_JSON + ".tmp";
-  const credsTmp = CREDENTIALS_FILE + ".tmp";
-  const claudeJsonBak = CLAUDE_JSON + ".bak";
-  const credsBak = CREDENTIALS_FILE + ".bak";
-
-  // Clean up any prior stragglers so writes below don't race with them.
-  for (const p of [claudeJsonTmp, credsTmp, claudeJsonBak, credsBak]) {
-    try { fs.rmSync(p, { force: true }); } catch { /* ignore */ }
-  }
-
+  // Backend-aware swap with rollback (see applyLiveSwap). Files on
+  // Windows/Linux; the identity file + Keychain on macOS.
   try {
-    fs.writeFileSync(claudeJsonTmp, mergedClaudeJson);
-    fs.writeFileSync(credsTmp, credsRaw);
-
-    // Back up live files before renaming. Use copyFile so we can
-    // restore even if the rename partially succeeded.
-    const claudeJsonExists = fs.existsSync(CLAUDE_JSON);
-    const credsExists = fs.existsSync(CREDENTIALS_FILE);
-    if (claudeJsonExists) fs.copyFileSync(CLAUDE_JSON, claudeJsonBak);
-    if (credsExists) fs.copyFileSync(CREDENTIALS_FILE, credsBak);
-
-    try {
-      fs.renameSync(claudeJsonTmp, CLAUDE_JSON);
-    } catch (err) {
-      // First rename failed — nothing to roll back, just clean up.
-      try { fs.rmSync(claudeJsonTmp, { force: true }); } catch { /* ignore */ }
-      try { fs.rmSync(credsTmp, { force: true }); } catch { /* ignore */ }
-      try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
-      try { fs.rmSync(credsBak, { force: true }); } catch { /* ignore */ }
-      throw err;
-    }
-
-    try {
-      fs.renameSync(credsTmp, CREDENTIALS_FILE);
-    } catch (err) {
-      // Second rename failed — restore .claude.json from backup so
-      // identity + tokens don't end up out of sync.
-      if (claudeJsonExists) {
-        try { fs.copyFileSync(claudeJsonBak, CLAUDE_JSON); } catch { /* best-effort */ }
-      }
-      try { fs.rmSync(credsTmp, { force: true }); } catch { /* ignore */ }
-      try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
-      try { fs.rmSync(credsBak, { force: true }); } catch { /* ignore */ }
-      throw err;
-    }
-
-    // Success — drop backups.
-    try { fs.rmSync(claudeJsonBak, { force: true }); } catch { /* ignore */ }
-    try { fs.rmSync(credsBak, { force: true }); } catch { /* ignore */ }
+    applyLiveSwap(mergedClaudeJson, credsRaw);
   } catch (err) {
     return {
       ok: false,
@@ -854,7 +950,7 @@ export function switchProfile(slug: string): ProfileResult<SavedProfile> {
       subscriptionType: meta.subscriptionType ?? "",
       savedAt: meta.savedAt ?? "",
       tokenExpiresAt: meta.tokenExpiresAt ?? 0,
-      credentialsHash: hashFile(CREDENTIALS_FILE),
+      credentialsHash: liveCredsHash(),
       userID: meta.userID ?? "",
       accountUuid: meta.accountUuid ?? "",
     },
