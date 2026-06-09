@@ -281,15 +281,25 @@ function routeWebviewMessage(msg, ctx) {
       // honor fileAssociations once we hand them an absolute path, so a `.md`
       // resolved this way still routes to Obsidian (or whatever the user
       // configured) instead of the IDE.
+      // Preserve the pre-absolutize fragment so the fallback chain (incl. the
+      // OS file index) can search by basename when the cwd-resolved path misses.
+      const fragment = p;
       if (!path.isAbsolute(p) && entry && entry.cwd) {
         try { p = path.resolve(entry.cwd, p); } catch (_) {}
       }
       let isDir = false;
+      let found = true;
       try {
         const stat = fs.statSync(p);
         isDir = stat.isDirectory();
       } catch (_) {
-        vscode.window.showInformationMessage('Reader: path not found — ' + p);
+        found = false;
+      }
+      if (!found) {
+        // Not at the cwd-resolved location — hand off to handleOpenFile, which
+        // runs ancestors + cwd basename walk + the Everything/mdfind/locate
+        // fallback before giving up with a not-found message.
+        handleOpenFile(fragment, line, entry);
         return;
       }
       if (isDir) handleOpenFolder(p, entry);

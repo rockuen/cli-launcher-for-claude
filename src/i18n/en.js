@@ -22,6 +22,7 @@ module.exports = {
   enterMemo: 'Enter tab memo',
   imageSaveFail: 'Failed to save image: ',
   fileNotFound: 'File not found: ',
+  locatePickPlaceholder: 'Found in multiple locations — pick a file to open',
   sbIdle: '$(hubot) Agent Idle',
   sbRunning: '$(loading~spin) Agent Running',
   sbAttention: '$(bell) Agent Needs Attention',

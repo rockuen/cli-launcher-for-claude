@@ -5,6 +5,12 @@
 // Windows quirk: vscode.env.openExternal silently fails for file:// URIs in
 // some Electron hosts (Antigravity). We use `cmd /c start` with verbatim args
 // so cmd sees the quoted path intact.
+//
+// v3.9: when cwd-relative resolution and the cwd basename walk both miss, we
+// fall back to the OS file index (Everything es.exe / Spotlight mdfind /
+// locate) via lib/fileLocator so a bare filename the agent printed — e.g.
+// "_merged_erp_inbound.csv" written somewhere outside the session cwd — still
+// opens. One exact hit opens directly; several show a QuickPick.
 
 const vscode = require('vscode');
 const path = require('path');
@@ -12,6 +18,7 @@ const os = require('os');
 const fs = require('fs');
 const { t } = require('../i18n');
 const { expandBraces } = require('../util/braceExpand');
+const fileLocator = require('../lib/fileLocator');
 
 // Resolve a possibly-partial path to an existing absolute path.
 // Tries (in order): absolute, cwd+frag, walk up cwd ancestors, homedir, platform roots.
@@ -49,7 +56,61 @@ function resolvePathFragment(frag, cwd) {
   return null;
 }
 
-function handleOpenFile(filePath, line, entry) {
+// v3.9: OS file-index fallback. Returns an absolute file path to open, or null
+// (nothing found, locator disabled/unavailable, or the user dismissed the
+// picker). basename-only query; when the original fragment carried directory
+// parts we narrow multi-hits by suffix so "scripts/foo.py" prefers a hit that
+// actually ends in scripts/foo.py.
+async function tryLocateOnDisk(raw) {
+  let config;
+  try { config = vscode.workspace.getConfiguration('claudeCodeLauncher'); }
+  catch (_) { return null; }
+  const fl = config.get('fileLocator', {}) || {};
+  if (fl.enabled === false) return null;
+
+  const normalizedRaw = String(raw || '').replace(/\\/g, '/');
+  const basename = path.basename(normalizedRaw);
+  if (!basename || /[*?]/.test(basename)) return null; // need a concrete name
+
+  let results;
+  try {
+    results = await fileLocator.locateFiles(basename, {
+      esPath: typeof fl.esPath === 'string' ? fl.esPath : '',
+      maxResults: typeof fl.maxResults === 'number' ? fl.maxResults : 20,
+    });
+  } catch (_) { return null; }
+  if (!results || results.length === 0) return null;
+
+  // Narrow by the fragment suffix when the link carried directory parts.
+  if (normalizedRaw.includes('/')) {
+    const suffix = normalizedRaw.toLowerCase().replace(/^[./]+/, '');
+    const narrowed = results.filter(
+      (p) => p.replace(/\\/g, '/').toLowerCase().endsWith(suffix)
+    );
+    if (narrowed.length > 0) results = narrowed;
+  }
+
+  if (results.length === 1) return results[0];
+
+  const homeFwd = os.homedir().replace(/\\/g, '/');
+  const items = results.map((p) => {
+    const fwd = p.replace(/\\/g, '/');
+    const description = fwd.toLowerCase().startsWith(homeFwd.toLowerCase())
+      ? '~' + fwd.slice(homeFwd.length)
+      : fwd;
+    return { label: path.basename(p), description, _path: p };
+  });
+  let picked;
+  try {
+    picked = await vscode.window.showQuickPick(items, {
+      placeHolder: t('locatePickPlaceholder'),
+      matchOnDescription: true,
+    });
+  } catch (_) { return null; }
+  return picked ? picked._path : null;
+}
+
+async function handleOpenFile(filePath, line, entry) {
   let raw = (filePath || '').trim();
   if (!raw) {
     vscode.window.showWarningMessage(t('fileNotFound') + filePath);
@@ -60,7 +121,7 @@ function handleOpenFile(filePath, line, entry) {
   // patterns like `worker-{1,2,3}/answer.md`; open each expansion.
   const _expansions = expandBraces(raw);
   if (_expansions.length > 1) {
-    for (const _exp of _expansions) handleOpenFile(_exp, line, entry);
+    for (const _exp of _expansions) await handleOpenFile(_exp, line, entry);
     return;
   }
 
@@ -90,6 +151,14 @@ function handleOpenFile(filePath, line, entry) {
     if (entry.cwd) searchDir(entry.cwd, 0);
     const match = found.find(f => f.replace(/\\/g, '/').endsWith(suffix)) || found[0];
     if (match) absPath = match;
+  }
+
+  // v3.9: last resort — query the OS file index (Everything / mdfind / locate)
+  // for the bare filename anywhere on disk. See lib/fileLocator. Disabled or
+  // unavailable → returns null and we fall through to the not-found message.
+  if (!absPath) {
+    const located = await tryLocateOnDisk(raw);
+    if (located) absPath = located;
   }
 
   if (!absPath || !fs.existsSync(absPath)) {

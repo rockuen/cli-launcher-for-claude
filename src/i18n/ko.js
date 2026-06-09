@@ -21,6 +21,7 @@ module.exports = {
   enterMemo: '탭 메모를 입력하세요',
   imageSaveFail: '이미지 저장 실패: ',
   fileNotFound: '파일을 찾을 수 없습니다: ',
+  locatePickPlaceholder: '여러 위치에서 발견됨 — 열 파일을 선택하세요',
   sbIdle: '$(hubot) Agent 대기 중',
   sbRunning: '$(loading~spin) Agent 처리 중',
   sbAttention: '$(bell) Agent 확인 필요',
