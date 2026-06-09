@@ -100,6 +100,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 - **핸드오프** — 활성화된 다른 에이전트로 대화 맥락 전달.
 - **다중 계정 전환** — Claude 로그인을 프로필로 저장/전환. 활성 계정명이 하단 상태바에 상시 표시, 클릭하면 QuickPick. Windows/Linux는 `~/.claude/.credentials.json`, **macOS는 Keychain**에서 토큰을 읽고 쓴다.
 - **자동 링크 + 컨텍스트 메뉴** — 응답 안의 파일/URL/폴더 클릭, 선택 후 우클릭 메뉴.
+- **어디 있든 파일 찾기** — 세션 작업 폴더 밖에 있는 파일명을 클릭하면 OS 파일 인덱스(Windows=Everything, macOS=Spotlight, Linux=`locate`)로 찾아서 연다. 하나면 바로 열고, 여러 개면 선택창. 일회성 설치는 *어떻게 쓰나* 참고.
 - **커스텀 버튼 / 똑똑한 paste / 입력 히스토리 / 작업 큐** — 입력 패널 편의.
 - **슬래시 자동완성** — Claude Code 빌트인 카탈로그 + 개인 PKM/OMC 카탈로그(override 파일).
 - **Repo Sync** — 자동 commit + push, `${workspaceFolder}` 치환 지원.
@@ -125,6 +126,16 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 
 적어도 `claude` 가 `PATH` 에 있어야 한다 (`npm install -g @anthropic-ai/claude-code`
 또는 공식 standalone 설치). Codex / Kiro / Antigravity는 각 CLI를 설치한 뒤 **설정 → Agent**에서 켜면 된다.
+
+**선택 — "어디 있든 파일 찾기"**: 세션 작업 폴더 밖에 있는 파일 링크를 클릭하면 OS 파일
+인덱스로 찾아서 연다. 기본 켜짐이고, 백엔드가 없으면 조용히 기존 동작으로 돌아간다.
+
+- **Windows** — [Everything](https://www.voidtools.com/) 설치(계속 실행) + 명령줄 도구
+  [`es.exe`](https://www.voidtools.com/support/everything/command_line_interface/) 설치.
+  `es.exe` 를 `%LOCALAPPDATA%\Programs\everything-cli\` 에 두거나(자동 감지)
+  `claudeCodeLauncher.fileLocator.esPath` 로 경로를 지정한다.
+- **macOS** — 설치할 것 없음. Spotlight 의 `mdfind` 가 내장돼 있다.
+- **Linux** — `plocate`(또는 `mlocate`) 설치 후 DB를 한 번 생성: `sudo apt install plocate && sudo updatedb`.
 
 **기본 사용**:
 

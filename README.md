@@ -101,6 +101,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 - **Hand-off** — pass conversation context to any other enabled agent.
 - **Multi-account switching** — save / switch Claude logins as profiles. The active account shows in the left status bar; click for a QuickPick. Tokens are read/written from `~/.claude/.credentials.json` on Windows/Linux and from the **Keychain on macOS**.
 - **Auto-links + context menu** — click file/URL/folder mentions in a reply; right-click a selection for a menu.
+- **Find files anywhere** — clicking a bare filename that lives outside the session's working directory falls back to the OS file index (Everything on Windows, Spotlight on macOS, `locate` on Linux) and opens it; one hit opens directly, several show a picker. One-time setup in *Getting started*.
 - **Custom buttons / smart paste / input history / task queue** — input-panel conveniences.
 - **Slash autocomplete** — the Claude Code built-in catalog plus your personal PKM/OMC catalog (via an override file).
 - **Repo Sync** — auto commit + push, with `${workspaceFolder}` substitution.
@@ -127,6 +128,17 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 At minimum you need `claude` on `PATH` (`npm install -g @anthropic-ai/claude-code` or the
 official standalone install). For Codex / Kiro / Antigravity, install each CLI and enable it
 under **Settings → Agent**.
+
+**Optional — "find files anywhere"** lets you click a file link that lives outside the
+session's working directory and have it located via your OS file index. On by default; it
+degrades gracefully if the backend isn't installed.
+
+- **Windows** — install [Everything](https://www.voidtools.com/) (keep it running) plus its
+  command-line tool [`es.exe`](https://www.voidtools.com/support/everything/command_line_interface/).
+  Put `es.exe` in `%LOCALAPPDATA%\Programs\everything-cli\` (auto-detected) or set
+  `claudeCodeLauncher.fileLocator.esPath`.
+- **macOS** — nothing to install; Spotlight's `mdfind` is built in.
+- **Linux** — install `plocate` (or `mlocate`) and seed the db once: `sudo apt install plocate && sudo updatedb`.
 
 **Basic use**:
 

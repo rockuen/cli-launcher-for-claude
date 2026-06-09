@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.9.0] - 2026-06-09
+
+### Added
+- **Find files anywhere via the OS file index.** When a reader/terminal file link can't be resolved from the session's working directory (or its subfolders), the launcher now falls back to the OS file index to locate the file anywhere on disk and open it — so a bare filename an agent printed (e.g. `_merged_erp_inbound.csv` written to some output folder) opens with a click instead of dead-ending at "file not found". One exact-name hit opens immediately; several show a QuickPick; none falls back to the usual message. Strictly additive: turn it off with `claudeCodeLauncher.fileLocator.enabled`, and with no backend installed behaviour is unchanged (one extra `existsSync` probe on a miss). Backends: **Everything `es.exe` on Windows**, **Spotlight `mdfind` on macOS** (built in), **`plocate`/`locate` on Linux**. Exact-basename matches only; `$Recycle.Bin`, `node_modules`, and `.git` paths are filtered out; the index is over-fetched then filtered + capped so a small result limit can't be consumed by noise.
+
+### Settings
+- `claudeCodeLauncher.fileLocator.enabled` (default true), `claudeCodeLauncher.fileLocator.esPath` (Windows es.exe path; blank = auto-discover from `%LOCALAPPDATA%\Programs\everything-cli` or `Program Files\Everything`), `claudeCodeLauncher.fileLocator.maxResults` (default 20).
+
+### Implementation
+- New `src/lib/fileLocator.js`: pure `parseLocatorOutput` / `buildEsArgs` / `buildMdfindArgs` / `buildLocateArgs` + IO `resolveEsBinary` / `locateFiles` / `isLocatorAvailable` (all via `execFile`, no shell; 3s timeout; never throws — failures return `[]`). `handlers/openFile.js`: `handleOpenFile` is now async and runs `tryLocateOnDisk` as the last fallback (after cwd-resolve + the cwd basename walk), with a QuickPick on multiple hits and a fragment-suffix narrowing pass. `panel/messageRouter.js`: the `open-path` case hands a cwd-resolve miss to `handleOpenFile` so the index fallback runs.
+
+### Tests
+- 320 node + 54 vitest passing. New `test/unit/fileLocator.test.ts` (11 cases — exact-basename match, `.lnk` / recycle-bin / node_modules / .git filtering, case-insensitive dedupe + cap, arg builders). Verified end-to-end against a real `es.exe` on Windows (the `_merged_erp_inbound.csv` case → exactly one hit, three `.lnk` shortcuts filtered).
+
 ## [3.8.2] - 2026-06-08
 
 ### Added
