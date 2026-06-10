@@ -112,7 +112,13 @@ function restartPty(entry, panel, context, extensionPath) {
     args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : []), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
   }
 
-  // Kill old PTY before spawning new one to prevent orphaned processes
+  // Kill old PTY before spawning new one to prevent orphaned processes.
+  // Detach its data listener first — the kill flushes ConPTY's buffered
+  // output, which would otherwise land in the old onData handler.
+  if (entry._ptyDataSub) {
+    try { entry._ptyDataSub.dispose(); } catch (_) {}
+    entry._ptyDataSub = null;
+  }
   if (entry.pty) {
     killPtyProcess(entry.pty);
     entry.pty = null;
@@ -143,8 +149,8 @@ function restartPty(entry, panel, context, extensionPath) {
     // Re-attach PTY events with fresh parser instance
     const thisPty = ptyProcess;
     const contextParser = createContextParser();
-    ptyProcess.onData(data => {
-      if (entry.pty !== thisPty) return; // stale handler guard
+    entry._ptyDataSub = ptyProcess.onData(data => {
+      if (entry._disposed || entry.pty !== thisPty) return; // disposed/stale handler guard
       sendPtyChunkPaced(panel, data, entry);
 
       const usage = contextParser.feed(data, entry);

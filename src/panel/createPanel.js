@@ -827,8 +827,8 @@ function createPanel(context, extensionPath, session, opts) {
     }
   }
 
-  ptyProcess.onData(data => {
-    if (entry.pty !== initialPty) return; // stale handler guard
+  entry._ptyDataSub = ptyProcess.onData(data => {
+    if (entry._disposed || entry.pty !== initialPty) return; // disposed/stale handler guard
     dataCount++;
     if (dataCount <= 3) console.log('[Claude Launcher] PTY data #' + dataCount + ' (' + data.length + ' bytes):', data.substring(0, 100));
     // v3.6.2: opt-in diagnostics. Null-check beats optional chaining for a
@@ -985,6 +985,13 @@ function createPanel(context, extensionPath, session, opts) {
   // Panel closed
   panel.onDidDispose(() => {
     entry._disposed = true;
+    // Detach the PTY data listener BEFORE the kill below: killing a ConPTY
+    // flushes its remaining buffered output, and on a disposed panel the
+    // `panel.active` getter in onData throws on every late chunk.
+    if (entry._ptyDataSub) {
+      try { entry._ptyDataSub.dispose(); } catch (_) {}
+      entry._ptyDataSub = null;
+    }
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
     // v3.6.4: drop any coalesced bytes that never got flushed.
