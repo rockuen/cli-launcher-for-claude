@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.9.1] - 2026-06-10
+
+### Fixed
+- **"Webview is disposed" crash storm on every tab close — and the freeze trigger it fed.** Closing a tab killed the ConPTY *without detaching its data listener*; the kill flushes the pty's remaining buffered output, so every late chunk re-entered `onData` on the already-disposed panel, where the `panel.active` getter throws. Live logs showed two thrown errors plus an "An unknown error occurred" toast on **every** tab close, and the 2026-06-10 extension-host freeze fired at exactly this point while closing a ~7-hour session whose pty had delivered 97,535 chunks. The panel now disposes the PTY data subscription **before** killing the pty (both the panel-dispose and the session-restart paths), and both `onData` handlers gained an `entry._disposed` early-return alongside the existing stale-pty guard. `onExit` stays attached so exit bookkeeping (state, session save) still runs.
+
+### Implementation
+- `panel/createPanel.js`: the onData subscription is kept on `entry._ptyDataSub`; `onDidDispose` disposes it first. `panel/restartPty.js`: detaches the previous subscription before killing the old pty, registers the new one the same way, and its `onData` now also checks `entry._disposed`. `lib/ptyChunk.js` already tolerated dispose-mid-flush (isDisposed check + try/catch around postMessage), so paced sends needed no change.
+
 ## [3.9.0] - 2026-06-09
 
 ### Added
