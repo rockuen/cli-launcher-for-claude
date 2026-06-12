@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.9.2] - 2026-06-12
+
+### Fixed
+- **Codex input panel Enter not submitting.** The launcher input bar sent text and `\r` as separate PTY messages; Codex TUI accepted the text but missed the trailing Enter. Now sends `text + \r` as a single atomic payload.
+- **Kiro/Codex/Antigravity session title not restored on resume.** Tree-resume passed no title to `createPanel`, so tabs always opened with the default agent label. Now reads the saved title from the per-agent title store and passes it through.
+- **Antigravity rename not persisting.** Fresh/`--continue` sessions kept a placeholder UUID as sessionId, so `saveSessions()` wrote the title under a key the tree never looked up. On rename, the real conversation id is now resolved from the history and pinned.
+
+### Improved
+- **Codex context indicator shows remaining capacity** (green → yellow → red as it depletes), matching Codex's own "remaining" semantics instead of Claude's "used" semantics.
+- **Kiro fresh-session Reader race fix.** Pre-existing session ids are now snapshot *before* PTY spawn (not after), with a 1-second discovery retry interval, preventing the race where a fast Kiro session creation was misidentified as pre-existing.
+- **Kiro context parsing.** Added a Kiro-specific TUI status-line parser (`Kiro auto 2%` pattern) so Kiro context usage is displayed in the status bar.
+
 ## [3.9.1] - 2026-06-10
 
 ### Fixed
