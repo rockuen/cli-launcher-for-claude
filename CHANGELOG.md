@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.9.3] - 2026-06-12
+
+### Fixed
+- **Reader view Ctrl+C copy not working.** The document-level Ctrl+C handler only checked xterm's internal selection, missing DOM selections in the reader area. Now falls back to `window.getSelection()` so text dragged in the reader copies correctly.
+
+### Changed
+- **Removed FS (fullscreen) indicator button.** Mouse-mode escape sequences are already stripped before reaching xterm.js, making the toggle redundant. The redraw button (↻) remains available when a TUI owns the screen.
+- **Sidebar view order** changed from Claude/Kiro/Antigravity/Codex to **Claude/Codex/Kiro/Antigravity**.
+
 ## [3.9.2] - 2026-06-12
 
 ### Fixed

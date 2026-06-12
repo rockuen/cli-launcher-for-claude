@@ -176,21 +176,6 @@ function getClientScript(ctx) {
 
     function updateFullscreenUI() {
       const detected = isAlternateScreen || isMouseMode;
-      if (detected) {
-        fsIndicator.style.display = 'inline-flex';
-        if (forceNormalMode) {
-          fsIndicator.textContent = 'FS\u00d7';
-          fsIndicator.title = T.fsOverrideTip;
-          fsIndicator.classList.add('fs-overridden');
-        } else {
-          fsIndicator.textContent = 'FS';
-          fsIndicator.title = T.fsTip;
-          fsIndicator.classList.remove('fs-overridden');
-        }
-      } else {
-        fsIndicator.style.display = 'none';
-        fsIndicator.classList.remove('fs-overridden');
-      }
       if (btnRedraw) btnRedraw.style.display = isAlternateScreen ? 'inline-flex' : 'none';
       if (isTuiMouseActive() && !fsHintShown) {
         fsHintShown = true;
@@ -205,7 +190,7 @@ function getClientScript(ctx) {
     // normal-mode behavior even when detection says fullscreen. Escape hatch
     // for cases where Claude leaves the flag stuck or the user simply wants
     // local wheel scroll instead of forwarding to the TUI.
-    fsIndicator.addEventListener('click', () => {
+    if (fsIndicator) fsIndicator.addEventListener('click', () => {
       const detected = isAlternateScreen || isMouseMode;
       if (!detected) return;
       forceNormalMode = !forceNormalMode;
@@ -1396,7 +1381,8 @@ function getClientScript(ctx) {
         const tag = (e.target && e.target.tagName) || '';
         if (tag === 'INPUT' || tag === 'TEXTAREA') return; // real user input
       }
-      const sel = getCleanSelection() || lastSelectionCache;
+      const sel = getCleanSelection() || lastSelectionCache
+        || (window.getSelection && window.getSelection().toString().trim()) || '';
       if (!sel) return; // no selection → let ^C pass through to xterm → PTY
       e.preventDefault();
       e.stopPropagation();
