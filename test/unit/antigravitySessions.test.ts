@@ -291,7 +291,7 @@ test('antigravity session item carries the conversation-resume command', () => {
   assert.ok(item, 'conv-a should be present');
   assert.equal(item.command.command, 'claudeCodeLauncher.resumeSession');
   assert.equal(item.command.arguments[0], 'conv-a');
-  assert.deepEqual(item.command.arguments[1], { agent: 'antigravity', antigravityResume: true, cwd: wsDir });
+  assert.deepEqual(item.command.arguments[1], { agent: 'antigravity', antigravityResume: true, cwd: wsDir, title: 'Newest' });
 });
 
 test('antigravity nesting persists under the antigravity parent key + renders as children', () => {

@@ -214,6 +214,14 @@ function activate(context) {
       if (newName) {
         activeEntry.title = newName;
         activeEntry.panel.title = newName;
+        if (activeEntry.agent === 'antigravity' && !activeEntry.isAntigravityResume && activeEntry.cwd) {
+          const { listAntigravitySessions } = require('./lib/sessionJsonl');
+          const sessions = listAntigravitySessions(activeEntry.cwd);
+          if (sessions.length > 0) {
+            activeEntry.sessionId = sessions[0].sessionId;
+            activeEntry.isAntigravityResume = true;
+          }
+        }
         saveSessions();
       }
     })
@@ -424,10 +432,11 @@ function activate(context) {
       // relative to the working directory), so opts.cwd is threaded into the
       // panel session as cwd. No claude-side title/savedSessions bookkeeping.
       if (opts && opts.agent === 'kiro') {
+        const kiroTitles = sessionStoreGet('kiroSessionTitles', {});
         createPanel(
           context,
           extensionPath,
-          { sessionId, cwd: opts.cwd, agent: 'kiro', isKiroResume: true },
+          { sessionId, cwd: opts.cwd, agent: 'kiro', isKiroResume: true, title: kiroTitles[sessionId] || opts.title },
           {}
         );
         return;
@@ -436,10 +445,11 @@ function activate(context) {
       // `agy --conversation <id>` in its own cwd. Like kiro, no claude-side
       // title/savedSessions bookkeeping (antigravity has its own store keys).
       if (opts && opts.agent === 'antigravity') {
+        const agyTitles = sessionStoreGet('antigravitySessionTitles', {});
         createPanel(
           context,
           extensionPath,
-          { sessionId, cwd: opts.cwd, agent: 'antigravity', isAntigravityResume: true },
+          { sessionId, cwd: opts.cwd, agent: 'antigravity', isAntigravityResume: true, title: agyTitles[sessionId] || opts.title },
           {}
         );
         return;
@@ -448,10 +458,11 @@ function activate(context) {
       // `codex resume <id>` in its own cwd. Like kiro/antigravity, no
       // claude-side title/savedSessions bookkeeping (codex has its own keys).
       if (opts && opts.agent === 'codex') {
+        const codexTitles = sessionStoreGet('codexSessionTitles', {});
         createPanel(
           context,
           extensionPath,
-          { sessionId, cwd: opts.cwd, agent: 'codex', isCodexResume: true },
+          { sessionId, cwd: opts.cwd, agent: 'codex', isCodexResume: true, title: codexTitles[sessionId] || opts.title },
           {}
         );
         return;

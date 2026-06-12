@@ -16,6 +16,7 @@ const state = require('../state');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { saveSessions } = require('../store/sessionManager');
+const { listAntigravitySessions } = require('../lib/sessionJsonl');
 const { writePtyChunked } = require('../pty/write');
 const { handleToolbar } = require('../handlers/toolbar');
 const { pickAgent } = require('../handlers/pickAgent');
@@ -116,6 +117,16 @@ function routeWebviewMessage(msg, ctx) {
         if (newName) {
           entry.title = newName;
           panel.title = newName;
+          // Antigravity fresh/--continue sessions carry a placeholder UUID that
+          // never matches the real conversation id in the tree. Resolve it now
+          // so the rename persists in the correct titleMap slot.
+          if (entry.agent === 'antigravity' && !entry.isAntigravityResume && entry.cwd) {
+            const sessions = listAntigravitySessions(entry.cwd);
+            if (sessions.length > 0) {
+              entry.sessionId = sessions[0].sessionId;
+              entry.isAntigravityResume = true;
+            }
+          }
           panel.webview.postMessage({ type: 'title-updated', title: newName });
           saveSessions();
         }

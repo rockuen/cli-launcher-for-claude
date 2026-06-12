@@ -23,6 +23,46 @@ function stripAnsi(s) {
     .replace(/[\x00-\x1f\x7f]/g, '');
 }
 
+function _modelTotalK(buf, entry) {
+  const modelMatch = buf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
+  if (modelMatch) {
+    return modelMatch[2].toUpperCase() === 'M'
+      ? parseFloat(modelMatch[1]) * 1000
+      : parseFloat(modelMatch[1]);
+  }
+  return (entry && entry._ctxTotal) || 1000;
+}
+
+function _fmtK(k) {
+  const rounded = Math.round(k);
+  return rounded + 'k';
+}
+
+function _usageFromPct(entry, pct, totalK) {
+  if (entry && entry.agent === 'codex') {
+    // Codex's TUI reports context remaining, not context used. Keep _ctxUsed
+    // internally as used tokens for delta accumulation, but tell the webview to
+    // render the visible percentage as remaining (green when high, red when low).
+    const remainingK = Math.round(totalK * pct / 100);
+    const usedK = Math.max(0, Math.round(totalK - remainingK));
+    entry._ctxUsed = usedK;
+    entry._ctxRemaining = remainingK;
+    entry._ctxTotal = totalK;
+    return {
+      used: _fmtK(usedK),
+      remaining: _fmtK(remainingK),
+      total: _fmtK(totalK),
+      pct,
+      mode: 'remaining',
+    };
+  }
+
+  const usedK = Math.round(totalK * pct / 100);
+  entry._ctxUsed = usedK;
+  entry._ctxTotal = totalK;
+  return { used: _fmtK(usedK), total: _fmtK(totalK), pct, mode: 'used' };
+}
+
 function createContextParser() {
   let ctxBuf = '';
 
@@ -37,55 +77,42 @@ function createContextParser() {
 
     let usage = null;
 
+    // Kiro TUI status line: "Kiro  auto  2%". Kiro does not currently write
+    // context usage into its jsonl transcript, so the live TUI status line is
+    // the best available source. Treat it as percent used.
+    const kiroStatusMatch = entry && entry.agent === 'kiro'
+      ? ctxBuf.match(/\bKiro\s+\S+\s+(\d{1,3})\s*%/i)
+      : null;
+    if (kiroStatusMatch && parseInt(kiroStatusMatch[1]) <= 100) {
+      const pct = parseInt(kiroStatusMatch[1]);
+      usage = _usageFromPct(entry, pct, _modelTotalK(ctxBuf, entry));
+    }
+
     // 1. Prompt status line: "ctx:52%"
     const ctxPctMatch = ctxBuf.match(/ctx:(\d+)%/);
-    if (ctxPctMatch) {
+    if (!usage && ctxPctMatch) {
       const pct = parseInt(ctxPctMatch[1]);
-      const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
-      let totalK = entry._ctxTotal || 1000;
-      if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
-      const usedK = Math.round(totalK * pct / 100);
-      entry._ctxUsed = usedK;
-      entry._ctxTotal = totalK;
-      usage = { used: usedK + 'k', total: totalK + 'k', pct };
+      usage = _usageFromPct(entry, pct, _modelTotalK(ctxBuf, entry));
     } else {
       // 1.5. Progress bar
       const barMatch = ctxBuf.match(/\[[^\]\n]{2,}\]\s*(\d+)\s*%/);
-      if (barMatch) {
+      if (!usage && barMatch) {
         const pct = parseInt(barMatch[1]);
-        const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
-        let totalK = entry._ctxTotal || 1000;
-        if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
-        const usedK = Math.round(totalK * pct / 100);
-        entry._ctxUsed = usedK;
-        entry._ctxTotal = totalK;
-        usage = { used: usedK + 'k', total: totalK + 'k', pct };
+        usage = _usageFromPct(entry, pct, _modelTotalK(ctxBuf, entry));
       } else {
         // 1.6. Keyword fallback
         const kwMatch = ctxBuf.match(/(?:컨텍스트|context[eo]?|kontext|コンテキスト|上下文|kontekst|kontextu?|contexte):?\s+.*?(\d+)\s*%/i);
-        if (kwMatch) {
+        if (!usage && kwMatch) {
           const pct = parseInt(kwMatch[1]);
           if (pct <= 100) {
-            const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
-            let totalK = entry._ctxTotal || 1000;
-            if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
-            const usedK = Math.round(totalK * pct / 100);
-            entry._ctxUsed = usedK;
-            entry._ctxTotal = totalK;
-            usage = { used: usedK + 'k', total: totalK + 'k', pct };
+            usage = _usageFromPct(entry, pct, _modelTotalK(ctxBuf, entry));
           }
         } else {
           // 1.7. Broad fallback
           const broad = ctxBuf.match(/(?:컨텍스트|context|ctx)\S*[\s\S]{0,50}?(\d{1,3})\s*%/i);
-          if (broad && parseInt(broad[1]) > 0 && parseInt(broad[1]) <= 100) {
+          if (!usage && broad && parseInt(broad[1]) > 0 && parseInt(broad[1]) <= 100) {
             const pct = parseInt(broad[1]);
-            const modelMatch = ctxBuf.match(/(\d+(?:\.\d+)?)(M|k)\s*context/i);
-            let totalK = entry._ctxTotal || 1000;
-            if (modelMatch) totalK = modelMatch[2].toUpperCase() === 'M' ? parseFloat(modelMatch[1]) * 1000 : parseFloat(modelMatch[1]);
-            const usedK = Math.round(totalK * pct / 100);
-            entry._ctxUsed = usedK;
-            entry._ctxTotal = totalK;
-            usage = { used: usedK + 'k', total: totalK + 'k', pct };
+            usage = _usageFromPct(entry, pct, _modelTotalK(ctxBuf, entry));
           }
         }
       }
@@ -101,7 +128,7 @@ function createContextParser() {
           const pct = totalNum > 0 ? Math.round(usedNum / totalNum * 100) : 0;
           entry._ctxUsed = usedNum;
           entry._ctxTotal = totalNum;
-          usage = { used, total, pct };
+          usage = { used, total, pct, mode: 'used' };
         }
       }
     }
@@ -115,7 +142,7 @@ function createContextParser() {
       const used = entry._ctxUsed >= 10 ? Math.round(entry._ctxUsed) + 'k' : entry._ctxUsed.toFixed(1) + 'k';
       const total = Math.round(entry._ctxTotal) + 'k';
       const pct = entry._ctxTotal > 0 ? Math.round(entry._ctxUsed / entry._ctxTotal * 100) : 0;
-      usage = { used, total, pct };
+      usage = { used, total, pct, mode: 'used' };
     }
 
     return usage;

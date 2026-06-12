@@ -386,15 +386,22 @@ function getClientScript(ctx) {
     const ctxBarFill = document.getElementById('ctx-bar-fill');
     const ctxLabel = document.getElementById('ctx-label');
 
-    function updateContextIndicator(used, total, pct) {
+    function updateContextIndicator(payload) {
+      payload = payload || {};
+      const mode = payload.mode || 'used';
+      const isRemaining = mode === 'remaining';
+      const primary = isRemaining ? (payload.remaining || payload.used) : payload.used;
+      const total = payload.total;
+      const pct = payload.pct;
       ctxIndicator.style.display = 'inline-flex';
-      ctxLabel.textContent = used + '/' + total + (pct != null ? ' ' + pct + '%' : '');
+      ctxIndicator.title = isRemaining ? 'Context remaining (click to compact)' : T.ctxUsageTip;
+      ctxLabel.textContent = primary + '/' + total + (pct != null ? ' ' + pct + '%' : '');
       const p = pct != null ? pct : 0;
       ctxBarFill.style.width = Math.min(p, 100) + '%';
-      if (p >= 80) {
+      if (isRemaining ? p <= 20 : p >= 80) {
         ctxBarFill.style.background = '#f44336';
         ctxLabel.style.color = '#f44336';
-      } else if (p >= 50) {
+      } else if (isRemaining ? p <= 50 : p >= 50) {
         ctxBarFill.style.background = '#e8a317';
         ctxLabel.style.color = '#e8a317';
       } else {
@@ -1162,7 +1169,7 @@ function getClientScript(ctx) {
         }
       }
       if (msg.type === 'context-usage') {
-        updateContextIndicator(msg.used, msg.total, msg.pct);
+        updateContextIndicator(msg);
       }
       // Auto-expand / restore the bottom terminal pane around an interactive
       // prompt (ext detects it idle-gated). Handlers live in setupSplitter,
@@ -1693,14 +1700,10 @@ function getClientScript(ctx) {
       const text = editorTextarea.value;
       if (!text.trim()) return;
       flashSend();
-      // Send each line followed by newline
-      const lines = text.split('\\n');
-      for (let i = 0; i < lines.length; i++) {
-        if (i > 0) vscode.postMessage({ type: 'input', data: '\\n' });
-        vscode.postMessage({ type: 'input', data: lines[i] });
-      }
-      // Send final Enter to submit
-      vscode.postMessage({ type: 'input', data: '\\r' });
+      // Send the prompt and submit key as one PTY payload. Codex's TUI can
+      // accept pasted text and a physical Enter, but may ignore a submit key
+      // delivered as a separate webview message immediately after the text.
+      vscode.postMessage({ type: 'input', data: text + '\\r' });
       markReaderTyping();
       // Add to input history
       if (text.trim().length > 0) {

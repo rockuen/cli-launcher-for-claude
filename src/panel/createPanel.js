@@ -85,7 +85,7 @@ function startReaderWatch(entry, panel) {
   // Session ids that already existed for this cwd BEFORE this fresh panel
   // spawned, so discovery never claims a pre-existing session. Snapshot once.
   const kiroPreIds = (entry.agent === 'kiro' && !entry._kiroPinned)
-    ? new Set(listKiroSessions(entry.cwd).map(s => s.sessionId))
+    ? (entry._kiroPreIds || new Set(listKiroSessions(entry.cwd).map(s => s.sessionId)))
     : null;
   const resolveKiroPath = () => {
     if (!entry._kiroPinned) {
@@ -120,7 +120,7 @@ function startReaderWatch(entry, panel) {
     _claimedCodexIds.add(entry.sessionId);
   }
   const codexPreIds = (entry.agent === 'codex' && !entry._codexPinned)
-    ? new Set(listCodexSessions(entry.cwd).map(s => s.sessionId))
+    ? (entry._codexPreIds || new Set(listCodexSessions(entry.cwd).map(s => s.sessionId)))
     : null;
   const resolveCodexPath = () => {
     if (!entry._codexPinned) {
@@ -158,6 +158,7 @@ function startReaderWatch(entry, panel) {
     : () => watchTarget;
 
   let debounceTimer = null;
+  let discoveryTimer = null;
   // v3.5.7: defer renders on hidden panels. renderBlocks() on a multi-MB
   // jsonl produces a multi-MB HTML payload; sending that to a Chromium-
   // throttled webview every poll is one of the biggest contributors to the
@@ -168,6 +169,9 @@ function startReaderWatch(entry, panel) {
     debounceTimer = null;
     if (entry._disposed) return;
     const jsonlPath = resolvePath();
+    if ((entry.agent === 'kiro' && entry._kiroPinned) || (entry.agent === 'codex' && entry._codexPinned)) {
+      if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
+    }
     if (!jsonlPath || !fs.existsSync(jsonlPath)) return;
     if (!panel.active) { pendingRender = true; return; }
     let messages, aiTitle;
@@ -227,6 +231,10 @@ function startReaderWatch(entry, panel) {
     watcher.on('change', () => schedule());
     watcher.on('error', (e) => console.error('[panel-reader] watcher error:', e && e.message));
     console.log('[panel-reader] watching ' + watchTarget);
+    if ((entry.agent === 'kiro' && !entry._kiroPinned) || (entry.agent === 'codex' && !entry._codexPinned)) {
+      discoveryTimer = setInterval(schedule, 1000);
+      schedule();
+    }
   } catch (e) {
     console.error('[panel-reader] failed to start watch:', e.message);
     return null;
@@ -234,6 +242,7 @@ function startReaderWatch(entry, panel) {
 
   return () => {
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
     if (watcher) { try { watcher.close(); } catch (_) {} }
     // Release this panel's kiro id so a later session can reuse it.
     if (entry.agent === 'kiro' && entry._kiroPinned && entry.sessionId) {
@@ -379,6 +388,15 @@ function createPanel(context, extensionPath, session, opts) {
   // (agent is already resolved above for tabTitle — reused here)
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
   const sessionId = session?.sessionId || crypto.randomUUID();
+  // Fresh Kiro/Codex sessions assign their real ids only after the CLI starts.
+  // Snapshot existing ids BEFORE spawn so a very fast first write cannot be
+  // mistaken for a pre-existing session and leave the reader unpinned forever.
+  const kiroPreSessionIds = (agent === 'kiro' && !session?.isKiroResume)
+    ? new Set(listKiroSessions(cwd).map(s => s.sessionId))
+    : null;
+  const codexPreSessionIds = (agent === 'codex' && !session?.isCodexResume && !findCodexSessionPath(session?.sessionId))
+    ? new Set(listCodexSessions(cwd).map(s => s.sessionId))
+    : null;
 
   let shell, args;
   if (agent === 'kiro') {
@@ -585,6 +603,8 @@ function createPanel(context, extensionPath, session, opts) {
     // UUID, so createPanel/restartPty resume via `resume <id>` instead of
     // `resume --last` — and the reader can resolve the exact rollout jsonl.
     isCodexResume: !!(session && session.isCodexResume),
+    _kiroPreIds: kiroPreSessionIds,
+    _codexPreIds: codexPreSessionIds,
     state: 'running',
     idleTimer: null,
     backend: backend,

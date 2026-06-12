@@ -576,7 +576,7 @@ class SessionTreeDataProvider {
       item.command = {
         command: 'claudeCodeLauncher.resumeSession',
         title: 'Resume',
-        arguments: [s.sessionId, { agent: 'kiro', kiroResume: true, cwd: s.cwd }],
+        arguments: [s.sessionId, { agent: 'kiro', kiroResume: true, cwd: s.cwd, title: label }],
       };
       itemMap.set(s.sessionId, item);
       mtimeMap.set(s.sessionId, mtime);
@@ -624,7 +624,7 @@ class SessionTreeDataProvider {
         command: 'claudeCodeLauncher.resumeSession',
         title: 'Resume',
         // antigravityResume → exact `agy --conversation <id>` resume in its cwd.
-        arguments: [s.sessionId, { agent: 'antigravity', antigravityResume: true, cwd: s.cwd }],
+        arguments: [s.sessionId, { agent: 'antigravity', antigravityResume: true, cwd: s.cwd, title: label }],
       };
       itemMap.set(s.sessionId, item);
       mtimeMap.set(s.sessionId, mtime);
@@ -669,7 +669,7 @@ class SessionTreeDataProvider {
         command: 'claudeCodeLauncher.resumeSession',
         title: 'Resume',
         // codexResume → exact `codex resume <id>` resume in its cwd.
-        arguments: [s.sessionId, { agent: 'codex', codexResume: true, cwd: s.cwd }],
+        arguments: [s.sessionId, { agent: 'codex', codexResume: true, cwd: s.cwd, title: label }],
       };
       itemMap.set(s.sessionId, item);
       mtimeMap.set(s.sessionId, mtime);
