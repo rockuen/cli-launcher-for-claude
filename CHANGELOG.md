@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.9.4] - 2026-06-14
+
+### Added
+- **Per-agent tab status icons.** Each session tab now shows its agent's own logo — Claude spark, Codex blossom, Kiro ghost, Antigravity wing — tinted by status (gray idle, yellow running, green done, red error, blue background-shell). `setTabIcon` resolves `{agent}-{status}.svg` from the panel's agent and falls back to the Claude icon when an agent has no dedicated set yet.
+- **Reader handoff button.** A handoff (⇄) button now sits in the reader toolbar (left of the reader toggle) and invokes the existing hand-off-to-another-agent command.
+
+### Changed
+- **Codex context indicator shows usage (0→100%)** like Claude/Kiro instead of remaining — green below 50%, yellow at 50%+, red at 80%+.
+- **Input-box submission hardened for Claude & Codex.** The editor input sends the text and the Enter key as one deferred sequence so the TUI reliably registers the submit instead of leaving the line unsent.
+
 ## [3.9.3] - 2026-06-12
 
 ### Fixed
