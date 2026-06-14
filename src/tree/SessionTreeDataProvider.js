@@ -27,6 +27,7 @@ const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
 const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions, listCodexSessions } = require('../lib/sessionJsonl');
+const { getKiroSessionsDir } = require('../lib/projectSessions');
 const { formatBytes } = require('../lib/sizeFormat');
 const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_THRESHOLD: SIZE_ERROR, formatMB } = require('./SessionDecorationProvider');
 
@@ -814,6 +815,7 @@ class SessionTreeDataProvider {
           item.contextValue = 'kiroTrashed';
           item.tooltip = `Trashed Kiro session: ${s.sessionId}\nClick to restore.`;
           item._sessionId = s.sessionId;
+          item._cwd = kiroCwd;
           item._mtime = mtime;
           item.command = { command: 'claudeCodeLauncher.restoreKiroSession', title: 'Restore', arguments: [item] };
           return item;
@@ -831,7 +833,8 @@ class SessionTreeDataProvider {
   // Kiro trash dir — trashed kiro sessions (<id>.json + <id>.jsonl) live here,
   // a subdir of the cli sessions dir that listKiroSessions/kiro-cli don't scan.
   _kiroTrashDir() {
-    return path.join(os.homedir(), '.kiro', 'sessions', 'cli', 'trash');
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    return path.join(getKiroSessionsDir(cwd), 'trash');
   }
 
   // v3.6.9: protectedIds = ids in custom groups + Resume Later. archivedIds =

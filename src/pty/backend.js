@@ -36,8 +36,8 @@ const SPAWN_NAME = 'xterm-256color';
 // Build the spawn env the same way both call sites did: inherit the process
 // env and force colour so the TUI renders ANSI. Read at spawn time (matches the
 // previous inline behaviour).
-function spawnEnv() {
-  return { ...process.env, FORCE_COLOR: '1', COLORFGBG: '15;0' };
+function spawnEnv(extraEnv) {
+  return { ...process.env, ...(extraEnv || {}), FORCE_COLOR: '1', COLORFGBG: '15;0' };
 }
 
 // Spawn the claude CLI (optionally wrapped by a multiplexer) and return a
@@ -52,7 +52,7 @@ function createPtyBackend(opts) {
     cols: opts.cols,
     rows: opts.rows,
     cwd: opts.cwd,
-    env: spawnEnv(),
+    env: spawnEnv(opts.env),
   });
   // IPty already exposes onData/onExit/write/resize/kill/pid. Tag the two
   // metadata fields the seam adds; everything else is the real pty, so callers

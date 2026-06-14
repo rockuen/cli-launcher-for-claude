@@ -12,6 +12,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
+const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir } = require('./projectSessions');
 
 // Find the most-recently-updated Kiro session jsonl that matches the given cwd.
 // Kiro writes a companion .json metadata file alongside each .jsonl (same dir,
@@ -20,7 +21,7 @@ const fs = require('fs');
 // whose cwd matches, and return the path of the most recently updated one.
 // Returns null when the directory doesn't exist or no matching session is found.
 function findLatestKiroSessionPath(cwd) {
-  const dir = path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+  const dir = getKiroSessionsDir(cwd);
   let files;
   try {
     files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.jsonl'));
@@ -46,7 +47,7 @@ function findLatestKiroSessionPath(cwd) {
 // Returns [] when the directory doesn't exist or nothing matches. The `_dir`
 // arg is test-only injection; production callers pass cwd alone.
 function listKiroSessions(cwd, _dir) {
-  const dir = _dir || path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+  const dir = _dir || getKiroSessionsDir(cwd);
   let files;
   try {
     files = fs.readdirSync(dir).filter(f => f.endsWith('.json') && !f.endsWith('.jsonl'));
@@ -143,7 +144,7 @@ function _cwdMatch(metaCwd, cwd) {
 // neither history nor conversations exist (agy never run / not logged in). The
 // `_file` / `_convDir` args are test-only injection; production passes cwd alone.
 function listAntigravitySessions(cwd, _file, _convDir) {
-  const baseDir = path.join(os.homedir(), '.gemini', 'antigravity-cli');
+  const baseDir = getAntigravityBaseDir(cwd);
   const file = _file || path.join(baseDir, 'history.jsonl');
   const convDir = _convDir || path.join(baseDir, 'conversations');
 
@@ -223,8 +224,8 @@ const CODEX_ROLLOUT_RE = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 // to ~22 KB) — read a 64 KB head so the first line is never truncated.
 const CODEX_META_CHUNK = 65536;
 
-function _codexSessionsDir() {
-  return path.join(os.homedir(), '.codex', 'sessions');
+function _codexSessionsDir(cwd) {
+  return getCodexPaths(cwd).sessionsDir;
 }
 
 // Walk the date-sharded sessions tree (YYYY/MM/DD — the only layout codex
@@ -254,9 +255,9 @@ function _walkCodexRollouts(dir) {
 
 // Resolve a codex session id to its rollout jsonl path (or null). The filename
 // embeds the id, so this is a directory walk + suffix match — no file reads.
-function findCodexSessionPath(sessionId, _dir) {
+function findCodexSessionPath(sessionId, _dir, cwd) {
   if (!sessionId) return null;
-  const dir = _dir || _codexSessionsDir();
+  const dir = _dir || _codexSessionsDir(cwd);
   const needle = String(sessionId).toLowerCase();
   for (const p of _walkCodexRollouts(dir)) {
     const m = p.match(CODEX_ROLLOUT_RE);
@@ -272,8 +273,9 @@ function findCodexSessionPath(sessionId, _dir) {
 // { sessionId, title, cwd, mtime }. The `_dir` / `_indexFile` args are
 // test-only injection; production callers pass cwd alone.
 function listCodexSessions(cwd, _dir, _indexFile) {
-  const dir = _dir || _codexSessionsDir();
-  const indexFile = _indexFile || path.join(os.homedir(), '.codex', 'session_index.jsonl');
+  const codexPaths = getCodexPaths(cwd);
+  const dir = _dir || codexPaths.sessionsDir;
+  const indexFile = _indexFile || codexPaths.indexFile;
 
   // id → thread_name from session_index.jsonl (last write wins).
   const titles = new Map();
@@ -338,7 +340,7 @@ function getSessionJsonlPath(sessionId, cwd, agent) {
     // pinning lands in a later phase). No cwd-latest fallback on purpose — it
     // would bleed sibling sessions sharing the cwd into the reader (the exact
     // bug the kiro pinning work fixed).
-    return findCodexSessionPath(sessionId);
+    return findCodexSessionPath(sessionId, null, cwd);
   }
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids. Once we know the REAL id — a
@@ -350,7 +352,7 @@ function getSessionJsonlPath(sessionId, cwd, agent) {
     // crypto.randomUUID()s never exist as <id>.jsonl on disk, so existsSync
     // cleanly tells a real kiro id from a not-yet-pinned placeholder.
     if (sessionId) {
-      const direct = path.join(os.homedir(), '.kiro', 'sessions', 'cli', `${sessionId}.jsonl`);
+      const direct = path.join(getKiroSessionsDir(cwd), `${sessionId}.jsonl`);
       if (fs.existsSync(direct)) return direct;
     }
     // Fresh session, real id not yet known → cwd-latest discovery (the reader

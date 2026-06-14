@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.9.5] - 2026-06-14
+
+### Added
+- **Project-scoped session storage for Codex, Kiro, and Antigravity.** New setting `claudeCodeLauncher.sessionStorage.scope` can be set to `project` so launcher-run non-Claude sessions use `<workspace>/.agent-sessions/<agent>` instead of the global CLI homes. This separates Won/iloom histories without OneDrive live-sync junctions. Default remains `global` for full backward compatibility.
+
+### Changed
+- **Project virtual homes for agent CLIs.** In project mode, the launcher creates per-workspace virtual homes under `.agent-sessions/.home` and links/copies only the CLI config/auth surfaces needed for Codex, Kiro, and Antigravity to run while keeping sessions project-local.
+- **Kiro trash/restore paths follow session scope.** Kiro session delete/restore now resolves the selected project/global session directory instead of hardcoding the global CLI sessions path.
+
+### Tests
+- Added `test/unit/projectSessions.test.ts` covering global vs project path resolution, virtual-home setup, and PTY env integration points. Full suite: 339 node + 54 vitest passing.
+
 ## [3.9.4] - 2026-06-14
 
 ### Added

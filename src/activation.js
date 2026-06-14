@@ -18,6 +18,7 @@ const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
 const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions } = require('./lib/sessionJsonl');
+const { getKiroSessionsDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
@@ -747,7 +748,8 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.trashKiroSession', async (item) => {
       const sessionId = item && item._sessionId;
       if (!sessionId) return;
-      const cliDir = path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+      const cwd = item._cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      const cliDir = getKiroSessionsDir(cwd);
       const trashDir = path.join(cliDir, 'trash');
       try { if (!fs.existsSync(trashDir)) fs.mkdirSync(trashDir, { recursive: true }); } catch (_) {}
       for (const ext of ['.json', '.jsonl']) {
@@ -771,7 +773,8 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.restoreKiroSession', async (item) => {
       const sessionId = item && item._sessionId;
       if (!sessionId) return;
-      const cliDir = path.join(os.homedir(), '.kiro', 'sessions', 'cli');
+      const cwd = item._cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      const cliDir = getKiroSessionsDir(cwd);
       const trashDir = path.join(cliDir, 'trash');
       for (const ext of ['.json', '.jsonl']) {
         const src = path.join(trashDir, sessionId + ext);
@@ -784,7 +787,8 @@ function activate(context) {
   // Kiro Trash: empty — permanently delete every file under <kiro cli>/trash.
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.emptyKiroTrash', async () => {
-      const trashDir = path.join(os.homedir(), '.kiro', 'sessions', 'cli', 'trash');
+      const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      const trashDir = path.join(getKiroSessionsDir(cwd), 'trash');
       if (!fs.existsSync(trashDir)) return;
       const files = fs.readdirSync(trashDir).filter((f) => f.endsWith('.json') || f.endsWith('.jsonl'));
       if (files.length === 0) return;

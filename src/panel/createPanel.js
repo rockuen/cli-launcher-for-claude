@@ -27,6 +27,7 @@ const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath } = require('../lib/sessionJsonl');
+const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths } = require('../lib/projectSessions');
 const { buildMeta, renderBlocks, renderWelcome, resolveReaderNames } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
@@ -114,7 +115,7 @@ function startReaderWatch(entry, panel) {
   // placeholder UUID that findCodexSessionPath can't resolve, so they correctly
   // stay in discovery mode. Mark isCodexResume so restart/save use `resume <id>`.
   if (entry.agent === 'codex' && !entry._codexPinned && entry.sessionId
-      && (entry.isCodexResume || findCodexSessionPath(entry.sessionId))) {
+      && (entry.isCodexResume || findCodexSessionPath(entry.sessionId, null, entry.cwd))) {
     entry._codexPinned = true;
     entry.isCodexResume = true;
     _claimedCodexIds.add(entry.sessionId);
@@ -140,13 +141,13 @@ function startReaderWatch(entry, panel) {
   };
 
   const watchTarget = entry.agent === 'kiro'
-    ? path.join(os.homedir(), '.kiro', 'sessions', 'cli')
+    ? getKiroSessionsDir(entry.cwd)
     : entry.agent === 'codex'
       // Fresh codex: watch the whole rollout tree to catch the new file appear.
       // Pinned/resume codex: the exact rollout path (cheaper poll, deep tree).
       ? (entry._codexPinned
           ? getSessionJsonlPath(entry.sessionId, entry.cwd, 'codex')
-          : path.join(os.homedir(), '.codex', 'sessions'))
+          : getCodexPaths(entry.cwd).sessionsDir)
       : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
   if (!watchTarget) return null;
 
@@ -395,7 +396,7 @@ function createPanel(context, extensionPath, session, opts) {
   const kiroPreSessionIds = (agent === 'kiro' && !session?.isKiroResume)
     ? new Set(listKiroSessions(cwd).map(s => s.sessionId))
     : null;
-  const codexPreSessionIds = (agent === 'codex' && !session?.isCodexResume && !findCodexSessionPath(session?.sessionId))
+  const codexPreSessionIds = (agent === 'codex' && !session?.isCodexResume && !findCodexSessionPath(session?.sessionId, null, cwd))
     ? new Set(listCodexSessions(cwd).map(s => s.sessionId))
     : null;
 
@@ -491,7 +492,7 @@ function createPanel(context, extensionPath, session, opts) {
     // Tree-resume (isCodexResume) or a restored session whose saved id resolves.
     // `resume --last` is only a fallback for a not-yet-pinned placeholder id, so
     // the spawned codex matches what the reader pins to (no session/reader skew).
-    const codexArgs = (session?.isCodexResume || (session?.sessionId && findCodexSessionPath(session.sessionId)))
+    const codexArgs = (session?.isCodexResume || (session?.sessionId && findCodexSessionPath(session.sessionId, null, cwd)))
       ? ['resume', session.sessionId]
       : (session?.sessionId ? ['resume', '--last'] : []);
     // --dangerously-bypass-approvals-and-sandbox (opt-in via codex.trustAllTools):
@@ -546,6 +547,7 @@ function createPanel(context, extensionPath, session, opts) {
 
   console.log('[Claude Launcher] Spawning:', spawnBin, spawnArgs.join(' '), '| cwd:', cwd, '| backend:', backend);
   console.log('[Claude Launcher] resolved shell:', shell, '| agent:', agent, '| args:', args);
+  const sessionEnv = prepareProjectSessionEnvironment(agent, cwd, process.env);
 
   let ptyProcess;
   try {
@@ -557,6 +559,7 @@ function createPanel(context, extensionPath, session, opts) {
       cols: 120,
       rows: 30,
       muxSessionName,
+      env: sessionEnv,
     });
     console.log('[Claude Launcher] PTY spawned OK, pid:', ptyProcess.pid);
   } catch (e) {
