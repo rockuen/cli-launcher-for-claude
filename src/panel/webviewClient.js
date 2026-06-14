@@ -373,20 +373,18 @@ function getClientScript(ctx) {
 
     function updateContextIndicator(payload) {
       payload = payload || {};
-      const mode = payload.mode || 'used';
-      const isRemaining = mode === 'remaining';
-      const primary = isRemaining ? (payload.remaining || payload.used) : payload.used;
+      const primary = payload.used;
       const total = payload.total;
       const pct = payload.pct;
       ctxIndicator.style.display = 'inline-flex';
-      ctxIndicator.title = isRemaining ? 'Context remaining (click to compact)' : T.ctxUsageTip;
+      ctxIndicator.title = T.ctxUsageTip;
       ctxLabel.textContent = primary + '/' + total + (pct != null ? ' ' + pct + '%' : '');
       const p = pct != null ? pct : 0;
       ctxBarFill.style.width = Math.min(p, 100) + '%';
-      if (isRemaining ? p <= 20 : p >= 80) {
+      if (p >= 80) {
         ctxBarFill.style.background = '#f44336';
         ctxLabel.style.color = '#f44336';
-      } else if (isRemaining ? p <= 50 : p >= 50) {
+      } else if (p >= 50) {
         ctxBarFill.style.background = '#e8a317';
         ctxLabel.style.color = '#e8a317';
       } else {
@@ -506,6 +504,10 @@ function getClientScript(ctx) {
     document.getElementById('btn-toggle-split').addEventListener('click', () => {
       splitOn = !splitOn;
       applySplitVisibility();
+      term.focus();
+    });
+    document.getElementById('btn-handoff').addEventListener('click', () => {
+      vscode.postMessage({ type: 'invoke-command', command: 'claudeCodeLauncher.handoffToOther' });
       term.focus();
     });
 
@@ -1686,10 +1688,11 @@ function getClientScript(ctx) {
       const text = editorTextarea.value;
       if (!text.trim()) return;
       flashSend();
-      // Send the prompt and submit key as one PTY payload. Codex's TUI can
-      // accept pasted text and a physical Enter, but may ignore a submit key
-      // delivered as a separate webview message immediately after the text.
-      vscode.postMessage({ type: 'input', data: text + '\\r' });
+      // Let the extension build a submit payload per agent. Claude/Codex are
+      // more reliable when launcher textarea submits are delivered as
+      // bracketed paste + Enter instead of raw text + CR.
+      term.focus();
+      vscode.postMessage({ type: 'submit-input', text });
       markReaderTyping();
       // Add to input history
       if (text.trim().length > 0) {

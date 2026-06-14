@@ -49,6 +49,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <button class="toolbar-btn" id="btn-zoom-out" title="${T.zoomOutTip}" style="display:none">-</button>
       <span id="font-size-label" style="display:none">${fontSize}px</span>
       <button class="toolbar-btn" id="btn-zoom-in" title="${T.zoomInTip}" style="display:none">+</button>
+      <button class="toolbar-btn" id="btn-handoff" title="${T.handoffTip || 'Hand off to another agent'}">&#x21C4;</button>
       <button class="toolbar-btn" id="btn-toggle-split" title="Toggle split layout (reader + terminal)">&#x1F441;</button>
       <button class="toolbar-btn" id="btn-sound" title="${T.soundToggleTip}" style="display:none">&#x1F514;</button>
       <button class="toolbar-btn" id="btn-settings" title="Settings" style="font-size:13px;">&#x2699;</button>

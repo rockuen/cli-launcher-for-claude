@@ -312,6 +312,7 @@ function createPanel(context, extensionPath, session, opts) {
     }
   );
 
+  panel._agent = agent;
   setTabIcon(panel, 'running', extensionPath);
   setStatusBar('running');
 

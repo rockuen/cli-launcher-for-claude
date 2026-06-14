@@ -3,7 +3,7 @@
 // createPanel/pickAgent are injected (callbacks) to avoid circular imports.
 //
 // Message protocol (18 webview→ext):
-//   webview-ready, input, resize, toolbar, paste-image, check-clipboard-image,
+//   webview-ready, input, submit-input, resize, toolbar, paste-image, check-clipboard-image,
 //   drop-files, open-link, rename-tab, save-setting, export-settings, import-settings,
 //   close-resume, open-file, open-folder, open-reader, restart-session,
 //   request-edit-memo
@@ -27,6 +27,7 @@ const { handleOpenFolder } = require('../handlers/openFolder');
 const readerView = require('./readerView');
 const { handlePasteLargeText } = require('../handlers/pasteLargeText');
 const { restartPty } = require('./restartPty');
+const { buildSubmitInputWrites } = require('../pty/submitInput');
 
 // Pure cursor-navigation keystrokes (arrows / page / home / end) — the keys
 // used to move WITHIN a menu without answering it. The input handler keeps the
@@ -59,6 +60,24 @@ function routeWebviewMessage(msg, ctx) {
       // either, so a re-detected menu doesn't re-notify.
       if (!isNavKey(msg.data)) entry._recentTail = '';
       return;
+
+    case 'submit-input': {
+      if (!entry.pty) return;
+      const writes = buildSubmitInputWrites(msg.text || '', { agent: entry.agent });
+      let delay = 0;
+      for (const w of writes) {
+        delay += w.delayMs || 0;
+        if (delay > 0) {
+          setTimeout(() => {
+            if (entry.pty && !entry._disposed) writePtyChunked(entry, w.data);
+          }, delay);
+        } else {
+          writePtyChunked(entry, w.data);
+        }
+      }
+      entry._recentTail = '';
+      return;
+    }
 
     case 'resize':
       entry._lastCols = msg.cols;
@@ -147,6 +166,7 @@ function routeWebviewMessage(msg, ctx) {
       const ALLOWED_INVOKES = new Set([
         'claudeCodeLauncher.switchAccount',
         'claudeCodeLauncher.saveAccount',
+        'claudeCodeLauncher.handoffToOther',
       ]);
       if (typeof msg.command === 'string' && ALLOWED_INVOKES.has(msg.command)) {
         vscode.commands.executeCommand(msg.command);

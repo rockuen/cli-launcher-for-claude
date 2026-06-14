@@ -1,7 +1,7 @@
 // PTY context usage parser tests.
 //
-// Claude-style CLIs report context used, Codex reports context remaining, and
-// Kiro exposes only a TUI status-line percentage (e.g. "Kiro auto 2%").
+// Claude/Codex report context usage in the launcher, and Kiro exposes only a
+// TUI status-line percentage (e.g. "Kiro auto 2%").
 
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
@@ -24,19 +24,17 @@ test('Claude ctx percentage is rendered as context used', () => {
   assert.equal(entry._ctxTotal, 1000);
 });
 
-test('Codex ctx percentage is rendered as context remaining', () => {
+test('Codex ctx percentage is rendered as context used', () => {
   const entry: any = { agent: 'codex' };
   const usage = createContextParser().feed('ctx:52%', entry);
 
   assert.deepEqual(usage, {
-    used: '480k',
-    remaining: '520k',
+    used: '520k',
     total: '1000k',
     pct: 52,
-    mode: 'remaining',
+    mode: 'used',
   });
-  assert.equal(entry._ctxUsed, 480);
-  assert.equal(entry._ctxRemaining, 520);
+  assert.equal(entry._ctxUsed, 520);
   assert.equal(entry._ctxTotal, 1000);
 });
 

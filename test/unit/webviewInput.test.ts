@@ -1,8 +1,8 @@
 // Webview input-panel transport tests.
 //
-// The bottom textarea must send the prompt and submit key in one message. Codex
-// accepts text injected by the launcher, but can ignore an Enter delivered as a
-// separate webview→extension message immediately after the text.
+// The bottom textarea should route submits through the extension-side submit
+// helper. Claude/Codex are more reliable when the extension sends bracketed
+// paste + Enter instead of raw text + CR from the webview.
 
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ function renderClientScript(): string {
   });
 }
 
-test('editor textarea submits text and Enter as one PTY input payload', () => {
+test('editor textarea submits through the submit-input route', () => {
   const source = fs.readFileSync(
     path.join(process.cwd(), 'src/panel/webviewClient.js'),
     'utf8',
@@ -55,21 +55,28 @@ test('editor textarea submits text and Enter as one PTY input payload', () => {
 
   const block = source.slice(start, end);
 
-  assert.ok(
-    block.includes("vscode.postMessage({ type: 'input', data: text + '\\\\r' });"),
-  );
+  assert.ok(block.includes("vscode.postMessage({ type: 'submit-input', text });"));
+  assert.ok(block.includes('term.focus();'));
   assert.ok(!block.includes("const lines = text.split('\\\\n');"));
   assert.ok(!block.includes("vscode.postMessage({ type: 'input', data: '\\\\r' });"));
 
   const script = renderClientScript();
-  assert.ok(script.includes("vscode.postMessage({ type: 'input', data: text + '\\r' });"));
+  assert.ok(script.includes("vscode.postMessage({ type: 'submit-input', text });"));
 });
 
-test('context indicator supports remaining-mode payloads', () => {
+test('context indicator keeps standard usage-mode color thresholds', () => {
   const script = renderClientScript();
 
-  assert.ok(script.includes("const isRemaining = mode === 'remaining';"));
   assert.ok(script.includes("updateContextIndicator(msg);"));
-  assert.ok(script.includes('isRemaining ? p <= 20 : p >= 80'));
-  assert.ok(script.includes('isRemaining ? p <= 50 : p >= 50'));
+  assert.ok(script.includes('if (p >= 80)'));
+  assert.ok(script.includes('} else if (p >= 50)'));
+  assert.ok(!script.includes("mode === 'remaining'"));
+  assert.ok(!script.includes('Context remaining'));
+});
+
+test('toolbar exposes an in-panel handoff button', () => {
+  const script = renderClientScript();
+
+  assert.ok(script.includes("document.getElementById('btn-handoff')"));
+  assert.ok(script.includes("command: 'claudeCodeLauncher.handoffToOther'"));
 });

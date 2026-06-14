@@ -37,6 +37,7 @@ module.exports = {
   pasteImageTip: 'Paste clipboard image',
   zoomOutTip: 'Zoom out (Ctrl+-)',
   zoomInTip: 'Zoom in (Ctrl+=)',
+  handoffTip: 'Hand off to another agent',
   readerTip: 'Open in Reader',
   soundToggleTip: 'Sound on/off',
   newTabTip: 'New tab',

@@ -2,6 +2,7 @@
 
 const vscode = require('vscode');
 const path = require('path');
+const fs = require('fs');
 const state = require('../state');
 const { t } = require('../i18n');
 
@@ -13,16 +14,24 @@ const BG_SHELL_TTL_MS = 30_000;
 
 function setTabIcon(panel, status, extensionPath) {
   if (!panel) return;
-  const iconFile = {
-    idle: 'claude-idle.svg',
-    running: 'claude-running.svg',
-    done: 'claude-done.svg',
-    error: 'claude-error.svg',
-    'shell-running': 'claude-shell.svg'
-  }[status] || 'claude-idle.svg';
+  const suffix = {
+    idle: 'idle',
+    running: 'running',
+    done: 'done',
+    error: 'error',
+    'shell-running': 'shell'
+  }[status] || 'idle';
 
+  // Pick a per-agent icon (panel._agent is stamped in createPanel from
+  // entry.agent), falling back to the claude icon when an agent has no
+  // dedicated set yet (e.g. kiro/antigravity before their svgs land).
+  const agent = panel._agent || 'claude';
   try {
-    const iconUri = vscode.Uri.file(path.join(extensionPath, 'icons', iconFile));
+    let file = path.join(extensionPath, 'icons', `${agent}-${suffix}.svg`);
+    if (agent !== 'claude' && !fs.existsSync(file)) {
+      file = path.join(extensionPath, 'icons', `claude-${suffix}.svg`);
+    }
+    const iconUri = vscode.Uri.file(file);
     panel.iconPath = { light: iconUri, dark: iconUri };
   } catch (_) {}
 }

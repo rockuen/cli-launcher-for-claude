@@ -39,24 +39,6 @@ function _fmtK(k) {
 }
 
 function _usageFromPct(entry, pct, totalK) {
-  if (entry && entry.agent === 'codex') {
-    // Codex's TUI reports context remaining, not context used. Keep _ctxUsed
-    // internally as used tokens for delta accumulation, but tell the webview to
-    // render the visible percentage as remaining (green when high, red when low).
-    const remainingK = Math.round(totalK * pct / 100);
-    const usedK = Math.max(0, Math.round(totalK - remainingK));
-    entry._ctxUsed = usedK;
-    entry._ctxRemaining = remainingK;
-    entry._ctxTotal = totalK;
-    return {
-      used: _fmtK(usedK),
-      remaining: _fmtK(remainingK),
-      total: _fmtK(totalK),
-      pct,
-      mode: 'remaining',
-    };
-  }
-
   const usedK = Math.round(totalK * pct / 100);
   entry._ctxUsed = usedK;
   entry._ctxTotal = totalK;

@@ -36,6 +36,7 @@ module.exports = {
   pasteImageTip: '클립보드 이미지 붙여넣기',
   zoomOutTip: '글자 축소 (Ctrl+-)',
   zoomInTip: '글자 확대 (Ctrl+=)',
+  handoffTip: '다른 에이전트로 핸드오프',
   readerTip: '리더로 열기',
   soundToggleTip: '알림음 켜기/끄기',
   newTabTip: '새 탭',
