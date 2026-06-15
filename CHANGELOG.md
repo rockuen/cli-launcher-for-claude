@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.10.1] - 2026-06-15
+
+### Changed
+- **Sessions view title shows the Settings (gear) button instead of "Open Claude Code".** The unified **Sessions** view title bar now uses the same **⚙ Settings** button already present in the **Quick Actions** view (`claudeCodeLauncher.openSettings`, which opens the global settings panel) in place of the "Open Claude Code" button. The `claudeCodeLauncher.open` command itself is unchanged and still reachable from the Command Palette; the editor-title icon and `Ctrl/Cmd+Shift+;` keybinding (both use `openTerminal`) are unaffected. New sessions can still be started from Quick Actions, the editor-title icon, the keybinding, or the Command Palette. Split-mode per-agent views are unchanged.
+
 ## [3.10.0] - 2026-06-15
 
 ### Added
