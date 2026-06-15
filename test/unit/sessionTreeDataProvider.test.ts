@@ -179,14 +179,53 @@ test('_relTime helper exists with the expected branch ladder', () => {
 
 test('No CollapsibleState.None on session/trash item rows', () => {
   // Legitimate `.None` leaf rows: the shared metadata row (live + trash),
-  // the kiro session item, the kiro trash item, and the antigravity + codex
-  // session items. Caret-bearing rows (groups, sessions with children) must
-  // use Collapsed/Expanded instead.
+  // the kiro session item, the kiro trash item, the antigravity + codex
+  // session items, and the unified view's other-agent session leaf
+  // (_loadOtherAgentItems builds kiro/codex/agy leaves for the merged tree).
+  // Caret-bearing rows (groups, sessions with children) must use
+  // Collapsed/Expanded instead.
   const noneCount = (treeSrc.match(/TreeItemCollapsibleState\.None/g) || []).length;
   assert.ok(
-    noneCount <= 6,
-    `expected ≤ 6 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf), got ${noneCount}`,
+    noneCount <= 7,
+    `expected ≤ 7 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + unified other-agent leaf), got ${noneCount}`,
   );
+});
+
+test('v3.10: unified store keys reuse claude physical keys', () => {
+  // The unified view shares claude's store so existing groups / Resume Later /
+  // Trash carry over with no migration; non-claude sessions join the same keys.
+  assert.match(
+    treeSrc,
+    /unified:\s*\{[\s\S]*?groups:\s*'claudeSessionGroups'[\s\S]*?titles:\s*'claudeSessionTitles'[\s\S]*?\}/,
+  );
+});
+
+test('v3.10: UNIFIED_OTHER_AGENTS covers kiro/antigravity/codex', () => {
+  assert.match(treeSrc, /UNIFIED_OTHER_AGENTS\s*=\s*\[/);
+  for (const a of ['kiro', 'antigravity', 'codex']) {
+    assert.match(treeSrc, new RegExp(`agent:\\s*'${a}'`));
+  }
+});
+
+test('v3.10: _agentIcon maps agent → model svg with a claude fallback', () => {
+  assert.match(treeSrc, /_agentIcon\(agent\)/);
+  assert.match(treeSrc, /\$\{agent\}-idle\.svg/);
+  assert.match(treeSrc, /claude-idle\.svg/);
+});
+
+test('v3.10: _loadOtherAgentItems tags _agent + _unified on each leaf', () => {
+  assert.match(treeSrc, /_loadOtherAgentItems\(\)/);
+  assert.match(treeSrc, /item\._agent\s*=\s*spec\.agent/);
+  assert.match(treeSrc, /item\._unified\s*=\s*true/);
+});
+
+test('v3.10: unified _buildGroups folds in other agents + model icons', () => {
+  assert.match(treeSrc, /_buildGroups\(opts\s*=\s*\{\}\)/);
+  assert.match(treeSrc, /const unified\s*=\s*!!opts\.unified/);
+  assert.match(treeSrc, /allItems\.push\(\.\.\.this\._loadOtherAgentItems\(\)\)/);
+  assert.match(treeSrc, /it\.iconPath\s*=\s*this\._agentIcon\('claude'\)/);
+  // getChildren routes unified mode through _buildGroups with the flag set.
+  assert.match(treeSrc, /_buildGroups\(\{\s*unified:\s*this\._agentMode === 'unified'\s*\}\)/);
 });
 
 test('No U+3000 ideographic space prefix workaround remains', () => {

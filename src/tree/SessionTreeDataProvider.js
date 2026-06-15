@@ -125,18 +125,50 @@ const STORE_KEYS = {
     archived: 'codexSessionGroupArchived',
     titles: 'codexSessionTitles',
   },
+  unified: {
+    // v3.10: the unified "Sessions" view reuses claude's physical store keys so
+    // a user's existing Claude groups / Resume Later / Trash carry over with NO
+    // migration. Non-claude sessions (kiro/codex/agy) join the SAME store keyed
+    // by their own session id — grouping/sorting/rename done in the unified view
+    // all land in claude's keys. Keeping one store (vs merging four) is what
+    // makes the group-op helpers (_moveToGroup, _reorderBefore, _getSiblings…)
+    // work unchanged in unified mode. Cross-agent id collisions are effectively
+    // impossible (all four agents key sessions by UUID-class ids).
+    groups: 'claudeSessionGroups',
+    saved: 'claudeSavedSessions',
+    parent: 'claudeSessionParent',
+    sortOrder: 'claudeSessionSortOrder',
+    archived: 'claudeSessionGroupArchived',
+    titles: 'claudeSessionTitles',
+  },
 };
 
+// v3.10: agents whose sessions are folded into the unified view alongside
+// claude, with the per-agent bits the leaf builder needs: the list* loader,
+// how to read mtime from a session record, the resume opts flag, and the
+// contextValue that drives the right-click menu (kept identical to each
+// agent's split-view value so the menu `when`s extend by OR, not by clone).
+const UNIFIED_OTHER_AGENTS = [
+  { agent: 'kiro', contextValue: 'kiroSession', resumeKey: 'kiroResume', mtimeOf: (s) => Date.parse(s.updatedAt || '') || 0 },
+  { agent: 'antigravity', contextValue: 'antigravitySession', resumeKey: 'antigravityResume', mtimeOf: (s) => s.mtime || 0 },
+  { agent: 'codex', contextValue: 'codexSession', resumeKey: 'codexResume', mtimeOf: (s) => s.mtime || 0 },
+];
+
 class SessionTreeDataProvider {
-  // agentMode: 'claude' (default — full claude groups, other agents excluded),
-  // 'kiro' (root children are kiro sessions only), or 'antigravity' (root
-  // children are agy conversations only). Splitting the one sidebar tree into
-  // agent-scoped views ('Claude Sessions' / 'Kiro Sessions' / 'Antigravity
-  // Sessions') lets each view own its header actions and hide itself when its
-  // CLI isn't installed/enabled (kiroAvailable / antigravityAvailable keys).
+  // agentMode: 'claude' (default — full claude groups), 'kiro' / 'antigravity'
+  // / 'codex' (root children are that agent's sessions only), or 'unified' (all
+  // agents merged into one tree, each leaf badged with its model icon, sharing
+  // claude's store). The split agent-scoped views own their header actions and
+  // hide when their CLI isn't installed/enabled (kiro/antigravity/codexAvailable
+  // keys); the unified view is gated by the sessionViewMode setting
+  // (unifiedViewActive context key).
   constructor(context, agentMode = 'claude') {
     this._context = context;
     this._agentMode = agentMode;
+    // v3.10: per-agent model-icon cache. _agentIcon resolves a {light,dark} svg
+    // URI (or ThemeIcon fallback) once per agent — static for the process — so
+    // we avoid an fs.existsSync per session leaf on every unified tree build.
+    this._agentIconCache = new Map();
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this._cache = null;
@@ -229,7 +261,7 @@ class SessionTreeDataProvider {
           ? this._buildAntigravitySessions()
           : this._agentMode === 'codex'
             ? this._buildCodexSessions()
-            : this._buildGroups();
+            : this._buildGroups({ unified: this._agentMode === 'unified' });
       return this._cache;
     }
     // v3.5.9: lazy metadata row. Session items carry _jsonlPath + _mtime +
@@ -267,6 +299,71 @@ class SessionTreeDataProvider {
     return element._children || [];
   }
 
+  // v3.10: model (agent) icon for unified-view session leaves. Reuses the
+  // per-agent svg assets the tab status indicator uses (icons/<agent>-idle.svg),
+  // falling back to claude's asset, then a ThemeIcon when the extension path is
+  // unavailable. Same {light, dark} shape as statusIndicator.setTabIcon.
+  _agentIcon(agent) {
+    if (this._agentIconCache.has(agent)) return this._agentIconCache.get(agent);
+    let result = null;
+    const extPath = this._context && this._context.extensionPath;
+    if (extPath) {
+      let file = path.join(extPath, 'icons', `${agent}-idle.svg`);
+      if (!fs.existsSync(file)) file = path.join(extPath, 'icons', 'claude-idle.svg');
+      if (fs.existsSync(file)) {
+        const uri = vscode.Uri.file(file);
+        result = { light: uri, dark: uri };
+      }
+    }
+    if (!result) result = new vscode.ThemeIcon('comment-discussion');
+    this._agentIconCache.set(agent, result);
+    return result;
+  }
+
+  // v3.10: build leaf TreeItems for the non-claude agents (kiro/codex/agy) so
+  // _buildGroups can fold them into the unified view. Each leaf keeps the SAME
+  // contextValue as its split-view counterpart (so the right-click menu `when`s
+  // extend by OR rather than being cloned), carries _agent + _unified, and
+  // resumes via the existing agent-branch of the resumeSession command. Title
+  // precedence: the unified rename store (claudeSessionTitles) wins, then the
+  // agent's own rename store, then the list*'s native title, then an id prefix.
+  _loadOtherAgentItems() {
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    if (!cwd) return [];
+    const unifiedTitles = sessionStoreGet('claudeSessionTitles', {});
+    const out = [];
+    for (const spec of UNIFIED_OTHER_AGENTS) {
+      let sessions = [];
+      try {
+        sessions = spec.agent === 'kiro' ? listKiroSessions(cwd)
+          : spec.agent === 'antigravity' ? listAntigravitySessions(cwd)
+            : listCodexSessions(cwd);
+      } catch (_) { sessions = []; }
+      const agentTitles = sessionStoreGet(STORE_KEYS[spec.agent].titles, {});
+      for (const s of sessions) {
+        const label = unifiedTitles[s.sessionId] || agentTitles[s.sessionId] || s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+        const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+        const mtime = spec.mtimeOf(s);
+        item.description = mtime ? _relTime(mtime) : '';
+        item.iconPath = this._agentIcon(spec.agent);
+        item.contextValue = spec.contextValue;
+        item.tooltip = `${spec.agent} session: ${s.sessionId}\n${s.cwd || ''}`;
+        item._sessionId = s.sessionId;
+        item._agent = spec.agent;
+        item._unified = true;
+        item._cwd = s.cwd;
+        item._mtime = mtime;
+        item.command = {
+          command: 'claudeCodeLauncher.resumeSession',
+          title: 'Resume',
+          arguments: [s.sessionId, { agent: spec.agent, [spec.resumeKey]: true, cwd: s.cwd, title: label }],
+        };
+        out.push(item);
+      }
+    }
+    return out;
+  }
+
   _getProjectDir() {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
     if (!cwd) return null;
@@ -302,7 +399,8 @@ class SessionTreeDataProvider {
     };
   }
 
-  _buildGroups() {
+  _buildGroups(opts = {}) {
+    const unified = !!opts.unified;
     const projDir = this._getProjectDir();
     const customGroupsRaw = sessionStoreGet('claudeSessionGroups', {});
     // Phase 13 hotfix-2: synthesize empty ancestor paths so a saved tree
@@ -336,6 +434,17 @@ class SessionTreeDataProvider {
       if (!archivedIds.has(s.sessionId)) protectedIds.add(s.sessionId);
     }
     const allItems = this._loadSessions(protectedIds, archivedIds);
+    if (unified) {
+      // Tag the claude leaves with their agent + a model icon, then fold in the
+      // other agents' sessions (kiro/codex/agy). They all share the same
+      // itemMap / group / Recent / sort logic below, keyed by their own id.
+      for (const it of allItems) {
+        it._agent = 'claude';
+        it._unified = true;
+        it.iconPath = this._agentIcon('claude');
+      }
+      allItems.push(...this._loadOtherAgentItems());
+    }
 
     const itemMap = new Map();
     const mtimeMap = new Map();
@@ -399,6 +508,7 @@ class SessionTreeDataProvider {
       savedGroup.iconPath = new vscode.ThemeIcon('pin');
       savedGroup._children = savedItems;
       savedGroup.contextValue = 'resumeLaterGroup';
+      savedGroup._unified = unified;
       groups.push(savedGroup);
     }
 
@@ -459,6 +569,7 @@ class SessionTreeDataProvider {
       group.contextValue = 'customGroup';
       group._groupName = name;
       group._isArchive = archived;
+      group._unified = unified;
       group._children = [...subGroupNodes, ...directItems];
       group._totalCount = totalCount;
       return group;
@@ -482,6 +593,7 @@ class SessionTreeDataProvider {
       recentGroup.iconPath = new vscode.ThemeIcon('history');
       recentGroup._children = recentItems;
       recentGroup.contextValue = 'recentGroup';
+      recentGroup._unified = unified;
       groups.push(recentGroup);
     }
 
@@ -514,6 +626,7 @@ class SessionTreeDataProvider {
             item.description = dateStr;
             item.iconPath = new vscode.ThemeIcon('trash');
             item.contextValue = 'trashed';
+            item._unified = unified;
             // v3.5.8: size-based decoration for trash items too — the size
             // recommendation in the tooltip flips to "휴지통에서 정리 권장".
             item.resourceUri = buildSessionDecorationUri(sid, st.size, true);
@@ -534,6 +647,7 @@ class SessionTreeDataProvider {
             trashGroup.iconPath = new vscode.ThemeIcon('trash');
             trashGroup.contextValue = 'trashGroup';
             trashGroup._children = trashItems;
+            trashGroup._unified = unified;
             groups.push(trashGroup);
           }
         }
@@ -1028,6 +1142,13 @@ class SessionTreeDataProvider {
         _mtime: s.mtime || 0,
       }));
     }
+    if (this._agentMode === 'unified') {
+      // claude leaves (top-recent set) + every other agent's sessions, so the
+      // sibling/sort math spans all agents the unified view shows.
+      const claude = this._loadSessions().map(i => ({ _sessionId: i._sessionId, _mtime: i._mtime || 0 }));
+      const others = this._loadOtherAgentItems().map(i => ({ _sessionId: i._sessionId, _mtime: i._mtime || 0 }));
+      return [...claude, ...others];
+    }
     return this._loadSessions();
   }
 
@@ -1137,7 +1258,7 @@ class SessionTreeDataProvider {
     // The MIME is agent-scoped (_sessionMime), so a kiro drag carries the kiro
     // MIME and can only land in a target view that lists that MIME.
     const sessionIds = source
-      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession' || it.contextValue === 'antigravitySession'))
+      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession' || it.contextValue === 'antigravitySession' || it.contextValue === 'codexSession'))
       .map(it => it._sessionId)
       .filter(Boolean);
     if (sessionIds.length > 0) {
@@ -1191,7 +1312,7 @@ class SessionTreeDataProvider {
     // Drop on another session → reorder: insert before target, inherit scope.
     // kiroSession + antigravitySession included so those agents' sessions
     // reorder/regroup like claude ones.
-    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession' || target.contextValue === 'antigravitySession')) {
+    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession' || target.contextValue === 'antigravitySession' || target.contextValue === 'codexSession')) {
       this._reorderBefore(ids, target._sessionId);
       this.refresh();
       return;

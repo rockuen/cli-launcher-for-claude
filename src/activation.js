@@ -272,6 +272,20 @@ function activate(context) {
   });
   context.subscriptions.push(codexTreeView);
 
+  // 'Sessions' (claudeCodeLauncher.unifiedSessions) — the unified view (v3.10):
+  // claude + kiro + antigravity + codex sessions in one tree, each leaf badged
+  // with its model icon, all sharing claude's group / Resume Later / Trash
+  // store. Shown when sessionViewMode === 'unified' (the default); the four
+  // split views hide. Reuses claude's DND MIME since only one of unified/split
+  // is ever visible at a time.
+  state.unifiedTreeProvider = new SessionTreeDataProvider(context, 'unified');
+  const unifiedTreeView = vscode.window.createTreeView('claudeCodeLauncher.unifiedSessions', {
+    treeDataProvider: state.unifiedTreeProvider,
+    dragAndDropController: state.unifiedTreeProvider,
+    canSelectMany: true
+  });
+  context.subscriptions.push(unifiedTreeView);
+
   // Resolve which provider a group/session command targets. Items dragged or
   // right-clicked in the Kiro / Antigravity Sessions views carry agent markers
   // (kiroSession / antigravitySession contextValue, or a customGroup node
@@ -279,6 +293,13 @@ function activate(context) {
   // agent's group ops fully separate so a command fired from one view can never
   // mutate another's store.
   const providerForItem = (item) => {
+    // Unified-view items (any agent) route to the unified provider so their
+    // group/sort/rename ops land in the one shared (claude) store — checked
+    // first because a unified kiro/codex leaf still carries kiroSession/
+    // codexSession contextValue.
+    if (item && item._unified) {
+      return state.unifiedTreeProvider;
+    }
     if (item && (item.contextValue === 'kiroSession' || item._agentMode === 'kiro')) {
       return state.kiroTreeProvider;
     }
@@ -319,6 +340,16 @@ function activate(context) {
   codexTreeView.onDidCollapseElement(e => {
     const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.codexTreeProvider._expandedGroups.delete(key);
+  });
+
+  // Unified view — same expand/collapse tracking.
+  unifiedTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.unifiedTreeProvider._expandedGroups.add(key);
+  });
+  unifiedTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.unifiedTreeProvider._expandedGroups.delete(key);
   });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
@@ -371,6 +402,19 @@ function activate(context) {
   }
   refreshCodexAvailable();
 
+  // unifiedViewActive context key — drives the unified 'Sessions' view vs the
+  // four split agent views (package.json views[].when). True when
+  // sessionViewMode === 'unified' (the default). When false the unified view
+  // hides and the split Claude/Codex/Kiro/Antigravity views show per their own
+  // availability keys. Refreshed on sessionViewMode config changes below.
+  function refreshSessionViewMode() {
+    const mode = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionViewMode', 'unified');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.unifiedViewActive', mode === 'unified');
+  }
+  refreshSessionViewMode();
+
   // v3.5.8: size-based decoration. Yellows 5+ MB session labels, reds 10+ MB
   // ones. SessionTreeDataProvider tags each session item with a custom
   // resourceUri whose query carries size + trashed flag; the decoration
@@ -400,6 +444,7 @@ function activate(context) {
       if (state.kiroTreeProvider) state.kiroTreeProvider.refresh();
       if (state.antigravityTreeProvider) state.antigravityTreeProvider.refresh();
       if (state.codexTreeProvider) state.codexTreeProvider.refresh();
+      if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
     })
   );
 
@@ -412,6 +457,11 @@ function activate(context) {
         refreshAntigravityAvailable();
         refreshCodexAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
+        if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
+      }
+      if (e.affectsConfiguration('claudeCodeLauncher.sessionViewMode')) {
+        refreshSessionViewMode();
+        if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
       }
     })
   );
@@ -706,6 +756,11 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.trashSession', async (item) => {
       const sessionId = item?._sessionId;
       if (!sessionId) return;
+      // v3.10: defensive — this trashes a claude project-dir file only. A
+      // foreign (unified) leaf must never reach here (its menu is gated to
+      // claude session/subSession and nesting is blocked above), but guard
+      // anyway so a future menu change can't silently no-op a foreign trash.
+      if (item._unified && item._agent && item._agent !== 'claude') return;
       const projDir = state.sessionTreeProvider._getProjectDir();
       if (!projDir) return;
       const src = path.join(projDir, sessionId + '.jsonl');
@@ -722,7 +777,7 @@ function activate(context) {
       sessionStoreUpdate('claudeSessionGroups', groups);
       const saved = sessionStoreGet('claudeSavedSessions', []);
       sessionStoreUpdate('claudeSavedSessions', saved.filter(s => s.sessionId !== sessionId));
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      state.refreshSessionTrees();
     })
   );
 
@@ -731,13 +786,15 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.restoreSession', async (item) => {
       const sessionId = item?._sessionId;
       if (!sessionId) return;
+      // v3.10: defensive — restores into the claude project dir only (see trashSession).
+      if (item._unified && item._agent && item._agent !== 'claude') return;
       const projDir = state.sessionTreeProvider._getProjectDir();
       if (!projDir) return;
       const trashDir = path.join(projDir, 'trash');
       const src = path.join(trashDir, sessionId + '.jsonl');
       if (!fs.existsSync(src)) return;
       fs.renameSync(src, path.join(projDir, sessionId + '.jsonl'));
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      state.refreshSessionTrees();
     })
   );
 
@@ -820,6 +877,18 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.moveUnderSession', async (item) => {
       const sid = item?._sessionId;
       if (!sid) return;
+      // v3.10: in the unified view, sub-session nesting is claude-only. A
+      // non-claude leaf (kiro/codex/agy) routes to the unified provider whose
+      // store is claude's, so nesting it would (a) write the foreign id into
+      // claudeSessionParent, (b) list claude's project dir as nest candidates,
+      // and (c) flip its contextValue to subSession — which exposes claude-only
+      // trash/restore that silently no-op the real foreign file. Block at source.
+      if (item._unified && item._agent && item._agent !== 'claude') {
+        vscode.window.showInformationMessage(
+          'CLI Launcher: 통합 뷰의 하위 세션 중첩은 Claude 세션만 지원합니다 — 다른 에이전트 세션은 그룹으로 정리하세요.'
+        );
+        return;
+      }
       const prov = providerForItem(item);
       const isKiro = prov === state.kiroTreeProvider;
       const isAntigravity = prov === state.antigravityTreeProvider;
@@ -910,7 +979,7 @@ function activate(context) {
       if (wasOn) set.delete(groupName);
       else set.add(groupName);
       sessionStoreUpdate('claudeSessionGroupArchived', Array.from(set));
-      if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+      state.refreshSessionTrees();
       vscode.window.showInformationMessage(wasOn ? t('archiveModeOff') : t('archiveModeOn'));
     })
   );
@@ -958,7 +1027,7 @@ function activate(context) {
       );
       if (confirm === 'Delete') {
         for (const f of files) fs.unlinkSync(path.join(trashDir, f));
-        if (state.sessionTreeProvider) state.sessionTreeProvider.refresh();
+        state.refreshSessionTrees();
       }
     })
   );

@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.10.0] - 2026-06-15
+
+### Added
+- **Unified "Sessions" view.** All four agents (Claude, Codex, Kiro, Antigravity) now appear in a single **Sessions** tree instead of four separate per-agent views, with every session badged by its **model icon** so you can tell at a glance which agent it belongs to. The existing structure — Recent / custom groups / Resume Later / Trash — is preserved, and sessions from all agents interleave by recency inside it.
+- **`claudeCodeLauncher.sessionViewMode` setting** (`unified` default | `split`). `unified` merges every agent into one tree; `split` keeps the legacy per-agent views (Claude Sessions / Codex Sessions / Kiro Sessions / Antigravity Sessions). Switching applies live (no reload). The unified header's robot icon opens a new session via the agent picker.
+
+### Changed
+- The unified view **reuses Claude's group / Resume Later / Trash store**, so existing Claude groups carry over with no migration; non-Claude sessions join the same store keyed by their own id.
+
+### Notes
+- In the unified view, non-Claude (Kiro/Codex/Antigravity) sessions support view / resume / rename / move-to-group / reorder. Sub-session **nesting** and **trash** stay scoped to the `split` views (a guard blocks claude-only trash/restore from acting on a foreign file), so no data can be silently lost.
+
+### Tests
+- Added unified-mode source invariants; full suite **344 node + 54 vitest** passing.
+
 ## [3.9.5] - 2026-06-14
 
 ### Added
