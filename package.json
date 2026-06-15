@@ -657,7 +657,7 @@
           "when": "view == claudeCodeLauncher.quickActions"
         },
         {
-          "command": "claudeCodeLauncher.open",
+          "command": "claudeCodeLauncher.openSettings",
           "group": "navigation@1",
           "when": "view == claudeCodeLauncher.unifiedSessions"
         },
