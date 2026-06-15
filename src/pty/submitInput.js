@@ -20,10 +20,10 @@ function buildSubmitInputWrites(text, opts = {}) {
     ? '\x1b[200~' + normalized + '\x1b[201~'
     : normalized;
 
-  if (opts.agent === 'claude' || opts.agent === 'codex') {
-    // These TUIs can accept injected text while missing an Enter that arrives in
-    // the same PTY write. Send the prompt first, then a short moment later send
-    // the exact CR that a physical Enter key produces through xterm.js.
+  // claude, codex, and kiro all use a deferred Enter: their readline/TUI
+  // implementations on macOS have a race where text + CR in the same PTY write
+  // can miss the submit. Send text first, then CR after a short delay.
+  if (opts.agent === 'claude' || opts.agent === 'codex' || opts.agent === 'kiro') {
     return [
       { data: pastePayload, delayMs: 0 },
       { data: '\r', delayMs: 120 },

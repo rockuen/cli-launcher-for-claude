@@ -56,7 +56,9 @@ function parseLocatorOutput(stdout, targetBasename, opts = {}) {
     // Exact basename match only. Index tools return substring hits and shortcut
     // (.lnk) wrappers — "_merged_erp_inbound.csv.lnk" is a different basename
     // than "_merged_erp_inbound.csv", so it drops out here automatically.
-    const base = path.basename(line);
+    // Use cross-platform basename: on macOS path.basename ignores backslashes,
+    // so Windows paths from es.exe output (backslash-separated) would never match.
+    const base = path.win32.basename(path.posix.basename(line));
     const baseCmp = caseInsensitive ? base.toLowerCase() : base;
     if (baseCmp !== want) continue;
 
