@@ -159,7 +159,11 @@ function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
     if (agent === 'codex') {
       env.CODEX_HOME = _prepareCodexHome(cwd);
     } else if (agent === 'kiro') {
-      _setVirtualHome(env, _prepareKiroHome(cwd));
+      const kiroHome = _prepareKiroHome(cwd);
+      _setVirtualHome(env, kiroHome);
+      // Windows: kiro-cli resolves its session dir via SHGetKnownFolderPath and
+      // ignores HOME/USERPROFILE, so point it at the virtual .kiro explicitly.
+      env.KIRO_HOME = path.join(kiroHome, '.kiro');
     } else if (agent === 'antigravity') {
       _setVirtualHome(env, _prepareAntigravityHome(cwd));
     }
