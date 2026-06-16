@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.10.3] - 2026-06-16
+
+### Fixed
+- **kiro-cli sessions now honor project-scoped storage on Windows.** With `sessionStorage.scope` set to `project`, kiro sessions were still written to the global `~/.kiro/sessions/cli` on Windows because kiro-cli resolves its home via `SHGetKnownFolderPath` (the real user profile) and ignores the `HOME`/`USERPROFILE` the launcher injects. The kiro launch env now sets **`KIRO_HOME`** explicitly to the project virtual `.kiro` (whose `sessions/cli` is already linked to `<workspace>/.agent-sessions/kiro`), so kiro stores sessions per-project. macOS/Linux are unaffected (they already honor `$HOME`); `KIRO_HOME` is set only in the kiro branch, leaving Codex/Antigravity env untouched. This removes the need for the global-junction workaround.
+
 ## [3.10.2] - 2026-06-16
 
 ### Changed
