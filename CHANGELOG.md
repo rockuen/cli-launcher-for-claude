@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.10.2] - 2026-06-16
+
+### Changed
+- **Desktop notification title now reads "CLI Launcher" instead of "Claude Code".** The OS toast shown when a session needs attention used a hard-coded "Claude Code" headline; it now shows **CLI Launcher** as the title on both Windows (toast headline + notifier app id) and macOS (`display notification … with title`). The notification body (the session tab title) is unchanged.
+
 ## [3.10.1] - 2026-06-15
 
 ### Changed
