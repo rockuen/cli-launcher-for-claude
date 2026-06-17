@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.10.4] - 2026-06-17
+
+### Added
+- **NoteWise Editor as a file-association target.** The File Associations setting now accepts a `notewise` open method that opens the file in the NoteWise Markdown Editor custom editor (`vscode.openWith` → `notewise.editor`). It's selectable in the settings panel's open-method dropdown alongside Obsidian / IDE Editor / System, so `.md` clicks (or any extension) can be routed straight to NoteWise.
+
+### Fixed
+- **Kiro terminal now scrolls with the mouse wheel.** Kiro sessions had their xterm scrollback pinned to `0` — a v3.7.13 workaround for a "jump to top" drift on older kiro builds that `2J`-cleared the whole screen every frame — so the wheel had no history to scroll and users were forced into the reader view. Kiro 2.6.x repaints via synchronized output (`?2026`) instead of full `2J` redraws, so that drift no longer applies: kiro now uses the standard **5000-line scrollback** like every other agent, and the wheel scrolls history exactly as it does in PowerShell / Windows Terminal. Output auto-scroll also now respects the "was at bottom" check for kiro, so scrolling up to read history stays put instead of being yanked back down.
+
 ## [3.10.3] - 2026-06-16
 
 ### Fixed

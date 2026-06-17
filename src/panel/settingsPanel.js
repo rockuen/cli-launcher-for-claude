@@ -337,6 +337,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             <option value="browser">Browser</option>
             <option value="obsidian">Obsidian</option>
             <option value="editor">IDE Editor</option>
+            <option value="notewise">NoteWise Editor</option>
             <option value="auto">Auto</option>
           </select>
           <button class="g-add-btn" id="set-fa-add" title="Add">+</button>
@@ -689,7 +690,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     }
 
     // ---- File Associations ----
-    const FA_LABELS = { excel: 'Excel', system: 'System Default', browser: 'Browser', obsidian: 'Obsidian', editor: 'IDE Editor', auto: 'Auto' };
+    const FA_LABELS = { excel: 'Excel', system: 'System Default', browser: 'Browser', obsidian: 'Obsidian', editor: 'IDE Editor', notewise: 'NoteWise Editor', auto: 'Auto' };
     let localFileAssoc = Object.assign({}, GLOBALS.fileAssociations || {});
     const faListEl = document.getElementById('set-fileassoc-list');
     function renderFaList() {

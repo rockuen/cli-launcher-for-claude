@@ -78,12 +78,13 @@ function getClientScript(ctx) {
       // minutes on a long task; once full, xterm.js drops oldest lines,
       // breaking history navigation on background sessions. 5000 covers most
       // real-world sessions while keeping the per-line memory cost bounded.
-      // v3.7.13: kiro is a full-screen TUI in the NORMAL buffer (CSI 2J +
-      // cursor-home redraws, no alt-screen). With scrollback, every redraw
-      // piles a stale frame into history and the viewport drifts to the top;
-      // scrollback 0 gives it alt-screen-like behavior (repaint in place, no
-      // room to drift) — this is the real fix for "kiro keeps jumping to top".
-      scrollback: IS_KIRO ? 0 : 5000,
+      // v3.10.4: kiro gets the same scrollback as every other agent. kiro is a
+      // full-screen TUI in the NORMAL buffer (no alt-screen), but on 2.6.x it
+      // repaints via synchronized output (?2026) rather than 2J-clearing every
+      // frame, so xterm's own scrollback works — the wheel scrolls history just
+      // like PowerShell / Windows Terminal do for kiro. (v3.7.13 forced 0 to
+      // stop a "jump to top" drift from heavy 2J redraws on older kiro builds.)
+      scrollback: 5000,
       allowProposedApi: true
     });
 
@@ -1049,17 +1050,13 @@ function getClientScript(ctx) {
       if (msg.type === 'output') {
         checkMouseMode(msg.data);
         const cleaned = stripMouseMode(msg.data);
-        if (IS_KIRO) {
-          // Kiro: full-screen redraw TUI — always snap to the bottom after the
-          // write. scrollback is 0, so this just re-pins the live frame and
-          // never strands the viewport at the top after a 2J redraw.
-          term.write(cleaned, () => term.scrollToBottom());
-        } else {
-          const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
-          term.write(cleaned, () => {
-            if (wasAtBottom) term.scrollToBottom();
-          });
-        }
+        // v3.10.4: all agents (kiro included) only auto-scroll to the bottom if
+        // the viewport was already there, so scrolling up to read history stays
+        // put instead of being yanked back down by the next output chunk.
+        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+        term.write(cleaned, () => {
+          if (wasAtBottom) term.scrollToBottom();
+        });
       }
       if (msg.type === 'state') {
         // Hide restart bar when active

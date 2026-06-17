@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Kiro & Antigravity",
   "description": "Run Claude Code, Codex, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.10.3",
+  "version": "3.10.4",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -918,7 +918,7 @@
             ".gif": "system",
             ".svg": "system"
           },
-          "description": "File extension → open method. Values: 'editor' (IDE), 'system' (OS default), 'obsidian', 'browser', 'excel', or full app path."
+          "description": "File extension → open method. Values: 'editor' (IDE), 'system' (OS default), 'obsidian', 'notewise' (NoteWise Markdown Editor), 'browser', 'excel', or full app path."
         },
         "claudeCodeLauncher.splitLayoutDefault": {
           "type": "boolean",

@@ -240,6 +240,10 @@ async function handleOpenFile(filePath, line, entry) {
     const fileUri = vscode.Uri.file(nativePath);
     const options = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : {};
     vscode.window.showTextDocument(fileUri, options);
+  } else if (method === 'notewise') {
+    // Open in the NoteWise Markdown Editor custom editor (rockuen.notewise-editor).
+    const fileUri = vscode.Uri.file(nativePath);
+    vscode.commands.executeCommand('vscode.openWith', fileUri, 'notewise.editor');
   } else if (method !== 'auto') {
     if (process.platform === 'darwin') {
       openNative(method);
