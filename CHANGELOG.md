@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.10.5] - 2026-06-17
+
+### Fixed
+- **Cross-device session metadata loss (groups / titles dropped after sync).** The open-tab set (`claudeSessions` — each tab's cwd / viewColumn / order) was stored in the **git-synced** `.claude-launcher/sessions.json` alongside the shared group / title / Resume-Later / Trash metadata. Open tabs are inherently per-machine, so every device rewrote that file on each tab change; the resulting churn meant a `git pull` on another device frequently conflicted on `sessions.json`, and whole-file conflict resolutions silently discarded freshly-added groups / titles (blank-string ids and `"": N` sort-order entries also accreted from line-merges). Open-tab state now lives in **device-local `workspaceState`** (never synced), so the file changes only on deliberate metadata edits — pulls fast-forward cleanly and group / title additions propagate. Cross-device hand-off remains via **Resume Later** (`claudeSavedSessions`), which stays in the shared store.
+
+### Changed
+- **`sessions.json` is now written deterministically (sorted keys) and sanitized on every write.** Identical logical state serializes byte-identically across devices, eliminating spurious diffs / 3-way-merge noise; the sanitizer drops blank/duplicate ids inside `*SessionGroups`, the blank `""` key from `*SessionSortOrder` / `*SessionParent`, and de-dupes `claudeSavedSessions` / `claudeArchivedSessions` by sessionId — healing corruption left by earlier merges.
+- **One-time migration:** on activate, a legacy `claudeSessions` key still present in `sessions.json` is moved into this device's `workspaceState` (only when empty, so live local tabs are never clobbered) and evicted from the synced file.
+
+### Implementation
+- `store/sessionStore.js`: new `deviceLocalGet/Set` (workspaceState via `state.context`), `stableStringify` (recursive key sort), `sanitizeStore`, `sessionStoreDelete`, a shared atomic `writeStore`, and the reverse migration in `migrateFromWorkspaceState`. `store/sessionManager.js` + `activation.js` (deactivate) now read/write `claudeSessions` via the device-local helpers instead of the synced store.
+- Workspaces that sync `sessions.json` via git should add `.claude-launcher/sessions.json text eol=lf` to `.gitattributes` (kills CRLF churn under `core.autocrlf=true`).
+
+### Tests
+- 349 node + 54 vitest passing. New `test/unit/sessionStore.test.ts` (5 cases — deterministic serialization; group / sort-order / saved-archived sanitize; sanitized+sorted disk write; device-local `claudeSessions` migration).
+
 ## [3.10.4] - 2026-06-17
 
 ### Added

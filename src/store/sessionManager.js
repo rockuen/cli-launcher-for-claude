@@ -1,8 +1,15 @@
 // @module store/sessionManager — save/restore open tabs across Reload Window.
 // createPanel is injected as a callback to avoid circular imports with panel/ (Phase 6 target).
+//
+// NOTE (v3.10.5): the open-tab set (`claudeSessions`) is DEVICE-LOCAL and is
+// persisted via deviceLocalGet/Set (VS Code workspaceState), NOT the synced
+// sessions.json. Tab layout (cwd / viewColumn / order) is per-machine; keeping
+// it out of the git-tracked file removes the churn that corrupted shared
+// group/title metadata. Cross-device session hand-off is via Resume Later
+// (claudeSavedSessions), which stays in the shared store.
 
 const state = require('../state');
-const { sessionStoreGet, sessionStoreUpdate } = require('./sessionStore');
+const { sessionStoreGet, sessionStoreUpdate, deviceLocalGet, deviceLocalSet } = require('./sessionStore');
 const { listAgents } = require('../agents/registry');
 
 // Returns true when `title` is a default-generated tab title for any known agent
@@ -38,7 +45,8 @@ function saveSessions() {
       });
     }
   }
-  sessionStoreUpdate('claudeSessions', sessions);
+  // Device-local: open tabs live in workspaceState, never the synced file.
+  deviceLocalSet('claudeSessions', sessions);
   console.log('[Claude Launcher] saveSessions agents:', sessions.map(s => (s.title || '?') + '=' + (s.agent || '(none)')).join(' | '));
 
   // sessionId → title 매핑 저장 (사이드바 세션 목록용). agent별 스토어로 분리 —
@@ -70,13 +78,13 @@ function saveSessions() {
 // Called at end of activate(). Restores in saved order with 500ms stagger
 // for correct viewColumn placement in split views.
 function restoreSessions(onRestore) {
-  const sessions = sessionStoreGet('claudeSessions', []);
+  const sessions = deviceLocalGet('claudeSessions', []);
   console.log('[Claude Launcher] restoreSessions called, found:', sessions.length, 'sessions');
   console.log('[Claude Launcher] restore agents:', sessions.map(s => (s.title || '?') + '=' + (s.agent || '(none)')).join(' | '));
   if (sessions.length === 0) return;
 
   // Clear immediately to avoid double-restore on activate re-entry
-  sessionStoreUpdate('claudeSessions', []);
+  deviceLocalSet('claudeSessions', []);
 
   const sorted = [...sessions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   sorted.forEach((session, i) => {

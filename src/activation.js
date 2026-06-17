@@ -20,7 +20,7 @@ const { buildHandoffNote } = require('./lib/handoff');
 const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions } = require('./lib/sessionJsonl');
 const { getKiroSessionsDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
-const { sessionStoreGet, sessionStoreUpdate, migrateFromWorkspaceState } = require('./store/sessionStore');
+const { sessionStoreGet, sessionStoreUpdate, deviceLocalSet, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
 const { killPtyProcess } = require('./pty/kill');
 const { SessionTreeDataProvider } = require('./tree/SessionTreeDataProvider');
@@ -1151,7 +1151,7 @@ function deactivate() {
         viewColumn: entry.panel.viewColumn || 1
       });
     }
-    sessionStoreUpdate('claudeSessions', sessions);
+    deviceLocalSet('claudeSessions', sessions);
   }
 
   for (const [, entry] of state.panels) {
