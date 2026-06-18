@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Kiro & Antigravity",
   "description": "Run Claude Code, Codex, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.10.5",
+  "version": "3.11.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -283,6 +283,24 @@
         "title": "CLI Launcher: Settings",
         "category": "Claude",
         "icon": "$(gear)"
+      },
+      {
+        "command": "claudeCodeLauncher.newSessionPick",
+        "title": "CLI Launcher: New Session",
+        "category": "Claude",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudeCodeLauncher.searchSessions",
+        "title": "CLI Launcher: Search Sessions",
+        "category": "Claude",
+        "icon": "$(search)"
+      },
+      {
+        "command": "claudeCodeLauncher.clearSessionFilter",
+        "title": "CLI Launcher: Clear Session Filter",
+        "category": "Claude",
+        "icon": "$(close)"
       }
     ],
     "viewsContainers": {
@@ -657,13 +675,28 @@
           "when": "view == claudeCodeLauncher.quickActions"
         },
         {
+          "command": "claudeCodeLauncher.newSessionPick",
+          "group": "navigation@0",
+          "when": "view == claudeCodeLauncher.unifiedSessions"
+        },
+        {
           "command": "claudeCodeLauncher.openSettings",
           "group": "navigation@1",
           "when": "view == claudeCodeLauncher.unifiedSessions"
         },
         {
-          "command": "claudeCodeLauncher.refreshSessions",
+          "command": "claudeCodeLauncher.searchSessions",
           "group": "navigation@2",
+          "when": "view == claudeCodeLauncher.unifiedSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.clearSessionFilter",
+          "group": "navigation@3",
+          "when": "view == claudeCodeLauncher.unifiedSessions && claudeCodeLauncher.sessionFilterActive"
+        },
+        {
+          "command": "claudeCodeLauncher.refreshSessions",
+          "group": "navigation@4",
           "when": "view == claudeCodeLauncher.unifiedSessions"
         },
         {

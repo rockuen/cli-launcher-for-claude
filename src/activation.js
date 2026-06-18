@@ -448,6 +448,57 @@ function activate(context) {
     })
   );
 
+  // v3.11: Sessions view-title "+ New Session" button (sits left of the ⚙ in
+  // the unified view). Unlike the split views' agent-pinned + buttons, this one
+  // ALWAYS shows the model picker (pickAgent → enabled+installed agents), so the
+  // user chooses which model the new session runs. pickAgent no-ops to the lone
+  // candidate when only one agent is available, and Esc cancels (no session).
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.newSessionPick', async () => {
+      const picked = await pickAgent({ placeHolder: t('newSessionPickPlaceholder') });
+      if (!picked) return; // user cancelled the picker
+      createPanel(context, extensionPath, null, { agent: picked });
+    })
+  );
+
+  // v3.11: session-name search. All providers share the same filter so it works
+  // in both unified and split modes; the visible view's title shows the active
+  // query and the sessionFilterActive context key reveals the ✕ clear button.
+  const _sessionProviders = () => [
+    state.unifiedTreeProvider,
+    state.sessionTreeProvider,
+    state.kiroTreeProvider,
+    state.antigravityTreeProvider,
+    state.codexTreeProvider,
+  ].filter(Boolean);
+  const _sessionViews = () => [
+    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView,
+  ].filter(Boolean);
+  const _setFilterAll = (text) => {
+    let normalized = '';
+    for (const p of _sessionProviders()) normalized = p.setFilter(text);
+    const active = !!normalized;
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.sessionFilterActive', active);
+    const msg = active ? `🔍 "${String(text).trim()}"` : undefined;
+    for (const v of _sessionViews()) v.message = msg;
+    return active;
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.searchSessions', async () => {
+      const current = (_sessionProviders()[0] && _sessionProviders()[0]._filterText) || '';
+      const value = await vscode.window.showInputBox({
+        prompt: t('searchSessionsPrompt'),
+        placeHolder: t('searchSessionsPlaceholder'),
+        value: current,
+      });
+      if (value === undefined) return; // Esc — keep the current filter
+      _setFilterAll(value);
+    }),
+    vscode.commands.registerCommand('claudeCodeLauncher.clearSessionFilter', () => {
+      _setFilterAll('');
+    })
+  );
+
   // Re-evaluate the kiroAvailable context key when the enabled agents change
   // so the 'Kiro Sessions' view shows/hides without a window reload.
   context.subscriptions.push(

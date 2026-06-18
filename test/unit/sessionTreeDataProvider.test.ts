@@ -180,15 +180,93 @@ test('_relTime helper exists with the expected branch ladder', () => {
 test('No CollapsibleState.None on session/trash item rows', () => {
   // Legitimate `.None` leaf rows: the shared metadata row (live + trash),
   // the kiro session item, the kiro trash item, the antigravity + codex
-  // session items, and the unified view's other-agent session leaf
-  // (_loadOtherAgentItems builds kiro/codex/agy leaves for the merged tree).
+  // session items, the unified view's other-agent session leaf
+  // (_loadOtherAgentItems builds kiro/codex/agy leaves for the merged tree),
+  // and the v3.11 search "no match" placeholder row.
   // Caret-bearing rows (groups, sessions with children) must use
   // Collapsed/Expanded instead.
   const noneCount = (treeSrc.match(/TreeItemCollapsibleState\.None/g) || []).length;
   assert.ok(
-    noneCount <= 7,
-    `expected ≤ 7 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + unified other-agent leaf), got ${noneCount}`,
+    noneCount <= 8,
+    `expected ≤ 8 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + unified other-agent leaf + search no-match row), got ${noneCount}`,
   );
+});
+
+test('v3.11: setFilter normalizes and _matchesText is case-insensitive substring', () => {
+  // setFilter trims + lowercases into _filterText and bypasses the debounce;
+  // _matchesText does a lowercased includes() so search is case-insensitive.
+  assert.match(treeSrc, /setFilter\(text\)\s*\{/);
+  assert.match(treeSrc, /\(text \|\| ''\)\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(treeSrc, /this\._filterText\s*=\s*next/);
+  assert.match(treeSrc, /_matchesText\(text\)\s*\{/);
+  assert.match(treeSrc, /String\(text \|\| ''\)\.toLowerCase\(\)\.includes\(this\._filterText\)/);
+});
+
+test('v3.11: _buildGroups applies the name filter before grouping', () => {
+  // The filtered leaf set feeds itemMap / recentItems so empty groups collapse
+  // out (makeGroupNode null), groups force-expand, and a no-match placeholder
+  // row replaces the misleading empty-view welcome during a search.
+  assert.match(treeSrc, /const filterActive\s*=\s*!!this\._filterText/);
+  assert.match(treeSrc, /allItems\.filter\(\(it\)\s*=>\s*this\._matchesText\(it\._searchText \|\| it\.label\)\)/);
+  assert.match(treeSrc, /\(filterActive \|\| exp\.has\(name\)\)/);
+  assert.match(treeSrc, /filterActive && groups\.length === 0\)\s*return \[this\._noMatchRow\(\)\]/);
+});
+
+test('v3.11: split-view _buildAgentGroups also honors the filter', () => {
+  // Drops non-matching items from itemMap up front so kiro/codex/agy views
+  // search too, and shows the same no-match placeholder when empty.
+  assert.match(treeSrc, /itemMap\.delete\(sid\)/);
+  assert.match(treeSrc, /filterActive && out\.length === 0\)\s*return \[this\._noMatchRow\(\)\]/);
+});
+
+test('v3.11: session leaves carry _searchText for full-title matching', () => {
+  // Labels truncate to 40 chars; _searchText holds the full title so a match
+  // on text past char 40 still works (set on claude, archived + other-agent).
+  assert.match(treeSrc, /item\._searchText\s*=\s*displayText/);
+  assert.match(treeSrc, /item\._searchText\s*=\s*label/);
+});
+
+test('v3.11: search + new-session i18n keys present in both locales', () => {
+  for (const src of [enSrc, koSrc]) {
+    assert.match(src, /searchSessionsPrompt:/);
+    assert.match(src, /searchSessionsPlaceholder:/);
+    assert.match(src, /searchNoMatch:/);
+    assert.match(src, /newSessionPickPlaceholder:/);
+  }
+});
+
+test('v3.11: activation registers new-session picker + search commands', () => {
+  const actSrc = fs.readFileSync(path.join(repoRoot, 'src/activation.js'), 'utf8');
+  assert.match(actSrc, /registerCommand\('claudeCodeLauncher\.newSessionPick'/);
+  assert.match(actSrc, /registerCommand\('claudeCodeLauncher\.searchSessions'/);
+  assert.match(actSrc, /registerCommand\('claudeCodeLauncher\.clearSessionFilter'/);
+  // New-session button shows the model picker (pickAgent), not a fixed agent.
+  assert.match(actSrc, /newSessionPick'[\s\S]{0,200}?pickAgent\(/);
+  // Search toggles the context key that reveals the clear-filter button.
+  assert.match(actSrc, /'claudeCodeLauncher\.sessionFilterActive'/);
+});
+
+test('v3.11: package.json wires commands + unified view-title placement', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+  const cmds = pkg.contributes.commands.map((c: any) => c.command);
+  for (const id of [
+    'claudeCodeLauncher.newSessionPick',
+    'claudeCodeLauncher.searchSessions',
+    'claudeCodeLauncher.clearSessionFilter',
+  ]) {
+    assert.ok(cmds.includes(id), `missing command ${id}`);
+  }
+  const unified = pkg.contributes.menus['view/title'].filter(
+    (m: any) => typeof m.when === 'string' && /unifiedSessions/.test(m.when),
+  );
+  const newBtn = unified.find((m: any) => m.command === 'claudeCodeLauncher.newSessionPick');
+  const settings = unified.find((m: any) => m.command === 'claudeCodeLauncher.openSettings');
+  assert.ok(newBtn, 'new-session button missing from unified view/title');
+  assert.ok(settings, 'settings button missing from unified view/title');
+  // New-session sits to the LEFT of settings (lower navigation order).
+  assert.ok(newBtn.group < settings.group, 'new-session must be left of settings');
+  const clear = unified.find((m: any) => m.command === 'claudeCodeLauncher.clearSessionFilter');
+  assert.ok(clear && /sessionFilterActive/.test(clear.when), 'clear-filter must be gated by sessionFilterActive');
 });
 
 test('v3.10: unified store keys reuse claude physical keys', () => {

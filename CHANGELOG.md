@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.11.0] - 2026-06-18
+
+### Added
+- **Search sessions by name in the unified Sessions view.** A new **🔍 Search** button in the Sessions view title (and the `CLI Launcher: Search Sessions` command) filters the tree to sessions whose title contains the typed text (case-insensitive). Matching groups auto-expand, non-matching sessions and now-empty groups are hidden, and the active query is shown above the tree (`🔍 "…"`). A **✕ Clear** button appears while a filter is active (also the `CLI Launcher: Clear Session Filter` command). Grouped / archived / Resume-Later / Trash sessions are searched too, and the **full** session title is matched even when the row label is truncated to 40 chars. Works in both the unified and split (per-agent) views.
+- **"New Session" button is back in the Sessions view title — to the left of the ⚙ Settings button.** Clicking it shows a **model picker** (the enabled + installed agents: Claude / Kiro / Antigravity / Codex) and opens a new session with the chosen model. When only one agent is available the picker is skipped and that agent launches directly; Esc cancels. Backed by the new `CLI Launcher: New Session` command.
+
+### Implementation
+- `tree/SessionTreeDataProvider.js`: `setFilter()` (normalizes + bypasses the refresh debounce), `_matchesText()` (case-insensitive substring), and a `_noMatchRow()` placeholder shown when a filter matches nothing (instead of the misleading empty-view welcome). `_buildGroups` filters the leaf set before grouping so empty groups collapse out and the rest force-expand while filtering; `_buildAgentGroups` (split kiro / codex / antigravity views) filters its `itemMap`. Session / trash / other-agent leaves now carry `_searchText` (full title) for matching past the label truncation.
+- `activation.js`: `newSessionPick` (routes through `pickAgent` → `createPanel`), `searchSessions` (input box → shared `setFilter` across every session provider + `sessionFilterActive` context key + a view-title message), and `clearSessionFilter`.
+- `package.json`: three new commands; the unified Sessions `view/title` is ordered **+ New · ⚙ Settings · 🔍 Search · ✕ Clear** *(only while filtering)* **· ↻ Refresh**. `i18n/en|ko`: search + picker prompt strings.
+
+### Tests
+- 356 node passing (349 + 7 new source-level invariants covering the filter normalization / match, the no-match row, the split-view filter, `_searchText`, the new commands + `sessionFilterActive` wiring, the i18n keys, and the new-session-left-of-settings view-title placement).
+
 ## [3.10.5] - 2026-06-17
 
 ### Fixed

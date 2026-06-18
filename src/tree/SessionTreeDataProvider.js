@@ -173,6 +173,12 @@ class SessionTreeDataProvider {
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this._cache = null;
     this._expandedGroups = new Set([t('resumeLaterGroup')]);
+    // v3.11: session-name search filter. When non-empty (already lowercased),
+    // the _build* methods drop session leaves whose title doesn't include it;
+    // empty groups then collapse to nothing. Set via setFilter() from the
+    // searchSessions command, cleared by clearSessionFilter. Shared across the
+    // unified + split views (each provider keeps its own copy).
+    this._filterText = '';
     // v3.5.9: refresh() is called from many places (PTY state changes, exit,
     // restoreSessions, command handlers, heartbeat) — easily dozens of times
     // per minute on iloom-workspace with 5 active sessions. Debounce coalesces
@@ -219,6 +225,42 @@ class SessionTreeDataProvider {
       this._cache = null;
       this._onDidChangeTreeData.fire();
     }, this._REFRESH_DEBOUNCE_MS);
+  }
+
+  // v3.11: set the session-name search filter (case-insensitive substring).
+  // Empty / null clears it. Bypasses the refresh debounce so a search keystroke
+  // feels immediate. Returns the normalized (trimmed, lowercased) filter so the
+  // caller can sync the sessionFilterActive context key / view message.
+  setFilter(text) {
+    const next = (text || '').trim().toLowerCase();
+    if (next === this._filterText) return next;
+    this._filterText = next;
+    if (this._refreshTimer) { clearTimeout(this._refreshTimer); this._refreshTimer = null; }
+    this._cache = null;
+    this._onDidChangeTreeData.fire();
+    return next;
+  }
+
+  get filterActive() {
+    return !!this._filterText;
+  }
+
+  // v3.11: case-insensitive substring test for the active filter. No filter →
+  // everything matches. Used by every _build* path against a session's title.
+  _matchesText(text) {
+    if (!this._filterText) return true;
+    return String(text || '').toLowerCase().includes(this._filterText);
+  }
+
+  // v3.11: single non-actionable row shown when a search filter is active but
+  // nothing matches — keeps the view from falling back to the generic
+  // "no session history" welcome, which is misleading during a search.
+  _noMatchRow() {
+    const item = new vscode.TreeItem(t('searchNoMatch'), vscode.TreeItemCollapsibleState.None);
+    item.iconPath = new vscode.ThemeIcon('search-stop');
+    item.contextValue = 'searchNoMatch';
+    item.tooltip = `"${this._filterText}"`;
+    return item;
   }
 
   // v3.5.9: hit/miss the file-level meta cache. Returns the cached entry
@@ -353,6 +395,7 @@ class SessionTreeDataProvider {
         item._unified = true;
         item._cwd = s.cwd;
         item._mtime = mtime;
+        item._searchText = label;
         item.command = {
           command: 'claudeCodeLauncher.resumeSession',
           title: 'Resume',
@@ -446,9 +489,18 @@ class SessionTreeDataProvider {
       allItems.push(...this._loadOtherAgentItems());
     }
 
+    // v3.11: apply the session-name search filter before grouping. Dropping
+    // non-matching leaves here cascades through itemMap / custom groups /
+    // Recent / Resume Later — empty groups collapse out (makeGroupNode returns
+    // null on zero total) so only matching sessions render.
+    const filterActive = !!this._filterText;
+    const items = filterActive
+      ? allItems.filter((it) => this._matchesText(it._searchText || it.label))
+      : allItems;
+
     const itemMap = new Map();
     const mtimeMap = new Map();
-    for (const item of allItems) {
+    for (const item of items) {
       itemMap.set(item._sessionId, item);
       mtimeMap.set(item._sessionId, item._mtime || 0);
     }
@@ -464,7 +516,7 @@ class SessionTreeDataProvider {
       const pid = parents[sid];
       return pid && itemMap.has(pid);
     };
-    for (const item of allItems) {
+    for (const item of items) {
       const pid = parents[item._sessionId];
       if (pid && itemMap.has(pid)) {
         const parentItem = itemMap.get(pid);
@@ -474,7 +526,7 @@ class SessionTreeDataProvider {
         item.contextValue = 'subSession';
       }
     }
-    for (const item of allItems) {
+    for (const item of items) {
       if (item._subSessions && item._subSessions.length > 0) {
         item._subSessions.sort(cmp);
       }
@@ -494,7 +546,9 @@ class SessionTreeDataProvider {
 
     const groups = [];
     const exp = this._expandedGroups;
-    const stateOf = (name) => exp.has(name) ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed;
+    // v3.11: force every group open while a search filter is active so matches
+    // aren't hidden inside collapsed groups.
+    const stateOf = (name) => (filterActive || exp.has(name)) ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed;
 
     // Resume Later (pinned)
     const rlName = t('resumeLaterGroup');
@@ -584,7 +638,7 @@ class SessionTreeDataProvider {
 
     // Recent Sessions (ungrouped top-level)
     const rsName = t('recentSessionsGroup');
-    const recentItems = allItems.filter(item =>
+    const recentItems = items.filter(item =>
       !groupedSet.has(item._sessionId) && !isSubSession(item._sessionId)
     );
     if (recentItems.length > 0) {
@@ -620,6 +674,9 @@ class SessionTreeDataProvider {
             const firstMsg = meta.firstMsg;
             if (!savedTitle && !aiTitle && !firstMsg) continue;
             const displayText = savedTitle || aiTitle || firstMsg;
+            // v3.11: trash items honor the search filter too (matched on the
+            // full title, not the 40-char-truncated label).
+            if (filterActive && !this._matchesText(displayText)) continue;
             const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
             // Same caret-column reservation reason as live sessions.
             const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
@@ -636,6 +693,7 @@ class SessionTreeDataProvider {
             // Trash items skip extractMessageCount entirely; the lazy label
             // is just "trashed · <relTime> · <size>".
             item._sessionId = sid;
+            item._searchText = displayText;
             item._mtime = mtime;
             item._fileSize = st.size;
             item._jsonlPath = fullPath;
@@ -653,6 +711,10 @@ class SessionTreeDataProvider {
         }
       }
     }
+
+    // v3.11: filter active but nothing matched — show a single "no match" row
+    // instead of the generic empty-view welcome.
+    if (filterActive && groups.length === 0) return [this._noMatchRow()];
 
     return groups;
   }
@@ -801,6 +863,18 @@ class SessionTreeDataProvider {
   //   [ ...customGroupNodes, ...ungroupedSessionItems ]
   // All store reads go through _storeKey so the agent's own keys are used.
   _buildAgentGroups(itemMap, mtimeMap) {
+    // v3.11: drop leaves that don't match the active search filter before
+    // grouping; empty groups then collapse out via makeGroupNode's null return,
+    // and stateOf force-expands the rest so matches are visible.
+    const filterActive = !!this._filterText;
+    if (filterActive) {
+      for (const [sid, item] of [...itemMap]) {
+        if (!this._matchesText(item._searchText || item.label)) {
+          itemMap.delete(sid);
+          mtimeMap.delete(sid);
+        }
+      }
+    }
     const customGroupsRaw = sessionStoreGet(this._storeKey('groups'), {});
     // Synthesize empty ancestor paths so { 'Foo/Bar': [...] } renders 'Foo'.
     const customGroups = { ...customGroupsRaw };
@@ -849,7 +923,9 @@ class SessionTreeDataProvider {
     }
 
     const exp = this._expandedGroups;
-    const stateOf = (name) => exp.has(name) ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed;
+    // v3.11: force every group open while a search filter is active so matches
+    // aren't hidden inside collapsed groups.
+    const stateOf = (name) => (filterActive || exp.has(name)) ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.Collapsed;
 
     const makeGroupNode = (name) => {
       const ids = customGroups[name] || [];
@@ -934,13 +1010,17 @@ class SessionTreeDataProvider {
           item.command = { command: 'claudeCodeLauncher.restoreKiroSession', title: 'Restore', arguments: [item] };
           return item;
         });
-        const trashGroup = new vscode.TreeItem(`Trash (${trashItems.length})`, stateOf('Trash'));
-        trashGroup.iconPath = new vscode.ThemeIcon('trash');
-        trashGroup.contextValue = 'kiroTrashGroup';
-        trashGroup._children = trashItems;
-        out.push(trashGroup);
+        const trashList = filterActive ? trashItems.filter((it) => this._matchesText(it.label)) : trashItems;
+        if (trashList.length > 0) {
+          const trashGroup = new vscode.TreeItem(`Trash (${trashList.length})`, stateOf('Trash'));
+          trashGroup.iconPath = new vscode.ThemeIcon('trash');
+          trashGroup.contextValue = 'kiroTrashGroup';
+          trashGroup._children = trashList;
+          out.push(trashGroup);
+        }
       }
     }
+    if (filterActive && out.length === 0) return [this._noMatchRow()];
     return out;
   }
 
@@ -1065,6 +1145,7 @@ class SessionTreeDataProvider {
       // has actively expanded.
       item._jsonlPath = file.path;
       item._fileSize = file.size;
+      item._searchText = displayText;
 
       items.push(item);
     }
@@ -1100,6 +1181,7 @@ class SessionTreeDataProvider {
       item._jsonlPath = file.path;
       item._fileSize = file.size;
       item._archived = true;
+      item._searchText = displayText;
 
       items.push(item);
     }

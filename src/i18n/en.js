@@ -9,6 +9,11 @@ module.exports = {
   enterTabName: 'Enter tab name',
   resumeLaterGroup: 'Resume Later',
   recentSessionsGroup: 'Recent Sessions',
+  // v3.11: unified-view session-name search + new-session model picker
+  searchSessionsPrompt: 'Search sessions by name',
+  searchSessionsPlaceholder: 'Type part of a session title…',
+  searchNoMatch: 'No sessions match',
+  newSessionPickPlaceholder: 'Select a model for the new session',
   // v3.6.9: archive group toggle
   archiveModeOn: '📦 Archive mode on — title parsing skipped, no member cap',
   archiveModeOff: 'Archive mode off — back to normal group (cap 100)',

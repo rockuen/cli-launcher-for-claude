@@ -8,6 +8,11 @@ module.exports = {
   enterTabName: '탭 이름을 입력하세요',
   resumeLaterGroup: '나중에 이어서',
   recentSessionsGroup: '최근 세션',
+  // v3.11: unified-view 세션명 검색 + 새 세션 모델 선택
+  searchSessionsPrompt: '세션명으로 검색',
+  searchSessionsPlaceholder: '세션 제목 일부를 입력하세요…',
+  searchNoMatch: '일치하는 세션이 없습니다',
+  newSessionPickPlaceholder: '새 세션에 사용할 모델을 선택하세요',
   // v3.6.9: archive group toggle
   archiveModeOn: '📦 아카이브 모드로 전환됨 — 제목 파싱 생략, 개수 제한 없음',
   archiveModeOff: '아카이브 모드 해제됨 — 일반 그룹으로 복귀 (cap 100)',
