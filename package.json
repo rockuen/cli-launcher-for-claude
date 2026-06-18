@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity",
   "description": "Run Claude Code, Codex, Grok, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.11.1",
+  "version": "3.11.2",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -854,12 +854,12 @@
             "grok"
           ],
           "enumDescriptions": [
-            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure, Codex → slate, Grok → green)",
+            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure, Codex → slate, Grok → black)",
             "Claude Dark — coral input tone for every panel",
             "Kiro Purple — purple input tone for every panel",
             "Antigravity Spectrum — azure input tone for every panel",
             "Codex Slate — slate input tone for every panel",
-            "Grok Green — green input tone for every panel"
+            "Grok — black/dark input tone for every panel"
           ],
           "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity'/'codex'/'grok' pin one tone for all panels."
         },

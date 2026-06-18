@@ -27,7 +27,25 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="${xtermCssUri}">
-  <style>${getStyles({ isDark, outerBg, bg, fg, cursor, border, scrollThumb, scrollTrack, toolbarBg, toolbarBorder, btnBg, btnHover, statusGreen, statusOrange, statusGray })}</style>
+  <style>${getStyles({ isDark, outerBg, bg, fg, cursor, border, scrollThumb, scrollTrack, toolbarBg, toolbarBorder, btnBg, btnHover, statusGreen, statusOrange, statusGray })}
+${agent === 'grok' ? `
+/* Early Grok black theme injection - ensures input bar is black from first paint, before client JS runs */
+:root {
+  --accent: #e5e5e5 !important;
+  --accent-strong: #f4f4f5 !important;
+  --accent-deep: #a1a1aa !important;
+  --accent-panel-bg: #0a0a0a !important;
+  --accent-input-bg: #171717 !important;
+  --accent-glow: rgba(229,229,229,0.18) !important;
+  --accent-glow-strong: rgba(229,229,229,0.32) !important;
+  --accent-muted: #52525b !important;
+}
+#input-panel { border-top-color: #333 !important; }
+#editor-send { background: #2a2a2a !important; color: #ddd !important; border: 1px solid #444 !important; }
+#editor-send:hover { background: #3a3a3a !important; }
+#queue-add { border-color: #444 !important; color: #888 !important; }
+` : ''}
+</style>
 </head>
 <body>
   <div id="terminal-wrapper">
@@ -84,7 +102,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div class="theme-item" data-theme="kiro"><div class="theme-preview" style="background:#9d7bff;border-color:#7c5cff"></div>${T.themeKiro}</div>
       <div class="theme-item" data-theme="antigravity"><div class="theme-preview" style="background:linear-gradient(135deg,#F0613C,#F2A03D,#8FD44A,#34c2e0,#5A6FE0);border-color:#34c2e0"></div>${T.themeAntigravity}</div>
       <div class="theme-item" data-theme="codex"><div class="theme-preview" style="background:#64748b;border-color:#475569"></div>${T.themeCodex}</div>
-      <div class="theme-item" data-theme="grok"><div class="theme-preview" style="background:#22c55e;border-color:#16a34a"></div>${T.themeGrok}</div>
+      <div class="theme-item" data-theme="grok"><div class="theme-preview" style="background:#111111;border-color:#333333"></div>${T.themeGrok}</div>
     </div>
     <div id="settings-modal">
       <h4>&#x2699; Settings</h4>
@@ -123,9 +141,9 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
         <div class="settings-toggle ${settings.splitLayoutDefault === true ? 'on' : ''}" id="set-split-layout"></div>
       </div>
       <div class="settings-row">
-        <label title="Default reader/terminal split ratio. Slider value = reader pane height (%). Drag the splitter inside the panel for the same effect. Range: 15–92%.">Reader Default Height</label>
+        <label title="Default reader/terminal split ratio. Slider value = reader pane height (%). Drag the splitter inside the panel for the same effect. Range: 15–95%. Grok defaults to a narrower terminal.">Reader Default Height</label>
         <div style="display:flex;align-items:center;gap:6px;">
-          <input type="range" id="set-split-ratio" min="15" max="92" step="1" value="${Math.round((splitRatio != null ? splitRatio : 0.85)*100)}" style="width:80px;">
+          <input type="range" id="set-split-ratio" min="15" max="95" step="1" value="${Math.round((splitRatio != null ? splitRatio : 0.85)*100)}" style="width:80px;">
           <span id="set-split-ratio-label" style="font-size:11px;min-width:30px;">${Math.round((splitRatio != null ? splitRatio : 0.85)*100)}%</span>
         </div>
       </div>
@@ -163,7 +181,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
       <div id="input-panel-footer">
         <span class="input-hint">${T.inputHint}</span>
         <div style="display:flex;align-items:center;gap:6px;margin-left:auto;">
-          <button id="queue-add" style="height:26px;padding:0 10px;border:1px solid var(--accent, #D97757);border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:var(--accent, #D97757);">${T.queueAdd}</button>
+          <button id="queue-add" style="height:26px;padding:0 10px;border:1px solid var(--accent, ${agent === 'grok' ? '#444' : '#D97757'});border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:var(--accent, ${agent === 'grok' ? '#888' : '#D97757'});">${T.queueAdd}</button>
           <span id="queue-run" style="display:none"></span>
           ${(customButtons || []).map((b, i) => `<button class="custom-cmd-btn" data-cmd="${b.command.replace(/"/g, '&quot;')}" style="height:26px;padding:0 10px;border:1px solid ${isDark ? '#666' : '#bbb'};border-radius:4px;font-size:11px;font-family:-apple-system,'Segoe UI',sans-serif;cursor:pointer;background:transparent;color:${isDark ? '#aaa' : '#666'};" title="${b.command.replace(/"/g, '&quot;')}">${b.label.replace(/</g, '&lt;')}</button>`).join('\n          ')}
           <button id="editor-send">${T.send}</button>

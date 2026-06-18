@@ -412,14 +412,18 @@ function createPanel(context, extensionPath, session, opts) {
   const extraSlashes = resolveExtraSlashes(getLocale(), slashRegistryOpts, T);
   const terminalMinRows = Math.max(3, Math.min(30, Number(config.get('terminalMinRows', 8)) || 8));
   // Split layout: reader area / terminal ratio is per-user, persisted across
-  // reloads. Clamp to [0.15, 0.92] so neither pane ever collapses to zero
+  // reloads. Clamp to [0.15, 0.95] so neither pane ever collapses to zero
   // (xterm fit needs at least a few rows, reader needs at least a header's
-  // worth of height). v3.4.7 raised the upper cap from 0.85 to 0.92 so the
-  // settings slider + drag handle can both reach an intentionally narrow
-  // terminal for long-text reading. Default 0.85 = reader takes most of the
-  // space, terminal stays compact at the bottom.
+  // worth of height). Raised to 0.95 to support very narrow terminal (useful
+  // for Grok reader view and long reading sessions). Default 0.85 = reader
+  // takes most of the space. Grok forces at least 0.90 on first open.
   const splitRatioRaw = context.globalState.get('claudeCodeLauncher.splitRatio', 0.85);
-  const splitRatio = Math.max(0.15, Math.min(0.92, Number(splitRatioRaw) || 0.85));
+  let splitRatio = Math.max(0.15, Math.min(0.95, Number(splitRatioRaw) || 0.85));
+  // Grok panels start with a narrower terminal (higher reader ratio) because
+  // the full-screen TUI + reader makes the live terminal area feel too large by default.
+  if (agent === 'grok') {
+    splitRatio = Math.max(splitRatio, 0.90);
+  }
   // settings carries splitRatio so the in-panel settings modal slider can
   // read its initial value and re-sync when the user reopens the modal
   // after a drag/keyboard adjustment.

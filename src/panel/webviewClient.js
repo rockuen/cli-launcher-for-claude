@@ -20,11 +20,14 @@ function getClientScript(ctx) {
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
     // colors. 'auto' (the default) follows the agent: claude -> coral,
-    // kiro -> purple, antigravity -> azure, codex -> slate, grok -> green.
+    // kiro -> purple, antigravity -> azure, codex -> slate, grok -> black/dark.
     // An explicit claude/kiro/antigravity/codex/grok pick in Settings pins one tone for all
     // panels; legacy values (default/midnight/...) resolve to 'auto'.
-    const initialPanelTheme =
-      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok')
+    // For Grok, always force the black theme for the input area (brand match).
+    // Other agents respect explicit defaultTheme or fall back to auto (agent-specific).
+    const initialPanelTheme = IS_GROK
+      ? 'grok'
+      : (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok')
         ? SETTINGS.defaultTheme
         : 'auto';
     let currentThemeName = initialPanelTheme;
@@ -553,7 +556,7 @@ function getClientScript(ctx) {
             const fb = parseFloat(reader.style.flexBasis);
             if (Number.isFinite(fb) && fb > 0) live = fb;
           }
-          const pct = Math.max(15, Math.min(92, Math.round(live != null ? live : ((SETTINGS.splitRatio || 0.85) * 100))));
+          const pct = Math.max(15, Math.min(95, Math.round(live != null ? live : ((SETTINGS.splitRatio || 0.85) * 100))));
           setSplitRatio.value = pct;
           if (setSplitRatioLabel) setSplitRatioLabel.textContent = pct + '%';
         }
@@ -678,7 +681,7 @@ function getClientScript(ctx) {
       setSplitRatio.addEventListener('input', () => {
         const v = parseInt(setSplitRatio.value);
         if (setSplitRatioLabel) setSplitRatioLabel.textContent = v + '%';
-        const ratio = Math.max(0.15, Math.min(0.92, v / 100));
+        const ratio = Math.max(0.15, Math.min(0.95, v / 100));
         const reader = document.getElementById('reader-area');
         if (reader) {
           reader.style.flexBasis = (ratio * 100) + '%';
@@ -864,8 +867,9 @@ function getClientScript(ctx) {
         light: { accent: '#475569', accentStrong: '#64748b', accentDeep: '#334155', panelBg: '#f1f5f9', inputBg: '#ffffff', glow: 'rgba(71,85,105,0.2)', glowStrong: 'rgba(71,85,105,0.35)', muted: '#94a3b8' }
       },
       grok: {
-        dark:  { accent: '#22c55e', accentStrong: '#4ade80', accentDeep: '#16a34a', panelBg: '#14241a', inputBg: '#0d1811', glow: 'rgba(34,197,94,0.28)', glowStrong: 'rgba(34,197,94,0.48)', muted: '#6f9278' },
-        light: { accent: '#16a34a', accentStrong: '#22c55e', accentDeep: '#15803d', panelBg: '#eefbf2', inputBg: '#ffffff', glow: 'rgba(22,163,74,0.18)', glowStrong: 'rgba(22,163,74,0.32)', muted: '#72a17f' }
+        // Black / near-black tone to match Grok's identity (very dark input + subtle light accents)
+        dark:  { accent: '#e5e5e5', accentStrong: '#f4f4f5', accentDeep: '#a1a1aa', panelBg: '#0a0a0a', inputBg: '#171717', glow: 'rgba(229,229,229,0.18)', glowStrong: 'rgba(229,229,229,0.32)', muted: '#52525b' },
+        light: { accent: '#18181b', accentStrong: '#27272a', accentDeep: '#3f3f46', panelBg: '#f4f4f5', inputBg: '#ffffff', glow: 'rgba(24,24,27,0.12)', glowStrong: 'rgba(24,24,27,0.22)', muted: '#71717a' }
       }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
@@ -902,6 +906,10 @@ function getClientScript(ctx) {
     // Apply the resolved initial theme synchronously (claude → no-op vs the CSS
     // fallbacks; kiro → purple immediately, no coral flash).
     applyTheme(initialPanelTheme);
+    // Extra safety for Grok: ensure black input theme is applied even on first paint.
+    if (IS_GROK) {
+      applyTheme('grok');
+    }
 
     themePicker.addEventListener('click', (e) => {
       const item = e.target.closest('.theme-item');
@@ -2238,19 +2246,13 @@ function getClientScript(ctx) {
         return 17;
       };
 
-      // v3.4.7: simplified from a dynamic minRows guard back to a flat
-      // absolute cap. The previous formula (1 - terminalMinRows*charHeight/
-      // splitH) pinned the reader's max ratio at ~0.5-0.6 on typical heights,
-      // which users felt as "the terminal is stuck too wide and I can't make
-      // it smaller." Restoring a flat 0.92 cap (terminal >= 8%) gives users
-      // the full drag range for long-text reading; the CSS min-height on
-      // #terminal plus xterm scrollback keep the bottom pane usable, and
-      // anyone who clips the ctx line can drag back. Returns null only when
-      // the split area isn't laid out yet so callers can skip clamping.
+      // Flat cap at 0.95 (terminal >= ~5%) to allow very narrow terminal pane.
+      // Especially useful for Grok (full-screen TUI + reader). The CSS
+      // min-height on #terminal + scrollback keep it usable.
       const computeMaxRatio = () => {
         const splitH = split.getBoundingClientRect().height;
         if (!splitH || splitH <= 0) return null;
-        return 0.92;
+        return 0.95;
       };
 
       // Re-applies a ratio under the current minRows guard and refits xterm.
@@ -2323,7 +2325,7 @@ function getClientScript(ctx) {
         if (rect.height <= 0) return;
         const raw = (e.clientY - rect.top) / rect.height;
         const dynamicMax = computeMaxRatio();
-        const upperBound = (dynamicMax != null) ? dynamicMax : 0.92;
+        const upperBound = (dynamicMax != null) ? dynamicMax : 0.95;
         const ratio = Math.max(0.15, Math.min(upperBound, raw));
         reader.style.flexBasis = (ratio * 100) + '%';
         lastRatio = ratio;

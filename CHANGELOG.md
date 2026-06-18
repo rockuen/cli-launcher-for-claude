@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.11.2] - 2026-06-18
+
+### Changed
+- **Grok visual refresh.** Replaced the provisional Grok status glyphs with the Grok mark across idle/running/done/error/shell states, and switched the Grok panel input theme from green to black/dark.
+- **Grok reader layout.** Grok panels now open with a narrower terminal by default, and the reader split slider/drag cap now reaches 95% for long reader-focused sessions.
+
+### Fixed
+- **Grok running tab icon color.** The Grok running/thinking tab icon now uses the shared yellow running color instead of the done-state green.
+
+### Tests
+- Added a regression test that verifies the Grok running icon stays yellow and distinct from the Grok done icon.
+
 ## [3.11.1] - 2026-06-18
 
 ### Added

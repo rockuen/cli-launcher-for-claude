@@ -55,7 +55,7 @@ module.exports = {
   dropFiles: 'Drop files here',
   scrollBottomTip: 'Scroll to bottom',
   themeTitle: 'Agent Theme',
-  themeAuto: 'Auto (agent)', themeClaude: 'Claude Dark', themeKiro: 'Kiro Purple', themeAntigravity: 'Antigravity Spectrum', themeCodex: 'Codex Slate', themeGrok: 'Grok Green',
+  themeAuto: 'Auto (agent)', themeClaude: 'Claude Dark', themeKiro: 'Kiro Purple', themeAntigravity: 'Antigravity Spectrum', themeCodex: 'Codex Slate', themeGrok: 'Grok',
   themeDefault: 'Claude Dark',
   inputPlaceholder: 'Type a message... (Enter: Send / Shift+Enter: Newline / /: Command)',
   inputHint: 'Enter Send · Shift+Enter Newline · / Command',
