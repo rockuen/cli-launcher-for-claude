@@ -14,7 +14,7 @@ test('normalizeSubmitText normalizes CRLF and CR to LF', () => {
   assert.equal(normalizeSubmitText('a\r\nb\rc'), 'a\nb\nc');
 });
 
-test('Claude, Codex, and Kiro textarea submits send text, then delayed Enter', () => {
+test('Claude, Codex, Kiro, and Grok textarea submits send text, then delayed Enter', () => {
   assert.deepEqual(buildSubmitInputWrites('hello', { agent: 'claude' }), [
     { data: 'hello', delayMs: 0 },
     { data: '\r', delayMs: 120 },
@@ -24,6 +24,10 @@ test('Claude, Codex, and Kiro textarea submits send text, then delayed Enter', (
     { data: '\r', delayMs: 120 },
   ]);
   assert.deepEqual(buildSubmitInputWrites('hello', { agent: 'kiro' }), [
+    { data: 'hello', delayMs: 0 },
+    { data: '\r', delayMs: 120 },
+  ]);
+  assert.deepEqual(buildSubmitInputWrites('hello', { agent: 'grok' }), [
     { data: 'hello', delayMs: 0 },
     { data: '\r', delayMs: 120 },
   ]);
@@ -38,6 +42,10 @@ test('multi-line submits use bracketed paste for every agent', () => {
     { data: '\r', delayMs: 120 },
   ]);
   assert.deepEqual(buildSubmitInputWrites('a\nb', { agent: 'codex' }), [
+    { data: '\x1b[200~a\nb\x1b[201~', delayMs: 0 },
+    { data: '\r', delayMs: 120 },
+  ]);
+  assert.deepEqual(buildSubmitInputWrites('a\nb', { agent: 'grok' }), [
     { data: '\x1b[200~a\nb\x1b[201~', delayMs: 0 },
     { data: '\r', delayMs: 120 },
   ]);

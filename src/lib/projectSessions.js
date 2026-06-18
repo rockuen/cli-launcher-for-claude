@@ -49,6 +49,16 @@ function codexIndexFile(cwd) {
   return path.join(codexHome(cwd), 'session_index.jsonl');
 }
 
+function grokHome(cwd) {
+  const root = projectSessionRoot(cwd);
+  return root ? path.join(root, '.home', 'grok') : path.join(os.homedir(), '.grok');
+}
+
+function grokSessionsDir(cwd) {
+  const root = projectSessionRoot(cwd);
+  return root ? path.join(root, 'grok') : path.join(grokHome(cwd), 'sessions');
+}
+
 function kiroSessionsDir(cwd) {
   const root = projectSessionRoot(cwd);
   return root ? path.join(root, 'kiro') : path.join(os.homedir(), '.kiro', 'sessions', 'cli');
@@ -152,6 +162,25 @@ function _prepareAntigravityHome(cwd) {
   return home;
 }
 
+function _prepareGrokHome(cwd) {
+  const home = grokHome(cwd);
+  const real = path.join(os.homedir(), '.grok');
+  const sessionsDir = grokSessionsDir(cwd);
+  _mkdirp(home);
+  _mkdirp(sessionsDir);
+  _linkDirIfExists(sessionsDir, path.join(home, 'sessions'));
+  // Grok honors GROK_HOME directly, so unlike Kiro no HOME/USERPROFILE
+  // virtualization is needed. Copy lightweight config/auth metadata and link
+  // reusable surfaces so the project home stays small.
+  for (const file of ['auth.json', 'config.toml', 'active_sessions.json']) {
+    _copyFileIfExists(path.join(real, file), path.join(home, file));
+  }
+  for (const dir of ['agents', 'skills', 'prompts', 'plugins', 'hooks', 'docs']) {
+    _linkDirIfExists(path.join(real, dir), path.join(home, dir));
+  }
+  return home;
+}
+
 function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
   const env = { ...(baseEnv || process.env) };
   if (!isProjectSessionStorageEnabled() || !projectSessionRoot(cwd)) return env;
@@ -166,6 +195,8 @@ function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
       env.KIRO_HOME = path.join(kiroHome, '.kiro');
     } else if (agent === 'antigravity') {
       _setVirtualHome(env, _prepareAntigravityHome(cwd));
+    } else if (agent === 'grok') {
+      env.GROK_HOME = _prepareGrokHome(cwd);
     }
   } catch (_) {}
   return env;
@@ -191,16 +222,32 @@ function getAntigravityBaseDir(cwd) {
     : path.join(os.homedir(), '.gemini', 'antigravity-cli');
 }
 
+function getGrokPaths(cwd) {
+  if (isProjectSessionStorageEnabled() && projectSessionRoot(cwd)) {
+    return { home: grokHome(cwd), sessionsDir: grokSessionsDir(cwd) };
+  }
+  const home = path.join(os.homedir(), '.grok');
+  return { home, sessionsDir: path.join(home, 'sessions') };
+}
+
+function getGrokSessionsDir(cwd) {
+  return getGrokPaths(cwd).sessionsDir;
+}
+
 module.exports = {
   isProjectSessionStorageEnabled,
   projectSessionRoot,
   codexHome,
   codexSessionsDir,
   codexIndexFile,
+  grokHome,
+  grokSessionsDir,
   kiroSessionsDir,
   antigravityBaseDir,
   prepareProjectSessionEnvironment,
   getCodexPaths,
   getKiroSessionsDir,
   getAntigravityBaseDir,
+  getGrokPaths,
+  getGrokSessionsDir,
 };

@@ -1,6 +1,6 @@
 // Project-scoped session storage.
 //
-// Codex/Kiro/Antigravity normally store sessions in user-global CLI homes. The
+// Codex/Grok/Kiro/Antigravity normally store sessions in user-global CLI homes. The
 // launcher can optionally route those session homes under the active workspace
 // so each project has independent history without OneDrive/live-sync junctions.
 
@@ -47,6 +47,8 @@ test('project storage paths live under <workspace>/.agent-sessions', () => {
     assert.equal(mod.getCodexPaths(cwd).indexFile, path.join(cwd, '.agent-sessions', '.home', 'codex', 'session_index.jsonl'));
     assert.equal(mod.getKiroSessionsDir(cwd), path.join(cwd, '.agent-sessions', 'kiro'));
     assert.equal(mod.getAntigravityBaseDir(cwd), path.join(cwd, '.agent-sessions', 'antigravity'));
+    assert.equal(mod.getGrokPaths(cwd).home, path.join(cwd, '.agent-sessions', '.home', 'grok'));
+    assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'grok'));
   });
 });
 
@@ -59,6 +61,8 @@ test('global storage keeps CLI default locations', () => {
     assert.equal(mod.getCodexPaths(cwd).sessionsDir, path.join(codexHome, 'sessions'));
     assert.equal(mod.getKiroSessionsDir(cwd), path.join(os.homedir(), '.kiro', 'sessions', 'cli'));
     assert.equal(mod.getAntigravityBaseDir(cwd), path.join(os.homedir(), '.gemini', 'antigravity-cli'));
+    assert.equal(mod.getGrokPaths(cwd).home, path.join(os.homedir(), '.grok'));
+    assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(os.homedir(), '.grok', 'sessions'));
   });
 });
 
@@ -80,6 +84,12 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(antigravity.KEEP, '1');
     assert.equal(antigravity.HOME, path.join(cwd, '.agent-sessions', '.home', 'antigravity'));
     assert.equal(antigravity.USERPROFILE, antigravity.HOME);
+
+    const grok = mod.prepareProjectSessionEnvironment('grok', cwd, { KEEP: '1', HOME: os.homedir() });
+    assert.equal(grok.KEEP, '1');
+    assert.equal(grok.GROK_HOME, path.join(cwd, '.agent-sessions', '.home', 'grok'));
+    assert.equal(grok.HOME, os.homedir(), 'Grok uses GROK_HOME, not virtual HOME');
+    assert.equal(fs.existsSync(path.join(grok.GROK_HOME, 'sessions')), true);
 
     fs.rmSync(cwd, { recursive: true, force: true });
   });

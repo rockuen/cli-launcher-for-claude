@@ -17,7 +17,7 @@ const fs = require('fs');
 const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
-const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions } = require('./lib/sessionJsonl');
+const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions } = require('./lib/sessionJsonl');
 const { getKiroSessionsDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, deviceLocalSet, migrateFromWorkspaceState } = require('./store/sessionStore');
@@ -84,6 +84,9 @@ function activate(context) {
     }),
     vscode.commands.registerCommand('claudeCodeLauncher.newCodex', () => {
       createPanel(context, extensionPath, null, { agent: 'codex' });
+    }),
+    vscode.commands.registerCommand('claudeCodeLauncher.newGrok', () => {
+      createPanel(context, extensionPath, null, { agent: 'grok' });
     }),
     // Unified new-session command — backs the Quick Actions view rows (one per
     // installed + enabled agent). Tree-item only (hidden from the palette via
@@ -272,10 +275,20 @@ function activate(context) {
   });
   context.subscriptions.push(codexTreeView);
 
+  // 'Grok Sessions' (claudeCodeLauncher.grokSessions) — grok sessions only,
+  // hidden via the grokAvailable context key when grok isn't installed/enabled.
+  state.grokTreeProvider = new SessionTreeDataProvider(context, 'grok');
+  const grokTreeView = vscode.window.createTreeView('claudeCodeLauncher.grokSessions', {
+    treeDataProvider: state.grokTreeProvider,
+    dragAndDropController: state.grokTreeProvider,
+    canSelectMany: true
+  });
+  context.subscriptions.push(grokTreeView);
+
   // 'Sessions' (claudeCodeLauncher.unifiedSessions) — the unified view (v3.10):
-  // claude + kiro + antigravity + codex sessions in one tree, each leaf badged
+  // claude + kiro + antigravity + codex + grok sessions in one tree, each leaf badged
   // with its model icon, all sharing claude's group / Resume Later / Trash
-  // store. Shown when sessionViewMode === 'unified' (the default); the four
+  // store. Shown when sessionViewMode === 'unified' (the default); the five
   // split views hide. Reuses claude's DND MIME since only one of unified/split
   // is ever visible at a time.
   state.unifiedTreeProvider = new SessionTreeDataProvider(context, 'unified');
@@ -295,8 +308,8 @@ function activate(context) {
   const providerForItem = (item) => {
     // Unified-view items (any agent) route to the unified provider so their
     // group/sort/rename ops land in the one shared (claude) store — checked
-    // first because a unified kiro/codex leaf still carries kiroSession/
-    // codexSession contextValue.
+    // first because a unified kiro/codex/grok leaf still carries agent-specific
+    // contextValue.
     if (item && item._unified) {
       return state.unifiedTreeProvider;
     }
@@ -308,6 +321,9 @@ function activate(context) {
     }
     if (item && (item.contextValue === 'codexSession' || item._agentMode === 'codex')) {
       return state.codexTreeProvider;
+    }
+    if (item && (item.contextValue === 'grokSession' || item._agentMode === 'grok')) {
+      return state.grokTreeProvider;
     }
     return state.sessionTreeProvider;
   };
@@ -350,6 +366,16 @@ function activate(context) {
   unifiedTreeView.onDidCollapseElement(e => {
     const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.unifiedTreeProvider._expandedGroups.delete(key);
+  });
+
+  // Grok view — same expand/collapse tracking.
+  grokTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.grokTreeProvider._expandedGroups.add(key);
+  });
+  grokTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.grokTreeProvider._expandedGroups.delete(key);
   });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
@@ -402,10 +428,20 @@ function activate(context) {
   }
   refreshCodexAvailable();
 
+  function refreshGrokAvailable() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('enabledAgents', ['claude']);
+    const grokInstalled = listAgents().some(a => a.id === 'grok' && a.installed);
+    const available = grokInstalled && enabled.includes('grok');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.grokAvailable', available);
+  }
+  refreshGrokAvailable();
+
   // unifiedViewActive context key — drives the unified 'Sessions' view vs the
-  // four split agent views (package.json views[].when). True when
+  // five split agent views (package.json views[].when). True when
   // sessionViewMode === 'unified' (the default). When false the unified view
-  // hides and the split Claude/Codex/Kiro/Antigravity views show per their own
+  // hides and the split Claude/Codex/Grok/Kiro/Antigravity views show per their own
   // availability keys. Refreshed on sessionViewMode config changes below.
   function refreshSessionViewMode() {
     const mode = vscode.workspace
@@ -444,6 +480,7 @@ function activate(context) {
       if (state.kiroTreeProvider) state.kiroTreeProvider.refresh();
       if (state.antigravityTreeProvider) state.antigravityTreeProvider.refresh();
       if (state.codexTreeProvider) state.codexTreeProvider.refresh();
+      if (state.grokTreeProvider) state.grokTreeProvider.refresh();
       if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
     })
   );
@@ -470,9 +507,10 @@ function activate(context) {
     state.kiroTreeProvider,
     state.antigravityTreeProvider,
     state.codexTreeProvider,
+    state.grokTreeProvider,
   ].filter(Boolean);
   const _sessionViews = () => [
-    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView,
+    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView, grokTreeView,
   ].filter(Boolean);
   const _setFilterAll = (text) => {
     let normalized = '';
@@ -507,6 +545,7 @@ function activate(context) {
         refreshKiroAvailable();
         refreshAntigravityAvailable();
         refreshCodexAvailable();
+        refreshGrokAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
         if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
       }
@@ -569,6 +608,16 @@ function activate(context) {
         );
         return;
       }
+      if (opts && opts.agent === 'grok') {
+        const grokTitles = sessionStoreGet('grokSessionTitles', {});
+        createPanel(
+          context,
+          extensionPath,
+          { sessionId, cwd: opts.cwd, agent: 'grok', isGrokResume: true, title: grokTitles[sessionId] || opts.title },
+          {}
+        );
+        return;
+      }
       const titleMap = sessionStoreGet('claudeSessionTitles', {});
       const title = titleMap[sessionId] || undefined;
       // Remove from saved sessions list when resuming
@@ -612,7 +661,7 @@ function activate(context) {
       if (!sessionId) return;
       const prov = providerForItem(item);
       const groupsKey = prov._storeKey('groups');
-      const isKiro = prov === state.kiroTreeProvider;
+      const isClaude = prov === state.sessionTreeProvider;
       const groups = sessionStoreGet(groupsKey, {});
       const groupNames = Object.keys(groups);
       // Build indented picks: 'Work', '  Backend', '    API'
@@ -644,7 +693,7 @@ function activate(context) {
         if (groups[g].length === 0 && !hasDescendants(g)) delete groups[g];
       }
       // Also remove from legacy saved/archived (claude-only concepts).
-      if (!isKiro) {
+      if (isClaude) {
         const saved = sessionStoreGet('claudeSavedSessions', []);
         sessionStoreUpdate('claudeSavedSessions', saved.filter(s => s.sessionId !== sessionId));
         const archived = sessionStoreGet('claudeArchivedSessions', []);
@@ -929,7 +978,7 @@ function activate(context) {
       const sid = item?._sessionId;
       if (!sid) return;
       // v3.10: in the unified view, sub-session nesting is claude-only. A
-      // non-claude leaf (kiro/codex/agy) routes to the unified provider whose
+      // non-claude leaf (kiro/codex/grok/agy) routes to the unified provider whose
       // store is claude's, so nesting it would (a) write the foreign id into
       // claudeSessionParent, (b) list claude's project dir as nest candidates,
       // and (c) flip its contextValue to subSession — which exposes claude-only
@@ -943,6 +992,8 @@ function activate(context) {
       const prov = providerForItem(item);
       const isKiro = prov === state.kiroTreeProvider;
       const isAntigravity = prov === state.antigravityTreeProvider;
+      const isCodex = prov === state.codexTreeProvider;
+      const isGrok = prov === state.grokTreeProvider;
       // Build candidate list: top-level sessions only (parent empty), not self.
       const parents = sessionStoreGet(prov._storeKey('parent'), {});
       const titleMap = sessionStoreGet(prov._storeKey('titles'), {});
@@ -961,6 +1012,14 @@ function activate(context) {
         const agyCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
         const agyList = agyCwd ? listAntigravitySessions(agyCwd) : [];
         candidateIds = agyList.map(s => ({ id: s.sessionId, title: s.title }));
+      } else if (isCodex) {
+        const codexCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+        const codexList = codexCwd ? listCodexSessions(codexCwd) : [];
+        candidateIds = codexList.map(s => ({ id: s.sessionId, title: s.title }));
+      } else if (isGrok) {
+        const grokCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+        const grokList = grokCwd ? listGrokSessions(grokCwd) : [];
+        candidateIds = grokList.map(s => ({ id: s.sessionId, title: s.title }));
       } else {
         const projDir = state.sessionTreeProvider._getProjectDir();
         if (!projDir) return;
@@ -1198,6 +1257,10 @@ function deactivate() {
         cwd: entry.cwd,
         sessionId: entry.sessionId,
         agent: entry.agent || 'claude',
+        ...(entry.isKiroResume ? { isKiroResume: true } : {}),
+        ...(entry.isAntigravityResume ? { isAntigravityResume: true } : {}),
+        ...(entry.isCodexResume ? { isCodexResume: true } : {}),
+        ...(entry.isGrokResume ? { isGrokResume: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });

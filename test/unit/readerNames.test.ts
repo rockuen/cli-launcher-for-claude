@@ -19,6 +19,10 @@ test('resolveReaderNames: per-agent AI name + global user name', () => {
     resolveReaderNames({ user: '나', codex: 'Codex' }, 'codex', 'Codex'),
     { user: '나', assistant: 'Codex' }
   );
+  assert.deepEqual(
+    resolveReaderNames({ user: '나', grok: 'Grok' }, 'grok', 'Grok'),
+    { user: '나', assistant: 'Grok' }
+  );
 });
 
 test('resolveReaderNames: empty cfg → You + agent label', () => {

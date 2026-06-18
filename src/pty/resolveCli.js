@@ -125,4 +125,27 @@ function resolveCodexCli() {
   return null;
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli };
+// @module pty/resolveCli — locates xAI's Grok CLI (grok) binary.
+// Priority: ~/.grok/bin/grok (official grok build) → ~/.local/bin/grok → PATH.
+function resolveGrokCli() {
+  const isWin = process.platform === 'win32';
+
+  // 1) ~/.grok/bin/grok(.exe) — official installer location (verified on Windows).
+  const grokHomeBin = isWin
+    ? path.join(os.homedir(), '.grok', 'bin', 'grok.exe')
+    : path.join(os.homedir(), '.grok', 'bin', 'grok');
+  if (fs.existsSync(grokHomeBin)) return { shell: grokHomeBin, args: [] };
+
+  // 2) ~/.local/bin/grok(.exe) — standalone/PATH-style install location.
+  const localBin = isWin
+    ? path.join(os.homedir(), '.local', 'bin', 'grok.exe')
+    : path.join(os.homedir(), '.local', 'bin', 'grok');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+
+  // 3) PATH — resolved to an absolute path on Windows (node-pty needs it).
+  const onPath = resolveOnPath('grok');
+  if (onPath) return { shell: onPath, args: [] };
+  return null;
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli };

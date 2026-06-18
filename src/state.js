@@ -12,6 +12,7 @@ const state = {
   antigravityTreeProvider: null, // 'Antigravity Sessions' view provider (agentMode 'antigravity')
   codexTreeProvider: null,    // 'Codex Sessions' view provider (agentMode 'codex')
   unifiedTreeProvider: null,  // 'Sessions' unified view provider (agentMode 'unified')
+  grokTreeProvider: null,     // 'Grok Sessions' view provider (agentMode 'grok')
   quickActionsProvider: null, // 'Quick Actions' top-of-container view provider
   context: null,           // ExtensionContext, injected at activate()
   isDeactivating: false,
@@ -26,6 +27,7 @@ const state = {
     if (this.antigravityTreeProvider) this.antigravityTreeProvider.refresh();
     if (this.codexTreeProvider) this.codexTreeProvider.refresh();
     if (this.unifiedTreeProvider) this.unifiedTreeProvider.refresh();
+    if (this.grokTreeProvider) this.grokTreeProvider.refresh();
   },
   // v3.6.2: opt-in Diagnostics instance. Null when
   // claudeCodeLauncher.diagnostics.enabled is false. createPanel.js's

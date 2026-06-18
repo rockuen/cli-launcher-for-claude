@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.11.1] - 2026-06-18
+
+### Added
+- **Grok CLI agent support.** Added xAI Grok CLI (`grok`) as a first-class launcher agent with detection, new-session/resume commands, unified and split Sessions integration, enabled-agent filtering, reader names, status icons, and a Grok Green input theme.
+- **Grok session reader integration.** Grok sessions are discovered from `~/.grok/sessions/<encoded-cwd>/<session-id>/`, resume via `grok --resume <session-id>`, and reader parsing uses `updates.jsonl` visible user/agent chunks while titles come from `summary.json`.
+
+### Changed
+- **Project-scoped Grok home.** Project session mode now creates a virtual `GROK_HOME` under `.agent-sessions/.home/grok`, links its `sessions` directory to `.agent-sessions/grok`, and reuses the real Grok auth/config surfaces without overriding `HOME`.
+- **Grok TUI handling.** The webview strips combined mouse-tracking sequences such as `?1003;1006h`, keeps Grok scrollback disabled for full-screen redraw stability, and pins the live frame after `2J` redraws and synchronized-output bursts.
+
+### Tests
+- Added Grok coverage for registry detection, project session environment, session listing/resolution/parsing, reader names, tab titles, submit input behavior, and tree integration.
+
 ## [3.11.0] - 2026-06-18
 
 ### Added
@@ -67,7 +80,6 @@
 
 ### Tests
 - Added unified-mode source invariants; full suite **344 node + 54 vitest** passing.
-
 ## [3.9.5] - 2026-06-14
 
 ### Added

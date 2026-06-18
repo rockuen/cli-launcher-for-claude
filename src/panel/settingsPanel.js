@@ -383,6 +383,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     const INSTALL_HINTS = {
       claude: 'Install the Claude Code CLI — see https://docs.anthropic.com/claude/docs/claude-code',
       kiro: 'Install with the kiro-cli CLI, then authenticate via kiro-cli login. Sessions resume by working directory.',
+      grok: 'Install xAI Grok CLI so the grok command is available, then authenticate with grok login.',
     };
 
     const listEl = document.getElementById('agent-list');
@@ -493,6 +494,25 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           cbypass.appendChild(ccb);
           cbypass.appendChild(cbypassText);
           main.appendChild(cbypass);
+        }
+
+        // Grok-only: --always-approve toggle (approve tool calls without
+        // prompting). Bound to claudeCodeLauncher.grok.trustAllTools.
+        if (a.id === 'grok') {
+          const approve = document.createElement('label');
+          approve.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          approve.title = 'Run Grok with --always-approve so it approves tool calls without prompting. Applies to newly opened and restarted Grok sessions.';
+          const gcb = document.createElement('input');
+          gcb.type = 'checkbox';
+          gcb.checked = !!GLOBALS.grokTrustAllTools;
+          gcb.addEventListener('change', () => {
+            vscode.postMessage({ type: 'set-global', key: 'grok.trustAllTools', value: gcb.checked });
+          });
+          const approveText = document.createElement('span');
+          approveText.textContent = 'Always approve tools (--always-approve)';
+          approve.appendChild(gcb);
+          approve.appendChild(approveText);
+          main.appendChild(approve);
         }
 
         // Claude-only: startup flags — Effort max (--effort max) + Bypass
@@ -761,6 +781,7 @@ function openGlobalSettings(context) {
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
     codexTrustAllTools: cfg.get('codex.trustAllTools', false),
+    grokTrustAllTools: cfg.get('grok.trustAllTools', false),
     readerNames: cfg.get('readerNames', {}),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
@@ -781,6 +802,7 @@ function openGlobalSettings(context) {
     'kiro.trustAllTools',
     'antigravity.trustAllTools',
     'codex.trustAllTools',
+    'grok.trustAllTools',
     'readerNames',
     'repoSync.enabled',
     'repoSync.path',

@@ -12,7 +12,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir } = require('./projectSessions');
+const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir, getGrokPaths } = require('./projectSessions');
 
 // Find the most-recently-updated Kiro session jsonl that matches the given cwd.
 // Kiro writes a companion .json metadata file alongside each .jsonl (same dir,
@@ -327,6 +327,118 @@ function listCodexSessions(cwd, _dir, _indexFile) {
   return result;
 }
 
+// --- Grok (xAI) CLI sessions -------------------------------------------------
+//
+// Grok stores sessions under:
+//   ~/.grok/sessions/<url-encoded-cwd>/<session-id>/
+// with summary.json metadata and updates.jsonl ACP updates. GROK_HOME overrides
+// the ~/.grok base. Resume is `grok --resume <session-id>`; `grok --resume`
+// without an id resumes the most recent session for the current cwd.
+
+function _grokSessionsDir(cwd) {
+  return getGrokPaths(cwd).sessionsDir;
+}
+
+function _readGrokSummary(sessionDir) {
+  try {
+    const p = path.join(sessionDir, 'summary.json');
+    if (!fs.existsSync(p)) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function _walkGrokSessionDirs(dir) {
+  const out = [];
+  let groups;
+  try { groups = fs.readdirSync(dir); } catch { return out; }
+  for (const g of groups) {
+    const groupDir = path.join(dir, g);
+    let groupStat;
+    try { groupStat = fs.statSync(groupDir); } catch { continue; }
+    if (!groupStat.isDirectory()) continue;
+    let children;
+    try { children = fs.readdirSync(groupDir); } catch { continue; }
+    for (const id of children) {
+      const sessionDir = path.join(groupDir, id);
+      let st;
+      try { st = fs.statSync(sessionDir); } catch { continue; }
+      if (!st.isDirectory()) continue;
+      const updatesPath = path.join(sessionDir, 'updates.jsonl');
+      const summaryPath = path.join(sessionDir, 'summary.json');
+      if (fs.existsSync(updatesPath) || fs.existsSync(summaryPath)) out.push(sessionDir);
+    }
+  }
+  return out;
+}
+
+function _grokSummaryInfo(summary) {
+  return (summary && typeof summary === 'object' && summary.info && typeof summary.info === 'object')
+    ? summary.info
+    : (summary && typeof summary === 'object' ? summary : {});
+}
+
+function _grokTimestampMs(summary, updatesPath) {
+  const info = _grokSummaryInfo(summary);
+  const raw = info.updated_at || info.last_active_at || info.created_at
+    || summary?.updated_at || summary?.last_active_at || summary?.created_at;
+  const parsed = Date.parse(raw || '');
+  if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  try { return fs.statSync(updatesPath).mtimeMs; } catch { return 0; }
+}
+
+function _grokFirstUserFromUpdates(updatesPath) {
+  try {
+    const head = _splitJsonLines(_readChunk(updatesPath, 65536));
+    const msg = _extractGrokMessages(head).find((m) => m.role === 'user');
+    return msg ? msg.text.trim().split('\n')[0].trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function findGrokSessionPath(sessionId, _dir, cwd) {
+  if (!sessionId) return null;
+  const dir = _dir || _grokSessionsDir(cwd);
+  const needle = String(sessionId);
+  for (const sessionDir of _walkGrokSessionDirs(dir)) {
+    if (path.basename(sessionDir) !== needle) continue;
+    if (cwd) {
+      const summary = _readGrokSummary(sessionDir);
+      const info = _grokSummaryInfo(summary);
+      if (!_cwdMatch(info.cwd || info.workingDirectory || info.workspace, cwd)) continue;
+    }
+    const updatesPath = path.join(sessionDir, 'updates.jsonl');
+    return fs.existsSync(updatesPath) ? updatesPath : null;
+  }
+  return null;
+}
+
+function listGrokSessions(cwd, _dir) {
+  const dir = _dir || _grokSessionsDir(cwd);
+  const out = [];
+  for (const sessionDir of _walkGrokSessionDirs(dir)) {
+    const sessionId = path.basename(sessionDir);
+    const updatesPath = path.join(sessionDir, 'updates.jsonl');
+    const summary = _readGrokSummary(sessionDir);
+    const info = _grokSummaryInfo(summary);
+    const metaCwd = info.cwd || info.workingDirectory || info.workspace || '';
+    if (cwd && !_cwdMatch(metaCwd, cwd)) continue;
+    const title = info.generated_title || info.title || info.session_summary
+      || summary?.generated_title || summary?.title || summary?.session_summary
+      || (fs.existsSync(updatesPath) ? _grokFirstUserFromUpdates(updatesPath) : '');
+    out.push({
+      sessionId,
+      title: title || '',
+      cwd: metaCwd,
+      mtime: _grokTimestampMs(summary, updatesPath),
+    });
+  }
+  out.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  return out;
+}
+
 function getSessionJsonlPath(sessionId, cwd, agent) {
   // Phase 0: antigravity (agy) stores conversations as protobuf blobs inside a
   // SQLite db (~/.gemini/antigravity-cli/conversations/<id>.db), not jsonl — the
@@ -341,6 +453,9 @@ function getSessionJsonlPath(sessionId, cwd, agent) {
     // would bleed sibling sessions sharing the cwd into the reader (the exact
     // bug the kiro pinning work fixed).
     return findCodexSessionPath(sessionId, null, cwd);
+  }
+  if (agent === 'grok') {
+    return findGrokSessionPath(sessionId, null, cwd);
   }
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids. Once we know the REAL id — a
@@ -510,11 +625,55 @@ function _extractCodexMessages(lines) {
   return out;
 }
 
+// Grok updates.jsonl parser helper. ACP update lines carry
+// { params: { update: { sessionUpdate, content: { text } } } }. The same file
+// also includes thoughts and hook/tool events; the reader surfaces only visible
+// dialogue chunks, preserving their order.
+function _extractGrokMessages(lines) {
+  const out = [];
+  let currentRole = null;
+  let currentText = '';
+  let currentTs = null;
+
+  const flush = () => {
+    if (!currentRole || !currentText.trim()) {
+      currentRole = null;
+      currentText = '';
+      currentTs = null;
+      return;
+    }
+    out.push({ role: currentRole, text: currentText, timestamp: currentTs });
+    currentRole = null;
+    currentText = '';
+    currentTs = null;
+  };
+
+  for (const d of lines) {
+    const update = d?.params?.update || d?.update || {};
+    const kind = update.sessionUpdate || update.type || '';
+    let role = null;
+    if (kind === 'user_message_chunk') role = 'user';
+    else if (kind === 'agent_message_chunk' || kind === 'assistant_message_chunk') role = 'assistant';
+    else continue;
+
+    const text = update.content?.text ?? update.text ?? update.chunk ?? '';
+    if (typeof text !== 'string' || !text) continue;
+    if (currentRole && currentRole !== role) flush();
+    if (!currentRole) {
+      currentRole = role;
+      currentTs = d.timestamp || update.timestamp || update.created_at || null;
+    }
+    currentText += text;
+  }
+  flush();
+  return out;
+}
+
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
-// Kiro and codex sessions have no title line in the jsonl; return null for them
-// (codex titles come from session_index.jsonl via listCodexSessions).
+// Kiro, codex, and grok sessions have no title line in the jsonl; return null
+// for them (their titles come from per-agent metadata/list helpers).
 function extractAiTitle(filePath, agent) {
-  if (agent === 'kiro' || agent === 'codex') return null;
+  if (agent === 'kiro' || agent === 'codex' || agent === 'grok') return null;
   const lines = _readLinesCached(filePath);
   if (!lines) return null;
   let title = null;
@@ -561,6 +720,7 @@ function extractMessages(filePath, agent) {
   if (!lines) return [];
   if (agent === 'kiro') return _extractKiroMessages(lines);
   if (agent === 'codex') return _extractCodexMessages(lines);
+  if (agent === 'grok') return _extractGrokMessages(lines);
   const out = [];
   try {
     for (const d of lines) {
@@ -598,6 +758,7 @@ function extractMessageCount(filePath, agent) {
   if (!lines) return 0;
   if (agent === 'kiro') return _extractKiroMessages(lines).length;
   if (agent === 'codex') return _extractCodexMessages(lines).length;
+  if (agent === 'grok') return _extractGrokMessages(lines).length;
   let n = 0;
   try {
     for (const d of lines) {
@@ -627,6 +788,8 @@ module.exports = {
   listAntigravitySessions,
   listCodexSessions,
   findCodexSessionPath,
+  listGrokSessions,
+  findGrokSessionPath,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,

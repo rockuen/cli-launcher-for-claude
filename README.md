@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="icons/icon-128.png" alt="CLI Launcher for Claude, Codex, Kiro & Antigravity" width="96" height="96"/>
+  <img src="icons/icon-128.png" alt="CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity" width="96" height="96"/>
 </p>
 
-<h1 align="center">CLI Launcher for Claude, Codex, Kiro & Antigravity</h1>
+<h1 align="center">CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity</h1>
 
 <p align="center">
-  <strong>Run Claude Code, Codex, Kiro & Antigravity — four AI coding CLIs — inside VSCode tabs,
+  <strong>Run Claude Code, Codex, Grok, Kiro & Antigravity — five AI coding CLIs — inside VSCode tabs,
   read the conversation as live markdown, manage sessions in a tree, and auto-sync your workspace with git.</strong>
 </p>
 
 <p align="center">
   <em>A VSCode / Antigravity extension for the
   <a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code</a>, Codex,
-  Kiro, and Antigravity CLIs.</em>
+  Grok, Kiro, and Antigravity CLIs.</em>
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 
 ---
 
-I use Claude Code every day because I like it. Then Codex, then Kiro, then Antigravity each found their way into my workflow too. AI coding CLIs are great in a plain terminal — but the more of them I kept open, the clearer it got that one terminal isn't enough.
+I use Claude Code every day because I like it. Then Codex, Grok, Kiro, and Antigravity each found their way into my workflow too. AI coding CLIs are great in a plain terminal — but the more of them I kept open, the clearer it got that one terminal isn't enough.
 
 - Every agent needs its own terminal.
 - Session history is scattered, and each CLI stores it differently (some jsonl, some SQLite).
@@ -31,7 +31,7 @@ I use Claude Code every day because I like it. Then Codex, then Kiro, then Antig
 - With the same workspace on two or more devices, I keep forgetting to `git pull` / `git push`.
 - I burn through my usage (5-hour / 7-day) without noticing, then suddenly hit the wall.
 
-I built **cli-launcher** to solve all of that. It started by wrapping just Claude Code; now it runs four CLIs the same way inside one panel.
+I built **cli-launcher** to solve all of that. It started by wrapping just Claude Code; now it runs five CLIs the same way inside one panel.
 
 ![cli-launcher TUI panel — a session running inside VSCode](https://raw.githubusercontent.com/rockuen/cli-launcher-for-claude/main/docs/images/02-cli-launcher-tui.png)
 
@@ -39,28 +39,29 @@ This is what it looks like. A session runs inside a VSCode tab with an input box
 
 ## What it does
 
-**In one line**: run Claude Code, Codex, Kiro & Antigravity in VSCode tabs, read the conversation as clean markdown, manage sessions in a tree, and auto-handle your workspace's git push/pull.
+**In one line**: run Claude Code, Codex, Grok, Kiro & Antigravity in VSCode tabs, read the conversation as clean markdown, manage sessions in a tree, and auto-handle your workspace's git push/pull.
 
 A little more:
 
 - **The CLI as-is, with conveniences on top** — every feature of each CLI stays 100% intact. The launcher only layers the friction-fixers on top; it never hides or replaces anything.
-- **Four agents, one panel** — run Claude / Codex / Kiro / Antigravity in the same Webview tab. Each agent gets its own sessions view, and each tab wears its agent's color.
+- **Five agents, one panel** — run Claude / Codex / Grok / Kiro / Antigravity in the same Webview tab. Each agent gets its own sessions view, and each tab wears its agent's color.
 - **Session tree + groups** — give each session a title and bucket related ones into groups/folders. Re-open an archived session from the tree to pick up where you left off.
-- **Reader-Live** — watch the running conversation as markdown — code blocks, quotes, tables all rendered — side by side with the xterm.js terminal in a split layout. (Antigravity excepted — see "The four agents".)
+- **Reader-Live** — watch the running conversation as markdown — code blocks, quotes, tables all rendered — side by side with the xterm.js terminal in a split layout. (Antigravity excepted — see "The five agents".)
 - **Status + notifications** — a tab and its panel border **glow yellow** while a response is in flight and turn **green** when it's done, plus a desktop notification so you notice from another window.
 - **Hand-off** — pass one agent's conversation context to another. "Did this much with Claude, now continue with Codex."
 - **Repo Sync** — auto commit + push on workspace changes; the device name is stamped into the commit message.
 - **Multi-account switching** — save Claude logins as profiles and swap between them. (file-based on Windows/Linux, **Keychain-based on macOS**.)
 - **HUD** — 5-hour / 7-day usage rate + next reset time.
 
-## The four agents
+## The five agents
 
-cli-launcher wraps four AI coding CLIs the same way. Each one stores sessions differently (file vs DB, who assigns the id), so the internals differ — but from the outside it's identical: open it in a tab, pick it from the tree, read it in the reader.
+cli-launcher wraps five AI coding CLIs the same way. Each one stores sessions differently (file vs DB, who assigns the id), so the internals differ — but from the outside it's identical: open it in a tab, pick it from the tree, read it in the reader.
 
 | Agent | CLI | Reader | Tone | Permission toggle |
 |---|---|---|---|---|
 | **Claude** | `claude` | ✅ markdown | coral | `--dangerously-skip-permissions` |
 | **Codex** (OpenAI) | `codex` | ✅ markdown | slate | `--dangerously-bypass-approvals-and-sandbox` |
+| **Grok** (xAI) | `grok` | ✅ markdown | green | `--always-approve` |
 | **Kiro** | `kiro-cli` | ✅ markdown (incl. tool-use) | purple | `--trust-all-tools` |
 | **Antigravity** (Google) | `agy` | ❌ (terminal-only) | azure | `--dangerously-skip-permissions` |
 
@@ -93,7 +94,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 
 ## Features
 
-- **Per-agent session views** — a sidebar tree for each of Claude / Codex / Kiro / Antigravity. Groups, folders (nested up to 3 levels), drag-and-drop, rename, trash.
+- **Per-agent session views** — a sidebar tree for each of Claude / Codex / Grok / Kiro / Antigravity. Groups, folders (nested up to 3 levels), drag-and-drop, rename, trash.
 - **Reader-Live** — the running conversation as markdown, split-pane or standalone, with a branded welcome screen for empty sessions. (Antigravity excepted.)
 - **Customizable reader sender names** — set the name shown for "you" (global) and a per-agent AI name in Settings.
 - **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a desktop notification immediately.
@@ -113,7 +114,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 
 **Install** — three ways:
 
-1. **Open VSX**: search for *CLI Launcher for Claude, Codex, Kiro & Antigravity* in the Extensions view of
+1. **Open VSX**: search for *CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity* in the Extensions view of
    Antigravity, or VSCode with the [Open VSX gallery](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
 2. **VSIX**: download the latest `cli-launcher-for-claude-<platform>-<version>.vsix` from
    [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases) and
@@ -126,7 +127,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
    ```
 
 At minimum you need `claude` on `PATH` (`npm install -g @anthropic-ai/claude-code` or the
-official standalone install). For Codex / Kiro / Antigravity, install each CLI and enable it
+official standalone install). For Codex / Grok / Kiro / Antigravity, install each CLI and enable it
 under **Settings → Agent**.
 
 **Optional — "find files anywhere"** lets you click a file link that lives outside the
@@ -142,7 +143,7 @@ degrades gracefully if the backend isn't installed.
 
 **Basic use**:
 
-1. Click the launcher icon in the editor title bar (or `Cmd/Ctrl + Shift + ;`), then pick the agent (Claude / Codex / Kiro / Antigravity).
+1. Click the launcher icon in the editor title bar (or `Cmd/Ctrl + Shift + ;`), then pick the agent (Claude / Codex / Grok / Kiro / Antigravity).
 2. Start working. To open another tab with the same agent, use the in-session `+`.
 3. Re-open an archived session by clicking it in the per-agent **Sessions** tree (sidebar → **CLI Launcher** activity).
 4. (Optional) Toggle the 👁 in the header for a split layout — reader on top, terminal below.
@@ -167,7 +168,7 @@ every device automatically.
 
 ## Who it's for
 
-- **Anyone who uses Claude Code (or Codex / Kiro / Antigravity) daily** and finds the bare TUI cramped.
+- **Anyone who uses Claude Code (or Codex / Grok / Kiro / Antigravity) daily** and finds the bare TUI cramped.
 - **Anyone juggling several AI coding CLIs** who wants to run them the same way in one panel.
 - **Anyone unifying their workflow inside VSCode/VSCodium.**
 - **Anyone moving between devices on the same vault/repo.**
@@ -181,7 +182,7 @@ every device automatically.
 
 ## Closing
 
-It's a small tool, but building it tidied up **the flow I use every day**. Even as the agents grew from one to four, the things that used to scatter all collect inside one panel.
+It's a small tool, but building it tidied up **the flow I use every day**. Even as the agents grew from one to five, the things that used to scatter all collect inside one panel.
 
 I hope it helps people who lean on AI coding CLIs. Thoughts / issues welcome at
 [GitHub Issues](https://github.com/rockuen/cli-launcher-for-claude/issues).

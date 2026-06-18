@@ -10,20 +10,21 @@ function getClientScript(ctx) {
     const vscode = acquireVsCodeApi();
     const T = ${JSON.stringify(T)};
     const SETTINGS = ${JSON.stringify(settings)};
-    // Which backend this panel runs. Kiro renders full-screen frames in the
-    // normal buffer (CSI 2J + cursor-home redraws), which needs a different
-    // bottom-follow strategy than Claude's inline output — see scrollback below.
+    // Which backend this panel runs. Kiro/Grok render full-screen TUIs, which
+    // need a different bottom-follow strategy than Claude's inline output —
+    // see scrollback below.
     const IS_KIRO = ${JSON.stringify(agent === 'kiro')};
     const IS_ANTIGRAVITY = ${JSON.stringify(agent === 'antigravity')};
     const IS_CODEX = ${JSON.stringify(agent === 'codex')};
+    const IS_GROK = ${JSON.stringify(agent === 'grok')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
     // colors. 'auto' (the default) follows the agent: claude -> coral,
-    // kiro -> purple, antigravity -> azure, codex -> slate. An explicit
-    // claude/kiro/antigravity/codex pick in Settings pins one tone for all
+    // kiro -> purple, antigravity -> azure, codex -> slate, grok -> green.
+    // An explicit claude/kiro/antigravity/codex/grok pick in Settings pins one tone for all
     // panels; legacy values (default/midnight/...) resolve to 'auto'.
     const initialPanelTheme =
-      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex')
+      (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok')
         ? SETTINGS.defaultTheme
         : 'auto';
     let currentThemeName = initialPanelTheme;
@@ -84,7 +85,10 @@ function getClientScript(ctx) {
       // frame, so xterm's own scrollback works — the wheel scrolls history just
       // like PowerShell / Windows Terminal do for kiro. (v3.7.13 forced 0 to
       // stop a "jump to top" drift from heavy 2J redraws on older kiro builds.)
-      scrollback: 5000,
+      // v3.11.1: grok-build uses alt-screen + mouse tracking by default and
+      // still emits 2J redraws when --no-alt-screen is used; keep Grok's terminal
+      // as a live frame. Kiro keeps the restored standard scrollback above.
+      scrollback: IS_GROK ? 0 : 5000,
       allowProposedApi: true
     });
 
@@ -106,13 +110,10 @@ function getClientScript(ctx) {
     // and keeps Claude's input naturally at the pane bottom.)
     fitAddon.fit();
 
-    // Kiro renders a full-screen frame in the NORMAL buffer (no alt-screen):
-    // it clears with CSI 2J and redraws via cursor-home. The earlier onScroll
-    // follow-flag approach (v3.7.3) backfired — kiro's own redraws scroll the
-    // viewport programmatically, which onScroll cannot tell apart from a user
-    // scroll, so the flag flipped off and the view stuck at the top. The fix
-    // is now upstream (scrollback: 0 above leaves no room to drift) plus an
-    // unconditional scrollToBottom after each kiro write (see the output path).
+    // Grok renders as a full-screen frame and may clear/redraw with 2J bursts.
+    // Its terminal uses scrollback 0 and an unconditional bottom pin after each
+    // write. Kiro keeps standard scrollback on current builds, so it follows the
+    // normal "only scroll when already at bottom" output path.
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──
     // Claude CLI's fullscreen mode uses alternate screen buffer + mouse
@@ -132,19 +133,20 @@ function getClientScript(ctx) {
 
     // Detect mouse tracking from raw PTY data (for UI indicator only).
     function checkMouseMode(data) {
-      if (/\\x1b\\[\\?100[0-6]h/.test(data) || /\\x1b\\[\\?1015h/.test(data)) {
+      if (/\\x1b\\[\\?(?:100[0-6]|1015)(?:;(?:100[0-6]|1015))*h/.test(data)) {
         if (!isMouseMode) { isMouseMode = true; updateFullscreenUI(); }
       }
-      if (/\\x1b\\[\\?100[0-6]l/.test(data) || /\\x1b\\[\\?1015l/.test(data)) {
+      if (/\\x1b\\[\\?(?:100[0-6]|1015)(?:;(?:100[0-6]|1015))*l/.test(data)) {
         if (isMouseMode) { isMouseMode = false; updateFullscreenUI(); }
       }
     }
 
     // Strip mouse-mode sequences so xterm.js never enters mouse reporting.
-    // Covers: 1000-1006 (tracking modes), 1015 (urxvt extended).
+    // Covers: 1000-1006 (tracking modes), 1015 (urxvt extended), including
+    // combined forms like Grok's \x1b[?1003;1006h.
     // This preserves normal drag-select, Ctrl+C copy, and context menu.
     function stripMouseMode(data) {
-      return data.replace(/\\x1b\\[\\?(?:100[0-6]|1015)[hl]/g, '');
+      return data.replace(/\\x1b\\[\\?(?:100[0-6]|1015)(?:;(?:100[0-6]|1015))*[hl]/g, '');
     }
 
     // Alternate screen buffer detection via xterm.js API.
@@ -839,8 +841,8 @@ function getClientScript(ctx) {
     const themePicker = document.getElementById('theme-picker');
     // Agent input-tone themes. Each carries a dark + light INPUT-AREA palette
     // (the terminal itself is never recolored). 'claude' reproduces the original
-    // coral accent exactly, so nothing changes for Claude tabs; 'kiro' is the
-    // purple tone. Future agents (antigravity, codex) slot in here the same way.
+    // coral accent exactly, so nothing changes for Claude tabs; each other
+    // agent gets a distinct tone.
     const themes = {
       claude: {
         dark:  { accent: '#D97757', accentStrong: '#E8956A', accentDeep: '#C96442', panelBg: '#2a2220', inputBg: '#1e1a18', glow: 'rgba(217,119,87,0.3)', glowStrong: 'rgba(217,119,87,0.5)', muted: '#8a7060' },
@@ -860,6 +862,10 @@ function getClientScript(ctx) {
         // agents (claude coral / kiro purple / antigravity azure).
         dark:  { accent: '#64748b', accentStrong: '#94a3b8', accentDeep: '#475569', panelBg: '#20262e', inputBg: '#161b21', glow: 'rgba(100,116,139,0.3)', glowStrong: 'rgba(100,116,139,0.5)', muted: '#7d8896' },
         light: { accent: '#475569', accentStrong: '#64748b', accentDeep: '#334155', panelBg: '#f1f5f9', inputBg: '#ffffff', glow: 'rgba(71,85,105,0.2)', glowStrong: 'rgba(71,85,105,0.35)', muted: '#94a3b8' }
+      },
+      grok: {
+        dark:  { accent: '#22c55e', accentStrong: '#4ade80', accentDeep: '#16a34a', panelBg: '#14241a', inputBg: '#0d1811', glow: 'rgba(34,197,94,0.28)', glowStrong: 'rgba(34,197,94,0.48)', muted: '#6f9278' },
+        light: { accent: '#16a34a', accentStrong: '#22c55e', accentDeep: '#15803d', panelBg: '#eefbf2', inputBg: '#ffffff', glow: 'rgba(22,163,74,0.18)', glowStrong: 'rgba(22,163,74,0.32)', muted: '#72a17f' }
       }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
@@ -877,9 +883,8 @@ function getClientScript(ctx) {
     // input panel (accent, panel bg, textarea bg, caret/glow, send button)
     // changes tone.
     function applyTheme(themeName) {
-      // 'auto' resolves to this panel's agent tone (claude coral / kiro purple /
-      // antigravity azure / codex slate).
-      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : 'claude') : themeName;
+      // 'auto' resolves to this panel's agent tone.
+      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : IS_GROK ? 'grok' : 'claude') : themeName;
       const def = themes[resolvedName];
       if (!def) return;
       const t = IS_DARK ? def.dark : def.light;
@@ -1050,13 +1055,19 @@ function getClientScript(ctx) {
       if (msg.type === 'output') {
         checkMouseMode(msg.data);
         const cleaned = stripMouseMode(msg.data);
-        // v3.10.4: all agents (kiro included) only auto-scroll to the bottom if
-        // the viewport was already there, so scrolling up to read history stays
-        // put instead of being yanked back down by the next output chunk.
-        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
-        term.write(cleaned, () => {
-          if (wasAtBottom) term.scrollToBottom();
-        });
+        if (IS_GROK) {
+          // Grok is a full-screen TUI with 2J/synchronized redraw bursts; with
+          // scrollback 0 this just keeps the live frame pinned.
+          term.write(cleaned, () => term.scrollToBottom());
+        } else {
+          // v3.10.4: all agents (kiro included) only auto-scroll to the bottom if
+          // the viewport was already there, so scrolling up to read history stays
+          // put instead of being yanked back down by the next output chunk.
+          const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+          term.write(cleaned, () => {
+            if (wasAtBottom) term.scrollToBottom();
+          });
+        }
       }
       if (msg.type === 'state') {
         // Hide restart bar when active

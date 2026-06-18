@@ -46,6 +46,10 @@ test('agentLabel: kiro → "Kiro"', () => {
   assert.equal(resolveAgentLabel('kiro'), 'Kiro');
 });
 
+test('agentLabel: grok → "Grok"', () => {
+  assert.equal(resolveAgentLabel('grok'), 'Grok');
+});
+
 test('agentLabel: unknown id falls back to "Claude Code"', () => {
   assert.equal(resolveAgentLabel('unknown-agent'), 'Claude Code');
 });
@@ -95,6 +99,10 @@ test('isDefaultTabTitle: bare "Kiro" → true', () => {
 
 test('isDefaultTabTitle: "Kiro (2)" → true', () => {
   assert.equal(isDefaultTabTitle('Kiro (2)'), true);
+});
+
+test('isDefaultTabTitle: "Grok (2)" → true', () => {
+  assert.equal(isDefaultTabTitle('Grok (2)'), true);
 });
 
 test('isDefaultTabTitle: user-renamed title → false', () => {

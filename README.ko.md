@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="icons/icon-128.png" alt="CLI Launcher for Claude, Codex, Kiro & Antigravity" width="96" height="96"/>
+  <img src="icons/icon-128.png" alt="CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity" width="96" height="96"/>
 </p>
 
-<h1 align="center">CLI Launcher for Claude, Codex, Kiro & Antigravity</h1>
+<h1 align="center">CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity</h1>
 
 <p align="center">
-  <strong>Claude Code·Codex·Kiro·Antigravity 네 개의 AI 코딩 CLI를 VSCode 안 탭에서 띄우고,
+  <strong>Claude Code·Codex·Grok·Kiro·Antigravity 다섯 개의 AI 코딩 CLI를 VSCode 안 탭에서 띄우고,
   대화를 markdown으로 같이 보고, 세션을 트리로 관리하고, 워크스페이스 git sync까지 하는 익스텐션.</strong>
 </p>
 
 <p align="center">
   <em><a href="https://docs.anthropic.com/en/docs/claude-code/overview">Claude Code</a> · Codex ·
-  Kiro · Antigravity CLI를 위한 VSCode / Antigravity 익스텐션.</em>
+  Grok · Kiro · Antigravity CLI를 위한 VSCode / Antigravity 익스텐션.</em>
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 
 ---
 
-Claude Code가 좋아서 매일 쓴다. 그러다 Codex도, Kiro도, Antigravity도 하나씩 손에 익었다. AI 코딩 CLI는 터미널에서 그냥 쓸 때도 좋지만, 손에 쥔 게 늘어날수록 터미널 하나로는 부족하다는 게 또렷해졌다.
+Claude Code가 좋아서 매일 쓴다. 그러다 Codex도, Grok도, Kiro도, Antigravity도 하나씩 손에 익었다. AI 코딩 CLI는 터미널에서 그냥 쓸 때도 좋지만, 손에 쥔 게 늘어날수록 터미널 하나로는 부족하다는 게 또렷해졌다.
 
 - 에이전트마다 터미널을 따로 띄워야 한다.
 - 세션 기록이 CLI마다 제각각(어떤 건 jsonl, 어떤 건 SQLite)이라 한눈에 안 보인다.
@@ -30,7 +30,7 @@ Claude Code가 좋아서 매일 쓴다. 그러다 Codex도, Kiro도, Antigravity
 - 디바이스 두 대 이상에서 같은 워크스페이스를 쓰면 `git pull` / `git push`를 자꾸 까먹는다.
 - 사용량(5시간 / 7일)이 어디까지 찼는지 모르고 막 쓰다 갑자기 막힌다.
 
-이걸 다 풀고 싶어서 **cli-launcher** 라는 VSCode/VSCodium 익스텐션을 만들었다. 처음엔 Claude Code 하나만 감쌌는데, 지금은 네 개의 CLI를 같은 패널 안에서 똑같은 방식으로 굴린다.
+이걸 다 풀고 싶어서 **cli-launcher** 라는 VSCode/VSCodium 익스텐션을 만들었다. 처음엔 Claude Code 하나만 감쌌는데, 지금은 다섯 개의 CLI를 같은 패널 안에서 똑같은 방식으로 굴린다.
 
 ![cli-launcher TUI 패널 — VSCode 안에서 세션이 진행 중인 모습](https://raw.githubusercontent.com/rockuen/cli-launcher-for-claude/main/docs/images/02-cli-launcher-tui.png)
 
@@ -38,28 +38,29 @@ Claude Code가 좋아서 매일 쓴다. 그러다 Codex도, Kiro도, Antigravity
 
 ## 무엇을 하는가
 
-**한 줄로**: Claude Code·Codex·Kiro·Antigravity를 VSCode 안 탭에서 띄우고, 대화를 깔끔한 markdown으로 같이 보고, 세션을 트리로 관리하고, 워크스페이스의 git push/pull도 자동으로 처리한다.
+**한 줄로**: Claude Code·Codex·Grok·Kiro·Antigravity를 VSCode 안 탭에서 띄우고, 대화를 깔끔한 markdown으로 같이 보고, 세션을 트리로 관리하고, 워크스페이스의 git push/pull도 자동으로 처리한다.
 
 조금 풀어 쓰면:
 
 - **CLI 그대로 + 위에 얹는 편의** — 각 CLI의 모든 기능은 100% 그대로 살아있다. 그 위에 자주 부딪히는 마찰만 얹는다. 무언가를 가리거나 대체하지 않는다.
-- **네 개의 에이전트, 한 패널** — Claude / Codex / Kiro / Antigravity를 같은 Webview 탭에서 띄운다. 에이전트마다 세션 뷰가 따로 있고, 탭은 자기 에이전트 색을 띤다.
+- **다섯 개의 에이전트, 한 패널** — Claude / Codex / Grok / Kiro / Antigravity를 같은 Webview 탭에서 띄운다. 에이전트마다 세션 뷰가 따로 있고, 탭은 자기 에이전트 색을 띤다.
 - **세션 트리 + 그룹** — 세션마다 제목을 직접 붙이고, 관련된 세션끼리 그룹/폴더로 묶어 보관. 보관해둔 세션은 트리에서 골라 다시 불러와 이어 작업할 수 있다.
-- **Reader-Live** — 진행 중인 대화를 markdown으로 같이 본다. 코드 블록, 인용, 표가 그대로 렌더링. xterm.js 터미널과 split layout으로 동시에. (Antigravity만 예외 — 아래 "네 개의 에이전트"에서 설명.)
+- **Reader-Live** — 진행 중인 대화를 markdown으로 같이 본다. 코드 블록, 인용, 표가 그대로 렌더링. xterm.js 터미널과 split layout으로 동시에. (Antigravity만 예외 — 아래 "다섯 개의 에이전트"에서 설명.)
 - **상태 + 알림** — 응답이 진행 중이면 탭과 패널 테두리가 **노란색으로 글로우**, 끝나면 **초록색**으로 바뀐다. 시스템 알림도 같이 띄워서 다른 일 하다가도 자연스럽게 알아챈다.
 - **핸드오프** — 한 에이전트의 대화 맥락을 다른 에이전트에게 넘긴다. "여기까지 Claude랑 했는데 이어서 Codex한테" 같은 흐름.
 - **Repo Sync** — 워크스페이스 변경을 자동 commit + push. 디바이스 이름이 commit 메시지에 박힌다.
 - **다중 계정 전환** — Claude 계정을 프로필로 저장해뒀다가 바꿔 끼운다. (Windows/Linux는 파일, **macOS는 Keychain** 기반.)
 - **HUD** — 5시간 / 7일 사용률 + 다음 리셋 시각.
 
-## 네 개의 에이전트
+## 다섯 개의 에이전트
 
-cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 CLI가 세션을 저장하는 방식이 다 달라서(파일이냐 DB냐, ID를 누가 매기냐) 안쪽 처리는 제각각이지만, 쓰는 입장에서는 똑같다 — 탭에서 띄우고, 트리에서 고르고, reader로 본다.
+cli-launcher는 다섯 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 CLI가 세션을 저장하는 방식이 다 달라서(파일이냐 DB냐, ID를 누가 매기냐) 안쪽 처리는 제각각이지만, 쓰는 입장에서는 똑같다 — 탭에서 띄우고, 트리에서 고르고, reader로 본다.
 
 | 에이전트 | CLI | Reader | 톤 | 권한 토글 |
 |---|---|---|---|---|
 | **Claude** | `claude` | ✅ markdown | 코랄 | `--dangerously-skip-permissions` |
 | **Codex** (OpenAI) | `codex` | ✅ markdown | 슬레이트 | `--dangerously-bypass-approvals-and-sandbox` |
+| **Grok** (xAI) | `grok` | ✅ markdown | 그린 | `--always-approve` |
 | **Kiro** | `kiro-cli` | ✅ markdown (tool-use 포함) | 퍼플 | `--trust-all-tools` |
 | **Antigravity** (Google) | `agy` | ❌ (터미널 전용) | 아주어 | `--dangerously-skip-permissions` |
 
@@ -92,7 +93,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 
 ## 주요 기능
 
-- **에이전트별 세션 뷰** — Claude / Codex / Kiro / Antigravity 각각의 사이드바 트리. 그룹·폴더(최대 3단 중첩)·드래그앤드롭·이름 변경·휴지통.
+- **에이전트별 세션 뷰** — Claude / Codex / Grok / Kiro / Antigravity 각각의 사이드바 트리. 그룹·폴더(최대 3단 중첩)·드래그앤드롭·이름 변경·휴지통.
 - **Reader-Live** — 진행 중 대화를 markdown으로. split layout 또는 standalone. 빈 세션엔 브랜디드 환영 화면. (Antigravity 제외)
 - **reader 발신자 이름 커스텀** — reader에 뜨는 "나"의 이름(전역)과 에이전트별 AI 이름을 설정에서 바꾼다.
 - **상태 인식 탭** — idle / running / done / error / needs-attention. 인터랙티브 프롬프트(`[Y/n]`, 메뉴 등)는 7초 임계 무시하고 즉시 needs-attention + 데스크탑 알림.
@@ -113,7 +114,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 **설치** — 세 가지 방법:
 
 1. **Open VSX**: Antigravity 또는 (Open VSX 갤러리가 등록된) VSCode 의 Extensions 뷰에서
-   *CLI Launcher for Claude, Codex, Kiro & Antigravity* 검색 — [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
+   *CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity* 검색 — [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
 2. **VSIX**: [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases)
    에서 최신 `cli-launcher-for-claude-<platform>-<version>.vsix` 다운로드 →
    *Extensions: Install from VSIX...* 로 설치.
@@ -125,7 +126,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
    ```
 
 적어도 `claude` 가 `PATH` 에 있어야 한다 (`npm install -g @anthropic-ai/claude-code`
-또는 공식 standalone 설치). Codex / Kiro / Antigravity는 각 CLI를 설치한 뒤 **설정 → Agent**에서 켜면 된다.
+또는 공식 standalone 설치). Codex / Grok / Kiro / Antigravity는 각 CLI를 설치한 뒤 **설정 → Agent**에서 켜면 된다.
 
 **선택 — "어디 있든 파일 찾기"**: 세션 작업 폴더 밖에 있는 파일 링크를 클릭하면 OS 파일
 인덱스로 찾아서 연다. 기본 켜짐이고, 백엔드가 없으면 조용히 기존 동작으로 돌아간다.
@@ -139,7 +140,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 
 **기본 사용**:
 
-1. 에디터 제목 표시줄의 런처 아이콘 클릭(또는 `Cmd/Ctrl + Shift + ;`) → 에이전트 선택(Claude / Codex / Kiro / Antigravity).
+1. 에디터 제목 표시줄의 런처 아이콘 클릭(또는 `Cmd/Ctrl + Shift + ;`) → 에이전트 선택(Claude / Codex / Grok / Kiro / Antigravity).
 2. 작업 시작. 같은 에이전트로 탭을 더 열려면 탭 안의 `+`.
 3. 보관해둔 세션은 사이드바 **CLI Launcher** 액티비티의 에이전트별 **Sessions** 트리에서 클릭해 재개.
 4. (선택) 헤더 👁 토글로 split layout 진입 — Reader가 위, 터미널이 아래.
@@ -162,7 +163,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 
 ## 누구한테 좋을까
 
-- **Claude Code(혹은 Codex / Kiro / Antigravity)를 매일 쓰는 사람** — TUI만으로는 답답한 분
+- **Claude Code(혹은 Codex / Grok / Kiro / Antigravity)를 매일 쓰는 사람** — TUI만으로는 답답한 분
 - **여러 AI 코딩 CLI를 오가는 사람** — 한 패널에서 같은 방식으로 굴리고 싶은 분
 - **VSCode/VSCodium 안에서 작업 흐름을 통일하고 싶은 사람**
 - **여러 디바이스에서 같은 vault/repo를 오가는 사람**
@@ -176,7 +177,7 @@ cli-launcher는 네 개의 AI 코딩 CLI를 같은 방식으로 감싼다. 각 C
 
 ## 마치며
 
-작은 도구지만 만들면서 **"내가 매일 쓰는 흐름"** 자체가 정리됐다. 에이전트가 하나에서 넷으로 늘어도, 산만하게 흩어졌던 것들이 하나의 패널 안에서 깔끔하게 모인다.
+작은 도구지만 만들면서 **"내가 매일 쓰는 흐름"** 자체가 정리됐다. 에이전트가 하나에서 다섯으로 늘어도, 산만하게 흩어졌던 것들이 하나의 패널 안에서 깔끔하게 모인다.
 
 AI 코딩 CLI를 더 많이 쓰는 분들에게 도움이 되면 좋겠다. 의견/이슈는
 [GitHub Issues](https://github.com/rockuen/cli-launcher-for-claude/issues)로.

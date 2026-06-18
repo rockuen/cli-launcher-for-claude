@@ -18,7 +18,7 @@ const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
@@ -26,8 +26,8 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
-const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath } = require('../lib/sessionJsonl');
-const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths } = require('../lib/projectSessions');
+const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath } = require('../lib/sessionJsonl');
+const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths } = require('../lib/projectSessions');
 const { buildMeta, renderBlocks, renderWelcome, resolveReaderNames } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
@@ -59,6 +59,11 @@ const _claimedKiroIds = new Set();
 // rollout that appears and pins it (entry.sessionId), so its reader reads that
 // exact rollout. This set stops two fresh panels in one cwd claiming one id.
 const _claimedCodexIds = new Set();
+
+// Grok fresh-session id ownership — same pattern as codex. Grok writes
+// sessions under ~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl and
+// the id is not known until the CLI creates that directory.
+const _claimedGrokIds = new Set();
 
 // Split-layout reader watcher: tail the active session's jsonl and broadcast
 // rendered blocks to the webview so the in-panel reader stays in sync with
@@ -140,6 +145,34 @@ function startReaderWatch(entry, panel) {
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'codex');
   };
 
+  // Grok id discovery mirrors codex. Tree-resume/restored sessions already
+  // carry the real session id; fresh panels carry a placeholder until Grok
+  // creates ~/.grok/sessions/<cwd>/<real-id>/updates.jsonl.
+  if (entry.agent === 'grok' && !entry._grokPinned && entry.sessionId
+      && (entry.isGrokResume || findGrokSessionPath(entry.sessionId, null, entry.cwd))) {
+    entry._grokPinned = true;
+    entry.isGrokResume = true;
+    _claimedGrokIds.add(entry.sessionId);
+  }
+  const grokPreIds = (entry.agent === 'grok' && !entry._grokPinned)
+    ? (entry._grokPreIds || new Set(listGrokSessions(entry.cwd).map(s => s.sessionId)))
+    : null;
+  const resolveGrokPath = () => {
+    if (!entry._grokPinned) {
+      const fresh = listGrokSessions(entry.cwd)
+        .find(s => !grokPreIds.has(s.sessionId) && !_claimedGrokIds.has(s.sessionId));
+      if (!fresh) return null;
+      entry.sessionId = fresh.sessionId;
+      entry.isGrokResume = true;
+      entry._grokPinned = true;
+      _claimedGrokIds.add(fresh.sessionId);
+      try { saveSessions(); } catch (_) {}
+      try { state.refreshSessionTrees(); } catch (_) {}
+      console.log('[panel-reader] grok session pinned:', fresh.sessionId);
+    }
+    return getSessionJsonlPath(entry.sessionId, entry.cwd, 'grok');
+  };
+
   const watchTarget = entry.agent === 'kiro'
     ? getKiroSessionsDir(entry.cwd)
     : entry.agent === 'codex'
@@ -148,6 +181,10 @@ function startReaderWatch(entry, panel) {
       ? (entry._codexPinned
           ? getSessionJsonlPath(entry.sessionId, entry.cwd, 'codex')
           : getCodexPaths(entry.cwd).sessionsDir)
+      : entry.agent === 'grok'
+        ? (entry._grokPinned
+            ? getSessionJsonlPath(entry.sessionId, entry.cwd, 'grok')
+            : getGrokPaths(entry.cwd).sessionsDir)
       : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
   if (!watchTarget) return null;
 
@@ -156,6 +193,7 @@ function startReaderWatch(entry, panel) {
   // repeated stat/scan on the common hot path).
   const resolvePath = entry.agent === 'kiro' ? resolveKiroPath
     : entry.agent === 'codex' ? resolveCodexPath
+    : entry.agent === 'grok' ? resolveGrokPath
     : () => watchTarget;
 
   let debounceTimer = null;
@@ -170,7 +208,7 @@ function startReaderWatch(entry, panel) {
     debounceTimer = null;
     if (entry._disposed) return;
     const jsonlPath = resolvePath();
-    if ((entry.agent === 'kiro' && entry._kiroPinned) || (entry.agent === 'codex' && entry._codexPinned)) {
+    if ((entry.agent === 'kiro' && entry._kiroPinned) || (entry.agent === 'codex' && entry._codexPinned) || (entry.agent === 'grok' && entry._grokPinned)) {
       if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
     }
     if (!jsonlPath || !fs.existsSync(jsonlPath)) return;
@@ -232,7 +270,7 @@ function startReaderWatch(entry, panel) {
     watcher.on('change', () => schedule());
     watcher.on('error', (e) => console.error('[panel-reader] watcher error:', e && e.message));
     console.log('[panel-reader] watching ' + watchTarget);
-    if ((entry.agent === 'kiro' && !entry._kiroPinned) || (entry.agent === 'codex' && !entry._codexPinned)) {
+    if ((entry.agent === 'kiro' && !entry._kiroPinned) || (entry.agent === 'codex' && !entry._codexPinned) || (entry.agent === 'grok' && !entry._grokPinned)) {
       discoveryTimer = setInterval(schedule, 1000);
       schedule();
     }
@@ -252,6 +290,9 @@ function startReaderWatch(entry, panel) {
     // Same for codex.
     if (entry.agent === 'codex' && entry._codexPinned && entry.sessionId) {
       _claimedCodexIds.delete(entry.sessionId);
+    }
+    if (entry.agent === 'grok' && entry._grokPinned && entry.sessionId) {
+      _claimedGrokIds.delete(entry.sessionId);
     }
   };
 }
@@ -390,7 +431,7 @@ function createPanel(context, extensionPath, session, opts) {
   // (agent is already resolved above for tabTitle — reused here)
   const cwd = session?.cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath || os.homedir();
   const sessionId = session?.sessionId || crypto.randomUUID();
-  // Fresh Kiro/Codex sessions assign their real ids only after the CLI starts.
+  // Fresh Kiro/Codex/Grok sessions assign their real ids only after the CLI starts.
   // Snapshot existing ids BEFORE spawn so a very fast first write cannot be
   // mistaken for a pre-existing session and leave the reader unpinned forever.
   const kiroPreSessionIds = (agent === 'kiro' && !session?.isKiroResume)
@@ -398,6 +439,9 @@ function createPanel(context, extensionPath, session, opts) {
     : null;
   const codexPreSessionIds = (agent === 'codex' && !session?.isCodexResume && !findCodexSessionPath(session?.sessionId, null, cwd))
     ? new Set(listCodexSessions(cwd).map(s => s.sessionId))
+    : null;
+  const grokPreSessionIds = (agent === 'grok' && !session?.isGrokResume && !findGrokSessionPath(session?.sessionId, null, cwd))
+    ? new Set(listGrokSessions(cwd).map(s => s.sessionId))
     : null;
 
   let shell, args;
@@ -505,6 +549,35 @@ function createPanel(context, extensionPath, session, opts) {
       codexArgs.push('--dangerously-bypass-approvals-and-sandbox');
     }
     args = [...resolvedCodex.args, ...codexArgs];
+  } else if (agent === 'grok') {
+    const resolvedGrok = resolveGrokCli();
+    if (!resolvedGrok) {
+      const install = 'Install Grok CLI';
+      vscode.window.showErrorMessage(
+        'Grok CLI (grok) not found. Please install xAI Grok CLI first.',
+        install
+      ).then(choice => {
+        if (choice === install) {
+          vscode.env.openExternal(vscode.Uri.parse('https://docs.x.ai'));
+        }
+      });
+      panel.dispose();
+      return;
+    }
+    shell = resolvedGrok.shell;
+    // grok args by precedence:
+    //   - isGrokResume or saved real id → ['--resume', <id>] exact resume.
+    //   - placeholder id from auto-restore → ['--resume'] cwd-latest fallback.
+    //   - no session id → [] fresh TUI session.
+    const grokArgs = (session?.isGrokResume || (session?.sessionId && findGrokSessionPath(session.sessionId, null, cwd)))
+      ? ['--resume', session.sessionId]
+      : (session?.sessionId ? ['--resume'] : []);
+    // --always-approve (opt-in via grok.trustAllTools): approve tool calls
+    // without prompting. Off by default, same risk posture as other agents.
+    if (config.get('grok.trustAllTools', false)) {
+      grokArgs.push('--always-approve');
+    }
+    args = [...resolvedGrok.args, ...grokArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
     const resolved = resolveClaudeCli();
@@ -607,8 +680,12 @@ function createPanel(context, extensionPath, session, opts) {
     // UUID, so createPanel/restartPty resume via `resume <id>` instead of
     // `resume --last` — and the reader can resolve the exact rollout jsonl.
     isCodexResume: !!(session && session.isCodexResume),
+    // grok Tree-resume flag. When true, sessionId is a real grok session id,
+    // so createPanel/restartPty resume via `--resume <id>` instead of cwd-latest.
+    isGrokResume: !!(session && session.isGrokResume),
     _kiroPreIds: kiroPreSessionIds,
     _codexPreIds: codexPreSessionIds,
+    _grokPreIds: grokPreSessionIds,
     state: 'running',
     idleTimer: null,
     backend: backend,

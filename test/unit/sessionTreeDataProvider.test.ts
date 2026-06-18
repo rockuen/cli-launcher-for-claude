@@ -179,16 +179,16 @@ test('_relTime helper exists with the expected branch ladder', () => {
 
 test('No CollapsibleState.None on session/trash item rows', () => {
   // Legitimate `.None` leaf rows: the shared metadata row (live + trash),
-  // the kiro session item, the kiro trash item, the antigravity + codex
+  // the kiro session item, the kiro trash item, the antigravity + codex + grok
   // session items, the unified view's other-agent session leaf
-  // (_loadOtherAgentItems builds kiro/codex/agy leaves for the merged tree),
+  // (_loadOtherAgentItems builds kiro/codex/grok/agy leaves for the merged tree),
   // and the v3.11 search "no match" placeholder row.
   // Caret-bearing rows (groups, sessions with children) must use
   // Collapsed/Expanded instead.
   const noneCount = (treeSrc.match(/TreeItemCollapsibleState\.None/g) || []).length;
   assert.ok(
-    noneCount <= 8,
-    `expected ≤ 8 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + unified other-agent leaf + search no-match row), got ${noneCount}`,
+    noneCount <= 9,
+    `expected ≤ 9 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + grok session leaf + unified other-agent leaf + search no-match row), got ${noneCount}`,
   );
 });
 
@@ -213,7 +213,7 @@ test('v3.11: _buildGroups applies the name filter before grouping', () => {
 });
 
 test('v3.11: split-view _buildAgentGroups also honors the filter', () => {
-  // Drops non-matching items from itemMap up front so kiro/codex/agy views
+  // Drops non-matching items from itemMap up front so kiro/codex/grok/agy views
   // search too, and shows the same no-match placeholder when empty.
   assert.match(treeSrc, /itemMap\.delete\(sid\)/);
   assert.match(treeSrc, /filterActive && out\.length === 0\)\s*return \[this\._noMatchRow\(\)\]/);
@@ -278,9 +278,9 @@ test('v3.10: unified store keys reuse claude physical keys', () => {
   );
 });
 
-test('v3.10: UNIFIED_OTHER_AGENTS covers kiro/antigravity/codex', () => {
+test('v3.10: UNIFIED_OTHER_AGENTS covers kiro/antigravity/codex/grok', () => {
   assert.match(treeSrc, /UNIFIED_OTHER_AGENTS\s*=\s*\[/);
-  for (const a of ['kiro', 'antigravity', 'codex']) {
+  for (const a of ['kiro', 'antigravity', 'codex', 'grok']) {
     assert.match(treeSrc, new RegExp(`agent:\\s*'${a}'`));
   }
 });

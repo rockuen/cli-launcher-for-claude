@@ -31,6 +31,7 @@ test('listAgents: returns one entry per registered agent with the expected shape
   assert.ok(ids.includes('kiro'));
   assert.ok(ids.includes('antigravity'));
   assert.ok(ids.includes('codex'));
+  assert.ok(ids.includes('grok'));
 });
 
 test('isKnownAgent: true for registered ids, false otherwise', () => {
@@ -38,5 +39,6 @@ test('isKnownAgent: true for registered ids, false otherwise', () => {
   assert.equal(isKnownAgent('kiro'), true);
   assert.equal(isKnownAgent('antigravity'), true);
   assert.equal(isKnownAgent('codex'), true);
+  assert.equal(isKnownAgent('grok'), true);
   assert.equal(isKnownAgent('nope'), false);
 });

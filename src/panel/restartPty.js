@@ -4,8 +4,8 @@
 const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli } = require('../pty/resolveCli');
-const { findCodexSessionPath } = require('../lib/sessionJsonl');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli } = require('../pty/resolveCli');
+const { findCodexSessionPath, findGrokSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment } = require('../lib/projectSessions');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
@@ -98,6 +98,24 @@ function restartPty(entry, panel, context, extensionPath) {
       codexArgs.push('--dangerously-bypass-approvals-and-sandbox');
     }
     args = [...resolvedCodex.args, ...codexArgs];
+  } else if (agent === 'grok') {
+    const resolvedGrok = resolveGrokCli();
+    if (!resolvedGrok) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Grok CLI (grok) not found.');
+      return;
+    }
+    shell = resolvedGrok.shell;
+    // grok resume args, same precedence as createPanel: exact real id →
+    // --resume <id>; known placeholder id → --resume (cwd-latest); neither →
+    // fresh TUI session.
+    const grokArgs = (entry.isGrokResume || (entry.sessionId && findGrokSessionPath(entry.sessionId, null, entry.cwd)))
+      ? ['--resume', entry.sessionId]
+      : (entry.sessionId ? ['--resume'] : []);
+    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('grok.trustAllTools', false)) {
+      grokArgs.push('--always-approve');
+    }
+    args = [...resolvedGrok.args, ...grokArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved
     const resolved = resolveClaudeCli();

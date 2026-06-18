@@ -79,11 +79,12 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
     <div id="scroll-fab" title="${T.scrollBottomTip}">&#x25BC;</div>
     <div id="theme-picker">
       <h4>${T.themeTitle}</h4>
-      <div class="theme-item" data-theme="auto"><div class="theme-preview" style="background:linear-gradient(135deg,#D97757 50%,#9d7bff 50%);border-color:#888"></div>${T.themeAuto}</div>
+      <div class="theme-item" data-theme="auto"><div class="theme-preview" style="background:linear-gradient(135deg,#D97757 0 20%,#9d7bff 20% 40%,#34c2e0 40% 60%,#64748b 60% 80%,#22c55e 80%);border-color:#888"></div>${T.themeAuto}</div>
       <div class="theme-item" data-theme="claude"><div class="theme-preview" style="background:#D97757;border-color:#C96442"></div>${T.themeClaude}</div>
       <div class="theme-item" data-theme="kiro"><div class="theme-preview" style="background:#9d7bff;border-color:#7c5cff"></div>${T.themeKiro}</div>
       <div class="theme-item" data-theme="antigravity"><div class="theme-preview" style="background:linear-gradient(135deg,#F0613C,#F2A03D,#8FD44A,#34c2e0,#5A6FE0);border-color:#34c2e0"></div>${T.themeAntigravity}</div>
       <div class="theme-item" data-theme="codex"><div class="theme-preview" style="background:#64748b;border-color:#475569"></div>${T.themeCodex}</div>
+      <div class="theme-item" data-theme="grok"><div class="theme-preview" style="background:#22c55e;border-color:#16a34a"></div>${T.themeGrok}</div>
     </div>
     <div id="settings-modal">
       <h4>&#x2699; Settings</h4>
@@ -95,6 +96,7 @@ function getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUr
           <option value="kiro">${T.themeKiro}</option>
           <option value="antigravity">${T.themeAntigravity}</option>
           <option value="codex">${T.themeCodex}</option>
+          <option value="grok">${T.themeGrok}</option>
         </select>
       </div>
       <div class="settings-row">
