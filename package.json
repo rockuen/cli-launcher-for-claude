@@ -1,7 +1,7 @@
 {
   "name": "cli-launcher-for-claude",
-  "displayName": "CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity",
-  "description": "Run Claude Code, Codex, Grok, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
+  "displayName": "CLI Launcher for Claude, Codex, Grok, Chief, Kiro & Antigravity",
+  "description": "Run Claude Code, Codex, Grok, Chief, Kiro, and Antigravity agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
   "version": "3.11.2",
   "publisher": "rockuen",
   "license": "MIT",
@@ -58,6 +58,12 @@
       {
         "command": "claudeCodeLauncher.newGrok",
         "title": "New Grok Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.newChief",
+        "title": "New Chief Session",
         "icon": "$(add)",
         "category": "Claude"
       },
@@ -345,6 +351,11 @@
           "when": "claudeCodeLauncher.grokAvailable && !claudeCodeLauncher.unifiedViewActive"
         },
         {
+          "id": "claudeCodeLauncher.chiefSessions",
+          "name": "Chief Sessions",
+          "when": "claudeCodeLauncher.chiefAvailable && !claudeCodeLauncher.unifiedViewActive"
+        },
+        {
           "id": "claudeCodeLauncher.kiroSessions",
           "name": "Kiro Sessions",
           "when": "claudeCodeLauncher.kiroAvailable && !claudeCodeLauncher.unifiedViewActive"
@@ -391,6 +402,10 @@
         },
         {
           "command": "claudeCodeLauncher.newGrok",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.newChief",
           "when": "false"
         },
         {
@@ -736,6 +751,61 @@
           "command": "claudeCodeLauncher.moveGroupDown",
           "when": "view == claudeCodeLauncher.grokSessions && viewItem == customGroup",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameSessionTitle",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "inline@0"
+        },
+        {
+          "command": "claudeCodeLauncher.moveToGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionUp",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionDown",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.moveUnderSession",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == chiefSession",
+          "group": "2_nest@1"
+        },
+        {
+          "command": "claudeCodeLauncher.removeSessionParent",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == subSession",
+          "group": "2_nest@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.deleteGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeLauncher.addSubGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "inline@3"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupUp",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupDown",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "1_order@2"
         }
       ],
       "view/title": [
@@ -818,6 +888,16 @@
           "command": "claudeCodeLauncher.refreshSessions",
           "group": "navigation@2",
           "when": "view == claudeCodeLauncher.grokSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.newChief",
+          "group": "navigation@1",
+          "when": "view == claudeCodeLauncher.chiefSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.refreshSessions",
+          "group": "navigation@2",
+          "when": "view == claudeCodeLauncher.chiefSessions"
         },
         {
           "command": "claudeCodeLauncher.ccg.refresh",
@@ -1110,7 +1190,7 @@
             "project"
           ],
           "default": "global",
-          "description": "Where non-Claude agent sessions are stored. 'global' keeps the CLI default locations (~/.codex, ~/.grok, ~/.kiro, ~/.gemini) for full backward compatibility. 'project' stores Codex, Grok, Kiro, and Antigravity sessions under the workspace's .agent-sessions folder and launches those CLIs with project-scoped session homes, so each project can keep separate histories without OneDrive/live-sync junctions."
+          "description": "Where non-Claude agent sessions are stored. 'global' keeps the CLI default locations (~/.codex, ~/.grok, ~/.chief, ~/.kiro, ~/.gemini) for full backward compatibility. 'project' stores Codex, Grok, Chief, Kiro, and Antigravity sessions under the workspace's .agent-sessions folder and launches those agents with project-scoped session homes, so each project can keep separate histories without OneDrive/live-sync junctions."
         },
         "claudeCodeLauncher.agent": {
           "type": "string",
@@ -1119,10 +1199,11 @@
             "kiro",
             "antigravity",
             "codex",
-            "grok"
+            "grok",
+            "chief"
           ],
           "default": "claude",
-          "description": "Which CLI agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). 'codex' = OpenAI Codex CLI (codex, https://developers.openai.com/codex/cli). 'grok' = xAI Grok CLI (grok). The agent's CLI must be installed."
+          "description": "Which agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). 'codex' = OpenAI Codex CLI (codex, https://developers.openai.com/codex/cli). 'grok' = xAI Grok CLI (grok). 'chief' = Chief REST Q&A via the bundled chief-repl wrapper. The agent must be installed or configured."
         },
         "claudeCodeLauncher.enabledAgents": {
           "type": "array",
@@ -1133,7 +1214,8 @@
               "kiro",
               "antigravity",
               "codex",
-              "grok"
+              "grok",
+              "chief"
             ]
           },
           "default": [
@@ -1161,10 +1243,48 @@
           "default": false,
           "description": "Run Grok sessions with `--always-approve` so Grok approves tool calls without prompting. Off by default (Grok asks for approval). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Grok sessions."
         },
+        "claudeCodeLauncher.chief.apiKey": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Chief PAT token (pat_...). Stored as a machine-scoped VS Code setting or supplied via CHIEF_API_KEY; never written to launcher session metadata."
+        },
+        "claudeCodeLauncher.chief.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Chief project id (project_...). If blank, CHIEF_PROJECT_ID from the environment is used."
+        },
+        "claudeCodeLauncher.chief.baseUrl": {
+          "type": "string",
+          "default": "https://api.storytell.ai",
+          "description": "Chief API base URL. Defaults to https://api.storytell.ai."
+        },
+        "claudeCodeLauncher.chief.intelligence": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fast",
+            "expert",
+            "research"
+          ],
+          "default": "auto",
+          "description": "Chief intelligence setting passed to /v1/chats."
+        },
+        "claudeCodeLauncher.chief.provider": {
+          "type": "string",
+          "enum": [
+            "automatic",
+            "anthropic",
+            "openai",
+            "google"
+          ],
+          "default": "automatic",
+          "description": "Chief provider setting passed to /v1/chats."
+        },
         "claudeCodeLauncher.readerNames": {
           "type": "object",
           "default": {},
-          "description": "Custom sender names shown in the reader pane. 'user' = your name (one for every agent); 'claude'/'kiro'/'codex'/'grok' = each agent's AI name. Empty values fall back to 'You' and the agent's label. Edit in CLI Launcher Settings → Agent.",
+          "description": "Custom sender names shown in the reader pane. 'user' = your name (one for every agent); 'claude'/'kiro'/'codex'/'grok'/'chief' = each agent's AI name. Empty values fall back to 'You' and the agent's label. Edit in CLI Launcher Settings → Agent.",
           "properties": {
             "user": {
               "type": "string",
@@ -1185,6 +1305,10 @@
             "grok": {
               "type": "string",
               "description": "AI name shown for Grok replies."
+            },
+            "chief": {
+              "type": "string",
+              "description": "AI name shown for Chief replies."
             }
           }
         }

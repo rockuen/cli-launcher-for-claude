@@ -88,6 +88,9 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.newGrok', () => {
       createPanel(context, extensionPath, null, { agent: 'grok' });
     }),
+    vscode.commands.registerCommand('claudeCodeLauncher.newChief', () => {
+      createPanel(context, extensionPath, null, { agent: 'chief' });
+    }),
     // Unified new-session command — backs the Quick Actions view rows (one per
     // installed + enabled agent). Tree-item only (hidden from the palette via
     // package.json menus); newClaude/newKiro/newAntigravity stay as the
@@ -285,8 +288,19 @@ function activate(context) {
   });
   context.subscriptions.push(grokTreeView);
 
+  // 'Chief Sessions' (claudeCodeLauncher.chiefSessions) — chief-repl sessions
+  // only, hidden via the chiefAvailable context key when Chief credentials
+  // are not configured or the agent is not enabled.
+  state.chiefTreeProvider = new SessionTreeDataProvider(context, 'chief');
+  const chiefTreeView = vscode.window.createTreeView('claudeCodeLauncher.chiefSessions', {
+    treeDataProvider: state.chiefTreeProvider,
+    dragAndDropController: state.chiefTreeProvider,
+    canSelectMany: true
+  });
+  context.subscriptions.push(chiefTreeView);
+
   // 'Sessions' (claudeCodeLauncher.unifiedSessions) — the unified view (v3.10):
-  // claude + kiro + antigravity + codex + grok sessions in one tree, each leaf badged
+  // claude + kiro + antigravity + codex + grok + chief sessions in one tree, each leaf badged
   // with its model icon, all sharing claude's group / Resume Later / Trash
   // store. Shown when sessionViewMode === 'unified' (the default); the five
   // split views hide. Reuses claude's DND MIME since only one of unified/split
@@ -324,6 +338,9 @@ function activate(context) {
     }
     if (item && (item.contextValue === 'grokSession' || item._agentMode === 'grok')) {
       return state.grokTreeProvider;
+    }
+    if (item && (item.contextValue === 'chiefSession' || item._agentMode === 'chief')) {
+      return state.chiefTreeProvider;
     }
     return state.sessionTreeProvider;
   };
@@ -376,6 +393,16 @@ function activate(context) {
   grokTreeView.onDidCollapseElement(e => {
     const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.grokTreeProvider._expandedGroups.delete(key);
+  });
+
+  // Chief view — same expand/collapse tracking.
+  chiefTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.chiefTreeProvider._expandedGroups.add(key);
+  });
+  chiefTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.chiefTreeProvider._expandedGroups.delete(key);
   });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
@@ -438,6 +465,16 @@ function activate(context) {
   }
   refreshGrokAvailable();
 
+  function refreshChiefAvailable() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('enabledAgents', ['claude']);
+    const chiefInstalled = listAgents().some(a => a.id === 'chief' && a.installed);
+    const available = chiefInstalled && enabled.includes('chief');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.chiefAvailable', available);
+  }
+  refreshChiefAvailable();
+
   // unifiedViewActive context key — drives the unified 'Sessions' view vs the
   // five split agent views (package.json views[].when). True when
   // sessionViewMode === 'unified' (the default). When false the unified view
@@ -481,6 +518,7 @@ function activate(context) {
       if (state.antigravityTreeProvider) state.antigravityTreeProvider.refresh();
       if (state.codexTreeProvider) state.codexTreeProvider.refresh();
       if (state.grokTreeProvider) state.grokTreeProvider.refresh();
+      if (state.chiefTreeProvider) state.chiefTreeProvider.refresh();
       if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
     })
   );
@@ -508,9 +546,10 @@ function activate(context) {
     state.antigravityTreeProvider,
     state.codexTreeProvider,
     state.grokTreeProvider,
+    state.chiefTreeProvider,
   ].filter(Boolean);
   const _sessionViews = () => [
-    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView, grokTreeView,
+    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView, grokTreeView, chiefTreeView,
   ].filter(Boolean);
   const _setFilterAll = (text) => {
     let normalized = '';
@@ -546,8 +585,17 @@ function activate(context) {
         refreshAntigravityAvailable();
         refreshCodexAvailable();
         refreshGrokAvailable();
+        refreshChiefAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
         if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
+      }
+      if (
+        e.affectsConfiguration('claudeCodeLauncher.chief.apiKey')
+        || e.affectsConfiguration('claudeCodeLauncher.chief.projectId')
+        || e.affectsConfiguration('claudeCodeLauncher.chief.baseUrl')
+      ) {
+        refreshChiefAvailable();
+        if (state.quickActionsProvider) state.quickActionsProvider.refresh();
       }
       if (e.affectsConfiguration('claudeCodeLauncher.sessionViewMode')) {
         refreshSessionViewMode();
@@ -614,6 +662,16 @@ function activate(context) {
           context,
           extensionPath,
           { sessionId, cwd: opts.cwd, agent: 'grok', isGrokResume: true, title: grokTitles[sessionId] || opts.title },
+          {}
+        );
+        return;
+      }
+      if (opts && opts.agent === 'chief') {
+        const chiefTitles = sessionStoreGet('chiefSessionTitles', {});
+        createPanel(
+          context,
+          extensionPath,
+          { sessionId, cwd: opts.cwd, agent: 'chief', isChiefResume: true, title: chiefTitles[sessionId] || opts.title },
           {}
         );
         return;
@@ -1261,6 +1319,7 @@ function deactivate() {
         ...(entry.isAntigravityResume ? { isAntigravityResume: true } : {}),
         ...(entry.isCodexResume ? { isCodexResume: true } : {}),
         ...(entry.isGrokResume ? { isGrokResume: true } : {}),
+        ...(entry.isChiefResume ? { isChiefResume: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
