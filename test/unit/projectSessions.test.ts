@@ -49,6 +49,8 @@ test('project storage paths live under <workspace>/.agent-sessions', () => {
     assert.equal(mod.getAntigravityBaseDir(cwd), path.join(cwd, '.agent-sessions', 'antigravity'));
     assert.equal(mod.getGrokPaths(cwd).home, path.join(cwd, '.agent-sessions', '.home', 'grok'));
     assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'grok'));
+    assert.equal(mod.getChiefPaths(cwd).home, path.join(cwd, '.agent-sessions', '.home', 'chief'));
+    assert.equal(mod.getChiefPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'chief'));
   });
 });
 
@@ -63,6 +65,8 @@ test('global storage keeps CLI default locations', () => {
     assert.equal(mod.getAntigravityBaseDir(cwd), path.join(os.homedir(), '.gemini', 'antigravity-cli'));
     assert.equal(mod.getGrokPaths(cwd).home, path.join(os.homedir(), '.grok'));
     assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(os.homedir(), '.grok', 'sessions'));
+    assert.equal(mod.getChiefPaths(cwd).home, path.join(os.homedir(), '.chief'));
+    assert.equal(mod.getChiefPaths(cwd).sessionsDir, path.join(os.homedir(), '.chief', 'sessions'));
   });
 });
 
@@ -90,6 +94,20 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(grok.GROK_HOME, path.join(cwd, '.agent-sessions', '.home', 'grok'));
     assert.equal(grok.HOME, os.homedir(), 'Grok uses GROK_HOME, not virtual HOME');
     assert.equal(fs.existsSync(path.join(grok.GROK_HOME, 'sessions')), true);
+
+    const chief = mod.prepareProjectSessionEnvironment('chief', cwd, {
+      KEEP: '1',
+      CHIEF_API_KEY: 'env-key',
+      CHIEF_PROJECT_ID: 'env-project',
+    });
+    assert.equal(chief.KEEP, '1');
+    assert.equal(chief.CHIEF_API_KEY, 'env-key');
+    assert.equal(chief.CHIEF_PROJECT_ID, 'env-project');
+    assert.equal(chief.CHIEF_BASE_URL, 'https://api.storytell.ai');
+    assert.equal(chief.CHIEF_INTELLIGENCE, 'auto');
+    assert.equal(chief.CHIEF_PROVIDER, 'automatic');
+    assert.equal(chief.CHIEF_SESSIONS_DIR, path.join(cwd, '.agent-sessions', 'chief'));
+    assert.equal(fs.existsSync(chief.CHIEF_SESSIONS_DIR), true);
 
     fs.rmSync(cwd, { recursive: true, force: true });
   });
