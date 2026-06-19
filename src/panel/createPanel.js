@@ -18,7 +18,7 @@ const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveChiefCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
@@ -582,6 +582,22 @@ function createPanel(context, extensionPath, session, opts) {
       grokArgs.push('--always-approve');
     }
     args = [...resolvedGrok.args, ...grokArgs];
+  } else if (agent === 'chief') {
+    const resolvedChief = resolveChiefCli();
+    if (!resolvedChief) {
+      vscode.window.showErrorMessage(
+        'Chief is not configured. Set claudeCodeLauncher.chief.apiKey (machine scope) or CHIEF_API_KEY, then set claudeCodeLauncher.chief.projectId or CHIEF_PROJECT_ID.'
+      );
+      panel.dispose();
+      return;
+    }
+    shell = resolvedChief.shell;
+    // chief-repl is launcher-owned like Claude Code: fresh sessions receive
+    // --session-id <launcher-id>, and resumes receive --resume <same id>.
+    const chiefArgs = session?.sessionId
+      ? ['--resume', session.sessionId]
+      : ['--session-id', sessionId];
+    args = [...resolvedChief.args, ...chiefArgs, '--cwd', cwd];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
     const resolved = resolveClaudeCli();
@@ -687,6 +703,9 @@ function createPanel(context, extensionPath, session, opts) {
     // grok Tree-resume flag. When true, sessionId is a real grok session id,
     // so createPanel/restartPty resume via `--resume <id>` instead of cwd-latest.
     isGrokResume: !!(session && session.isGrokResume),
+    // chief-repl uses launcher-owned ids, so every saved Chief tab can resume
+    // the exact transcript/chat with --resume <sessionId>.
+    isChiefResume: !!(session && session.isChiefResume),
     _kiroPreIds: kiroPreSessionIds,
     _codexPreIds: codexPreSessionIds,
     _grokPreIds: grokPreSessionIds,

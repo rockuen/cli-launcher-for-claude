@@ -42,6 +42,9 @@ function saveSessions() {
         ...(entry.isCodexResume ? { isCodexResume: true } : {}),
         // Same for grok: keep exact `--resume <id>` instead of cwd-latest.
         ...(entry.isGrokResume ? { isGrokResume: true } : {}),
+        // Same for chief: keep exact `--resume <id>` into the launcher-owned
+        // chief-repl transcript directory.
+        ...(entry.isChiefResume ? { isChiefResume: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
@@ -60,6 +63,7 @@ function saveSessions() {
   const antigravityTitles = sessionStoreGet('antigravitySessionTitles', {});
   const codexTitles = sessionStoreGet('codexSessionTitles', {});
   const grokTitles = sessionStoreGet('grokSessionTitles', {});
+  const chiefTitles = sessionStoreGet('chiefSessionTitles', {});
   for (const s of sessions) {
     if (!s.sessionId || !s.title) continue;
     // 기본 탭 이름(Claude Code / Kiro / Antigravity 등 agent label + 번호)이면 기존 매핑 유지 (덮어쓰기 금지)
@@ -70,6 +74,7 @@ function saveSessions() {
     else if (s.agent === 'antigravity') antigravityTitles[s.sessionId] = s.title;
     else if (s.agent === 'codex') codexTitles[s.sessionId] = s.title;
     else if (s.agent === 'grok') grokTitles[s.sessionId] = s.title;
+    else if (s.agent === 'chief') chiefTitles[s.sessionId] = s.title;
     else claudeTitles[s.sessionId] = s.title;
   }
   sessionStoreUpdate('claudeSessionTitles', claudeTitles);
@@ -77,6 +82,7 @@ function saveSessions() {
   sessionStoreUpdate('antigravitySessionTitles', antigravityTitles);
   sessionStoreUpdate('codexSessionTitles', codexTitles);
   sessionStoreUpdate('grokSessionTitles', grokTitles);
+  sessionStoreUpdate('chiefSessionTitles', chiefTitles);
   state.refreshSessionTrees();
 }
 
