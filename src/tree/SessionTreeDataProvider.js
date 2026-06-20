@@ -26,7 +26,7 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { pathDepth, getDescendants } = require('../util/groupPath');
-const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions } = require('../lib/sessionJsonl');
+const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions, listChiefSessions } = require('../lib/sessionJsonl');
 const { getKiroSessionsDir } = require('../lib/projectSessions');
 const { formatBytes } = require('../lib/sizeFormat');
 const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_THRESHOLD: SIZE_ERROR, formatMB } = require('./SessionDecorationProvider');
@@ -87,6 +87,9 @@ const DND_GROK_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.grokgr
 // gjc gets its own MIME pair for the same cross-view isolation reason.
 const DND_GJC_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.gjcsessions';
 const DND_GJC_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.gjcgroups';
+// chief gets its own MIME pair for the same cross-view isolation reason.
+const DND_CHIEF_SESSION_MIME = 'application/vnd.code.tree.claudecodelauncher.chiefsessions';
+const DND_CHIEF_GROUP_MIME = 'application/vnd.code.tree.claudecodelauncher.chiefgroups';
 
 // Per-agent store-key map. claude keeps its historical keys (no migration);
 // kiro gets a parallel, fully separate set so the two agents' custom groups,
@@ -149,6 +152,15 @@ const STORE_KEYS = {
     archived: 'gjcSessionGroupArchived',
     titles: 'gjcSessionTitles',
   },
+  chief: {
+    // Fully separate chief key namespace, same shape as grok.
+    groups: 'chiefSessionGroups',
+    saved: 'chiefSavedSessions',
+    parent: 'chiefSessionParent',
+    sortOrder: 'chiefSessionSortOrder',
+    archived: 'chiefSessionGroupArchived',
+    titles: 'chiefSessionTitles',
+  },
   unified: {
     // v3.10: the unified "Sessions" view reuses claude's physical store keys so
     // a user's existing Claude groups / Resume Later / Trash carry over with NO
@@ -178,11 +190,12 @@ const UNIFIED_OTHER_AGENTS = [
   { agent: 'codex', contextValue: 'codexSession', resumeKey: 'codexResume', mtimeOf: (s) => s.mtime || 0 },
   { agent: 'grok', contextValue: 'grokSession', resumeKey: 'grokResume', mtimeOf: (s) => s.mtime || 0 },
   { agent: 'gjc', contextValue: 'gjcSession', resumeKey: 'gjcResume', mtimeOf: (s) => s.mtime || 0 },
+  { agent: 'chief', contextValue: 'chiefSession', resumeKey: 'chiefResume', mtimeOf: (s) => s.mtime || 0 },
 ];
 
 class SessionTreeDataProvider {
   // agentMode: 'claude' (default — full claude groups), 'kiro' / 'antigravity'
-  // / 'codex' / 'grok' (root children are that agent's sessions only), or 'unified' (all
+  // / 'codex' / 'grok' / 'chief' (root children are that agent's sessions only), or 'unified' (all
   // agents merged into one tree, each leaf badged with its model icon, sharing
   // claude's store). The split agent-scoped views own their header actions and
   // hide when their CLI isn't installed/enabled (kiro/antigravity/codex/grokAvailable
@@ -231,12 +244,14 @@ class SessionTreeDataProvider {
       : agentMode === 'codex' ? DND_CODEX_SESSION_MIME
       : agentMode === 'grok' ? DND_GROK_SESSION_MIME
       : agentMode === 'gjc' ? DND_GJC_SESSION_MIME
+      : agentMode === 'chief' ? DND_CHIEF_SESSION_MIME
       : DND_SESSION_MIME;
     this._groupMime = agentMode === 'kiro' ? DND_KIRO_GROUP_MIME
       : agentMode === 'antigravity' ? DND_AGY_GROUP_MIME
       : agentMode === 'codex' ? DND_CODEX_GROUP_MIME
       : agentMode === 'grok' ? DND_GROK_GROUP_MIME
       : agentMode === 'gjc' ? DND_GJC_GROUP_MIME
+      : agentMode === 'chief' ? DND_CHIEF_GROUP_MIME
       : DND_GROUP_MIME;
     this.dropMimeTypes = [this._sessionMime, this._groupMime];
     this.dragMimeTypes = [this._sessionMime, this._groupMime];
@@ -337,7 +352,9 @@ class SessionTreeDataProvider {
               ? this._buildGrokSessions()
               : this._agentMode === 'gjc'
                 ? this._buildGjcSessions()
-                : this._buildGroups({ unified: this._agentMode === 'unified' });
+                : this._agentMode === 'chief'
+                  ? this._buildChiefSessions()
+                  : this._buildGroups({ unified: this._agentMode === 'unified' });
       return this._cache;
     }
     // v3.5.9: lazy metadata row. Session items carry _jsonlPath + _mtime +
@@ -415,6 +432,7 @@ class SessionTreeDataProvider {
           : spec.agent === 'antigravity' ? listAntigravitySessions(cwd)
             : spec.agent === 'grok' ? listGrokSessions(cwd)
               : spec.agent === 'gjc' ? listGjcSessions(cwd)
+              : spec.agent === 'chief' ? listChiefSessions(cwd)
                 : listCodexSessions(cwd);
       } catch (_) { sessions = []; }
       const agentTitles = sessionStoreGet(STORE_KEYS[spec.agent].titles, {});
@@ -972,6 +990,42 @@ class SessionTreeDataProvider {
     return this._buildAgentGroups(itemMap, mtimeMap);
   }
 
+  // Chief Sessions — used by the dedicated 'Chief Sessions' view (agentMode
+  // 'chief'). Root children are launcher-owned chief-repl sessions from
+  // <chiefSessionsDir>/<session-id>/summary.json + updates.jsonl. Click →
+  // resume via `chief-repl --resume <id>`.
+  _buildChiefSessions() {
+    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    if (!cwd) return [];
+    const sessions = listChiefSessions(cwd);
+    const titleMap = sessionStoreGet(this._storeKey('titles'), {});
+
+    const itemMap = new Map();
+    const mtimeMap = new Map();
+    for (const s of sessions) {
+      const label = titleMap[s.sessionId] || s.title || `${(s.sessionId || '').substring(0, 8)}…`;
+      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+      const mtime = s.mtime || 0;
+      item.description = mtime ? _relTime(mtime) : '';
+      item.iconPath = this._agentIcon('chief');
+      item.contextValue = 'chiefSession';
+      item._agentMode = 'chief';
+      item.tooltip = `Chief session: ${s.sessionId}\n${s.cwd || ''}`;
+      item._sessionId = s.sessionId;
+      item._mtime = mtime;
+      item._searchText = label;
+      item.command = {
+        command: 'claudeCodeLauncher.resumeSession',
+        title: 'Resume',
+        arguments: [s.sessionId, { agent: 'chief', chiefResume: true, cwd: s.cwd, title: label }],
+      };
+      itemMap.set(s.sessionId, item);
+      mtimeMap.set(s.sessionId, mtime);
+    }
+
+    return this._buildAgentGroups(itemMap, mtimeMap);
+  }
+
   // Shared "custom groups + ungrouped sessions" builder used by the kiro and
   // antigravity views. claude keeps its richer _buildGroups (Resume
   // Later / Recent / Trash / archive) — this is the generalised subset:
@@ -1364,6 +1418,14 @@ class SessionTreeDataProvider {
         _mtime: s.mtime || 0,
       }));
     }
+    if (this._agentMode === 'chief') {
+      const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+      if (!cwd) return [];
+      return listChiefSessions(cwd).map(s => ({
+        _sessionId: s.sessionId,
+        _mtime: s.mtime || 0,
+      }));
+    }
     if (this._agentMode === 'unified') {
       // claude leaves (top-recent set) + every other agent's sessions, so the
       // sibling/sort math spans all agents the unified view shows.
@@ -1480,7 +1542,7 @@ class SessionTreeDataProvider {
     // The MIME is agent-scoped (_sessionMime), so a kiro drag carries the kiro
     // MIME and can only land in a target view that lists that MIME.
     const sessionIds = source
-      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession' || it.contextValue === 'antigravitySession' || it.contextValue === 'codexSession' || it.contextValue === 'grokSession' || it.contextValue === 'gjcSession'))
+      .filter(it => it && (it.contextValue === 'session' || it.contextValue === 'subSession' || it.contextValue === 'kiroSession' || it.contextValue === 'antigravitySession' || it.contextValue === 'codexSession' || it.contextValue === 'grokSession' || it.contextValue === 'gjcSession' || it.contextValue === 'chiefSession'))
       .map(it => it._sessionId)
       .filter(Boolean);
     if (sessionIds.length > 0) {
@@ -1534,7 +1596,7 @@ class SessionTreeDataProvider {
     // Drop on another session → reorder: insert before target, inherit scope.
     // Agent session leaves are included so those sessions reorder/regroup like
     // claude ones inside their own MIME-scoped view.
-    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession' || target.contextValue === 'antigravitySession' || target.contextValue === 'codexSession' || target.contextValue === 'grokSession' || target.contextValue === 'gjcSession')) {
+    if (target && (target.contextValue === 'session' || target.contextValue === 'subSession' || target.contextValue === 'kiroSession' || target.contextValue === 'antigravitySession' || target.contextValue === 'codexSession' || target.contextValue === 'grokSession' || target.contextValue === 'gjcSession' || target.contextValue === 'chiefSession')) {
       this._reorderBefore(ids, target._sessionId);
       this.refresh();
       return;

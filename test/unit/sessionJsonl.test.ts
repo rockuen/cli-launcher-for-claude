@@ -243,3 +243,60 @@ test('kiro parser: falls back to claude path when agent is undefined', () => {
   assert.ok(Array.isArray(msgs));
   fs.unlinkSync(filePath);
 });
+
+// ── Chief path/list/parser ─────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { findChiefSessionPath, listChiefSessions, _extractChiefMessages } = require('../../src/lib/sessionJsonl');
+
+test('chief: findChiefSessionPath resolves launcher-owned updates.jsonl path directly', () => {
+  const dir = path.join(os.tmpdir(), `chief-path-test-${Date.now()}`);
+  const out = findChiefSessionPath('session-123', dir, '/workspace/a');
+  assert.equal(out, path.join(dir, 'session-123', 'updates.jsonl'));
+});
+
+test('chief parser: extracts simple role/text transcript rows', () => {
+  const rows = _extractChiefMessages([
+    { role: 'user', text: 'Hello Chief', timestamp: '2026-06-19T10:00:00Z' },
+    { role: 'assistant', text: 'Hi', timestamp: '2026-06-19T10:00:01Z' },
+    { role: 'system', text: 'skip' },
+    { role: 'assistant', text: '   ' },
+  ]);
+  assert.deepEqual(rows, [
+    { role: 'user', text: 'Hello Chief', timestamp: '2026-06-19T10:00:00Z' },
+    { role: 'assistant', text: 'Hi', timestamp: '2026-06-19T10:00:01Z' },
+  ]);
+});
+
+test('chief: listChiefSessions reads summary metadata and sorts by updated_at', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chief-list-test-'));
+  const CWD = '/my/project';
+  const older = path.join(dir, 'older');
+  const newer = path.join(dir, 'newer');
+  const other = path.join(dir, 'other');
+  fs.mkdirSync(older, { recursive: true });
+  fs.mkdirSync(newer, { recursive: true });
+  fs.mkdirSync(other, { recursive: true });
+  fs.writeFileSync(
+    path.join(older, 'summary.json'),
+    JSON.stringify({ info: { cwd: CWD, generated_title: 'Older', updated_at: '2026-06-19T10:00:00Z' } }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(newer, 'summary.json'),
+    JSON.stringify({ info: { cwd: CWD, generated_title: 'Newer', updated_at: '2026-06-19T11:00:00Z' } }),
+    'utf8'
+  );
+  fs.writeFileSync(
+    path.join(other, 'summary.json'),
+    JSON.stringify({ info: { cwd: '/other/project', generated_title: 'Other', updated_at: '2026-06-19T12:00:00Z' } }),
+    'utf8'
+  );
+
+  const out = listChiefSessions(CWD, dir);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].sessionId, 'newer');
+  assert.equal(out[0].title, 'Newer');
+  assert.equal(out[1].sessionId, 'older');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -1,8 +1,8 @@
 {
   "name": "cli-launcher-for-claude",
-  "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro & Antigravity",
-  "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, and Antigravity CLIs in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.12.0",
+  "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
+  "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
+  "version": "3.13.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -64,6 +64,12 @@
       {
         "command": "claudeCodeLauncher.newGjc",
         "title": "New Gajae (gjc) Session",
+        "icon": "$(add)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.newChief",
+        "title": "New Chief Session",
         "icon": "$(add)",
         "category": "Claude"
       },
@@ -368,6 +374,11 @@
           "when": "claudeCodeLauncher.gjcAvailable && !claudeCodeLauncher.unifiedViewActive"
         },
         {
+          "id": "claudeCodeLauncher.chiefSessions",
+          "name": "Chief Sessions",
+          "when": "claudeCodeLauncher.chiefAvailable && !claudeCodeLauncher.unifiedViewActive"
+        },
+        {
           "id": "claudeCodeLauncher.kiroSessions",
           "name": "Kiro Sessions",
           "when": "claudeCodeLauncher.kiroAvailable && !claudeCodeLauncher.unifiedViewActive"
@@ -418,6 +429,10 @@
         },
         {
           "command": "claudeCodeLauncher.newGjc",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.newChief",
           "when": "false"
         },
         {
@@ -818,6 +833,61 @@
           "command": "claudeCodeLauncher.moveGroupDown",
           "when": "view == claudeCodeLauncher.gjcSessions && viewItem == customGroup",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameSessionTitle",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "inline@0"
+        },
+        {
+          "command": "claudeCodeLauncher.moveToGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionUp",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveSessionDown",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
+          "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.moveUnderSession",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == chiefSession",
+          "group": "2_nest@1"
+        },
+        {
+          "command": "claudeCodeLauncher.removeSessionParent",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == subSession",
+          "group": "2_nest@2"
+        },
+        {
+          "command": "claudeCodeLauncher.renameGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "claudeCodeLauncher.deleteGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeCodeLauncher.addSubGroup",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "inline@3"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupUp",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "1_order@1"
+        },
+        {
+          "command": "claudeCodeLauncher.moveGroupDown",
+          "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
+          "group": "1_order@2"
         }
       ],
       "view/title": [
@@ -917,6 +987,16 @@
           "when": "view == claudeCodeLauncher.gjcSessions"
         },
         {
+          "command": "claudeCodeLauncher.newChief",
+          "group": "navigation@1",
+          "when": "view == claudeCodeLauncher.chiefSessions"
+        },
+        {
+          "command": "claudeCodeLauncher.refreshSessions",
+          "group": "navigation@2",
+          "when": "view == claudeCodeLauncher.chiefSessions"
+        },
+        {
           "command": "claudeCodeLauncher.ccg.refresh",
           "group": "navigation@1",
           "when": "view == claudeCodeLauncher.ccgPanel"
@@ -934,8 +1014,8 @@
             "split"
           ],
           "enumDescriptions": [
-            "Unified — all agents' sessions in one 'Sessions' tree, each session badged with its model icon (Claude / Codex / Gajae / Grok / Kiro / Antigravity), sharing one group / Resume Later / Trash structure.",
-            "Split — a separate view per agent (Claude Sessions / Codex Sessions / Gajae Sessions / Grok Sessions / Kiro Sessions / Antigravity Sessions), each shown only when that CLI is installed + enabled."
+            "Unified — all agents' sessions in one 'Sessions' tree, each session badged with its model icon (Claude / Codex / Gajae / Grok / Kiro / Antigravity / Chief), sharing one group / Resume Later / Trash structure.",
+            "Split — a separate view per agent (Claude Sessions / Codex Sessions / Gajae Sessions / Grok Sessions / Kiro Sessions / Antigravity Sessions / Chief Sessions), each shown only when that CLI is installed + enabled."
           ],
           "description": "How agent sessions are shown in the sidebar. 'unified' (default) merges every agent into one Sessions tree with per-session model icons; 'split' keeps the legacy per-agent views."
         },
@@ -1207,7 +1287,7 @@
             "project"
           ],
           "default": "global",
-          "description": "Where non-Claude agent sessions are stored. 'global' keeps the CLI default locations (~/.codex, ~/.grok, ~/.kiro, ~/.gemini, ~/.gjc) for full backward compatibility. 'project' stores Codex, Grok, Kiro, Antigravity, and Gajae (gjc) sessions under the workspace's .agent-sessions folder and launches those CLIs with project-scoped session homes, so each project can keep separate histories without OneDrive/live-sync junctions."
+          "description": "Where non-Claude agent sessions are stored. 'global' keeps the CLI default locations (~/.codex, ~/.grok, ~/.kiro, ~/.gemini, ~/.gjc, ~/.chief) for full backward compatibility. 'project' stores Codex, Grok, Kiro, Antigravity, Gajae (gjc), and Chief sessions under the workspace's .agent-sessions folder and launches those agents with project-scoped session homes, so each project can keep separate histories without OneDrive/live-sync junctions."
         },
         "claudeCodeLauncher.agent": {
           "type": "string",
@@ -1217,10 +1297,11 @@
             "antigravity",
             "codex",
             "grok",
-            "gjc"
+            "gjc",
+            "chief"
           ],
           "default": "claude",
-          "description": "Which CLI agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). 'codex' = OpenAI Codex CLI (codex, https://developers.openai.com/codex/cli). 'grok' = xAI Grok CLI (grok). 'gjc' = Gajae Code (gjc, multi-model — Claude/Codex/Antigravity/Grok/… via OAuth subscriptions; install with 'bun add -g gajae-code'). The agent's CLI must be installed."
+          "description": "Which agent new sessions launch. 'claude' = Claude Code (default). 'kiro' = Kiro CLI (kiro-cli, https://kiro.dev/docs/cli/installation/). 'antigravity' = Antigravity CLI (agy, https://antigravity.google/docs/cli-getting-started). 'codex' = OpenAI Codex CLI (codex, https://developers.openai.com/codex/cli). 'grok' = xAI Grok CLI (grok). 'gjc' = Gajae Code (gjc, multi-model — Claude/Codex/Antigravity/Grok/… via OAuth subscriptions; install with 'bun add -g gajae-code'). 'chief' = Chief REST Q&A via the bundled chief-repl wrapper. The agent must be installed or configured."
         },
         "claudeCodeLauncher.enabledAgents": {
           "type": "array",
@@ -1232,7 +1313,8 @@
               "antigravity",
               "codex",
               "grok",
-              "gjc"
+              "gjc",
+              "chief"
             ]
           },
           "default": [
@@ -1284,10 +1366,57 @@
           "default": "",
           "description": "Thinking (effort) level for NEW Gajae (gjc) sessions, passed as `gjc --thinking <value>`. gjc's effort knob (ultra|high|medium|low); empty uses gjc's default. This is gjc's equivalent of Claude's effort — Claude's '--effort max' (autoEffortMax) is never passed to gjc."
         },
+        "claudeCodeLauncher.chief.apiKey": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Chief PAT token (pat_...). Stored as a machine-scoped VS Code setting or supplied via CHIEF_API_KEY; never written to launcher session metadata."
+        },
+        "claudeCodeLauncher.chief.projectId": {
+          "type": "string",
+          "default": "",
+          "description": "Chief project id (project_...). If blank, CHIEF_PROJECT_ID from the environment is used."
+        },
+        "claudeCodeLauncher.chief.baseUrl": {
+          "type": "string",
+          "default": "https://api.storytell.ai",
+          "description": "Chief API base URL. Defaults to https://api.storytell.ai."
+        },
+        "claudeCodeLauncher.chief.intelligence": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "fast",
+            "expert",
+            "research"
+          ],
+          "default": "auto",
+          "description": "Chief intelligence setting passed to /v1/chats."
+        },
+        "claudeCodeLauncher.chief.provider": {
+          "type": "string",
+          "enum": [
+            "automatic",
+            "anthropic",
+            "openai",
+            "google"
+          ],
+          "default": "automatic",
+          "description": "Chief provider setting passed to /v1/chats."
+        },
+        "claudeCodeLauncher.chief.profile": {
+          "type": "string",
+          "enum": [
+            "general",
+            "writing"
+          ],
+          "default": "general",
+          "description": "Chief prompt profile. 'general' sends prompts as-is. 'writing' prepends a conversation/writing assistant profile for polishing rough speech into context-appropriate messages, replies, and documents."
+        },
         "claudeCodeLauncher.readerNames": {
           "type": "object",
           "default": {},
-          "description": "Custom sender names shown in the reader pane. 'user' = your name (one for every agent); 'claude'/'kiro'/'codex'/'grok'/'gjc' = each agent's AI name. Empty values fall back to 'You' and the agent's label. Edit in CLI Launcher Settings → Agent.",
+          "description": "Custom sender names shown in the reader pane. 'user' = your name (one for every agent); 'claude'/'kiro'/'codex'/'grok'/'gjc'/'chief' = each agent's AI name. Empty values fall back to 'You' and the agent's label. Edit in CLI Launcher Settings → Agent.",
           "properties": {
             "user": {
               "type": "string",
@@ -1312,6 +1441,10 @@
             "gjc": {
               "type": "string",
               "description": "AI name shown for Gajae (gjc) replies."
+            },
+            "chief": {
+              "type": "string",
+              "description": "AI name shown for Chief replies."
             }
           }
         }

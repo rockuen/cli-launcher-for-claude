@@ -51,6 +51,8 @@ test('project storage paths live under <workspace>/.agent-sessions', () => {
     assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'grok'));
     assert.equal(mod.getGjcPaths(cwd).agentDir, path.join(cwd, '.agent-sessions', '.home', 'gjc', 'agent'));
     assert.equal(mod.getGjcPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'gjc'));
+    assert.equal(mod.getChiefPaths(cwd).home, path.join(cwd, '.agent-sessions', '.home', 'chief'));
+    assert.equal(mod.getChiefPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'chief'));
   });
 });
 
@@ -67,6 +69,8 @@ test('global storage keeps CLI default locations', () => {
     assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(os.homedir(), '.grok', 'sessions'));
     assert.equal(mod.getGjcPaths(cwd).agentDir, path.join(os.homedir(), '.gjc', 'agent'));
     assert.equal(mod.getGjcPaths(cwd).sessionsDir, path.join(os.homedir(), '.gjc', 'agent', 'sessions'));
+    assert.equal(mod.getChiefPaths(cwd).home, path.join(os.homedir(), '.chief'));
+    assert.equal(mod.getChiefPaths(cwd).sessionsDir, path.join(os.homedir(), '.chief', 'sessions'));
   });
 });
 
@@ -100,6 +104,21 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(gjc.GJC_CODING_AGENT_DIR, path.join(cwd, '.agent-sessions', '.home', 'gjc', 'agent'));
     assert.equal(gjc.HOME, os.homedir(), 'gjc uses GJC_CODING_AGENT_DIR, not virtual HOME');
     assert.equal(fs.existsSync(path.join(gjc.GJC_CODING_AGENT_DIR, 'sessions')), true);
+
+    const chief = mod.prepareProjectSessionEnvironment('chief', cwd, {
+      KEEP: '1',
+      CHIEF_API_KEY: 'env-key',
+      CHIEF_PROJECT_ID: 'env-project',
+    });
+    assert.equal(chief.KEEP, '1');
+    assert.equal(chief.CHIEF_API_KEY, 'env-key');
+    assert.equal(chief.CHIEF_PROJECT_ID, 'env-project');
+    assert.equal(chief.CHIEF_BASE_URL, 'https://api.storytell.ai');
+    assert.equal(chief.CHIEF_INTELLIGENCE, 'auto');
+    assert.equal(chief.CHIEF_PROVIDER, 'automatic');
+    assert.equal(chief.CHIEF_PROFILE, 'general');
+    assert.equal(chief.CHIEF_SESSIONS_DIR, path.join(cwd, '.agent-sessions', 'chief'));
+    assert.equal(fs.existsSync(chief.CHIEF_SESSIONS_DIR), true);
 
     fs.rmSync(cwd, { recursive: true, force: true });
   });

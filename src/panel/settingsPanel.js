@@ -515,6 +515,54 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(approve);
         }
 
+        // Chief-only: public API routing presets. Chief does not expose direct
+        // model or effort fields; these map to /v1/chats intelligence/provider.
+        if (a.id === 'chief') {
+          const addChiefSelect = (key, label, initial, options, title) => {
+            const wrap = document.createElement('label');
+            wrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+            wrap.title = title;
+            const txt = document.createElement('span');
+            txt.textContent = label;
+            const sel = document.createElement('select');
+            sel.style.cssText = 'height:26px;min-width:130px;margin-left:8px;';
+            options.forEach(value => {
+              const opt = document.createElement('option');
+              opt.value = value;
+              opt.textContent = value;
+              sel.appendChild(opt);
+            });
+            sel.value = options.includes(initial) ? initial : options[0];
+            sel.addEventListener('change', () => {
+              vscode.postMessage({ type: 'set-global', key, value: sel.value });
+            });
+            wrap.appendChild(txt);
+            wrap.appendChild(sel);
+            main.appendChild(wrap);
+          };
+          addChiefSelect(
+            'chief.intelligence',
+            'Intelligence',
+            GLOBALS.chiefIntelligence || 'auto',
+            ['auto', 'fast', 'expert', 'research'],
+            'Chief intelligence preset for newly opened and restarted Chief sessions.'
+          );
+          addChiefSelect(
+            'chief.provider',
+            'Provider',
+            GLOBALS.chiefProvider || 'automatic',
+            ['automatic', 'anthropic', 'openai', 'google'],
+            'Chief provider bias for newly opened and restarted Chief sessions.'
+          );
+          addChiefSelect(
+            'chief.profile',
+            'Profile',
+            GLOBALS.chiefProfile || 'general',
+            ['general', 'writing'],
+            'Chief prompt profile. Writing mode turns rough speech into context-appropriate messages, replies, and documents.'
+          );
+        }
+
         // Claude-only: startup flags — Effort max (--effort max) + Bypass
         // permissions (--dangerously-skip-permissions). Bound to globals;
         // applied to newly opened and restarted Claude sessions.
@@ -782,6 +830,9 @@ function openGlobalSettings(context) {
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
     codexTrustAllTools: cfg.get('codex.trustAllTools', false),
     grokTrustAllTools: cfg.get('grok.trustAllTools', false),
+    chiefIntelligence: cfg.get('chief.intelligence', 'auto'),
+    chiefProvider: cfg.get('chief.provider', 'automatic'),
+    chiefProfile: cfg.get('chief.profile', 'general'),
     readerNames: cfg.get('readerNames', {}),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
@@ -803,6 +854,9 @@ function openGlobalSettings(context) {
     'antigravity.trustAllTools',
     'codex.trustAllTools',
     'grok.trustAllTools',
+    'chief.intelligence',
+    'chief.provider',
+    'chief.profile',
     'readerNames',
     'repoSync.enabled',
     'repoSync.path',

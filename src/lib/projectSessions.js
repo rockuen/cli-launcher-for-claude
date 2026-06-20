@@ -59,6 +59,16 @@ function grokSessionsDir(cwd) {
   return root ? path.join(root, 'grok') : path.join(grokHome(cwd), 'sessions');
 }
 
+function chiefHome(cwd) {
+  const root = projectSessionRoot(cwd);
+  return root ? path.join(root, '.home', 'chief') : path.join(os.homedir(), '.chief');
+}
+
+function chiefSessionsDir(cwd) {
+  const root = projectSessionRoot(cwd);
+  return root ? path.join(root, 'chief') : path.join(chiefHome(cwd), 'sessions');
+}
+
 function kiroSessionsDir(cwd) {
   const root = projectSessionRoot(cwd);
   return root ? path.join(root, 'kiro') : path.join(os.homedir(), '.kiro', 'sessions', 'cli');
@@ -219,8 +229,66 @@ function _prepareGjcHome(cwd) {
   return agentDir;
 }
 
+function _prepareChiefHome(cwd) {
+  const paths = getChiefPaths(cwd);
+  _mkdirp(paths.home);
+  _mkdirp(paths.sessionsDir);
+  return paths.home;
+}
+
+function _getConfigValue(key, fallback) {
+  try {
+    const vscode = require('vscode');
+    return vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get(key, fallback);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function _getExplicitConfigValue(key) {
+  try {
+    const vscode = require('vscode');
+    const inspected = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .inspect(key);
+    if (!inspected) return undefined;
+    for (const k of ['workspaceFolderValue', 'workspaceValue', 'globalValue']) {
+      if (inspected[k] !== undefined) return inspected[k];
+    }
+  } catch (_) {}
+  return undefined;
+}
+
+function _applyChiefEnvironment(env, cwd) {
+  const paths = getChiefPaths(cwd);
+  env.CHIEF_SESSIONS_DIR = paths.sessionsDir;
+
+  const apiKey = _getExplicitConfigValue('chief.apiKey') || _getConfigValue('chief.apiKey', '');
+  const projectId = _getExplicitConfigValue('chief.projectId') || _getConfigValue('chief.projectId', '');
+  const baseUrl = _getExplicitConfigValue('chief.baseUrl');
+  const intelligence = _getExplicitConfigValue('chief.intelligence');
+  const provider = _getExplicitConfigValue('chief.provider');
+  const profile = _getExplicitConfigValue('chief.profile');
+
+  if (apiKey) env.CHIEF_API_KEY = apiKey;
+  if (projectId) env.CHIEF_PROJECT_ID = projectId;
+  env.CHIEF_BASE_URL = baseUrl || env.CHIEF_BASE_URL || 'https://api.storytell.ai';
+  env.CHIEF_INTELLIGENCE = intelligence || env.CHIEF_INTELLIGENCE || 'auto';
+  env.CHIEF_PROVIDER = provider || env.CHIEF_PROVIDER || 'automatic';
+  env.CHIEF_PROFILE = profile || env.CHIEF_PROFILE || 'general';
+}
+
 function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
   const env = { ...(baseEnv || process.env) };
+  if (agent === 'chief') {
+    try {
+      _prepareChiefHome(cwd);
+      _applyChiefEnvironment(env, cwd);
+    } catch (_) {}
+    return env;
+  }
   if (!isProjectSessionStorageEnabled() || !projectSessionRoot(cwd)) return env;
   try {
     if (agent === 'codex') {
@@ -282,6 +350,18 @@ function getGjcPaths(cwd) {
   return { agentDir, sessionsDir: path.join(agentDir, 'sessions') };
 }
 
+function getChiefPaths(cwd) {
+  if (isProjectSessionStorageEnabled() && projectSessionRoot(cwd)) {
+    return { home: chiefHome(cwd), sessionsDir: chiefSessionsDir(cwd) };
+  }
+  const home = path.join(os.homedir(), '.chief');
+  return { home, sessionsDir: path.join(home, 'sessions') };
+}
+
+function getChiefSessionsDir(cwd) {
+  return getChiefPaths(cwd).sessionsDir;
+}
+
 module.exports = {
   isProjectSessionStorageEnabled,
   projectSessionRoot,
@@ -290,6 +370,8 @@ module.exports = {
   codexIndexFile,
   grokHome,
   grokSessionsDir,
+  chiefHome,
+  chiefSessionsDir,
   kiroSessionsDir,
   antigravityBaseDir,
   gjcAgentDir,
@@ -301,4 +383,6 @@ module.exports = {
   getGrokPaths,
   getGrokSessionsDir,
   getGjcPaths,
+  getChiefPaths,
+  getChiefSessionsDir,
 };

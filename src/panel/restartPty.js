@@ -4,7 +4,7 @@
 const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli, resolveChiefCli } = require('../pty/resolveCli');
 const { findCodexSessionPath, findGrokSessionPath, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment } = require('../lib/projectSessions');
 const { killPtyProcess } = require('../pty/kill');
@@ -142,6 +142,20 @@ function restartPty(entry, panel, context, extensionPath) {
       if (gjcThinking) gjcArgs.push('--thinking', gjcThinking);
     }
     args = [...resolvedGjc.args, ...gjcArgs];
+  } else if (agent === 'chief') {
+    const resolvedChief = resolveChiefCli();
+    if (!resolvedChief) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Chief is not configured. Set Chief API key and project id first.');
+      return;
+    }
+    shell = resolvedChief.shell;
+    const hadSessionId = !!entry.sessionId;
+    if (!entry.sessionId) entry.sessionId = require('crypto').randomUUID();
+    const chiefArgs = hadSessionId
+      ? ['--resume', entry.sessionId]
+      : ['--session-id', entry.sessionId];
+    args = [...resolvedChief.args, ...chiefArgs, '--cwd', entry.cwd];
   } else {
     // agent === 'claude' (default) — original logic preserved
     const resolved = resolveClaudeCli();

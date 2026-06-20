@@ -12,7 +12,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir, getGrokPaths, getGjcPaths } = require('./projectSessions');
+const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir, getGrokPaths, getGjcPaths, getChiefPaths } = require('./projectSessions');
 
 // Find the most-recently-updated Kiro session jsonl that matches the given cwd.
 // Kiro writes a companion .json metadata file alongside each .jsonl (same dir,
@@ -488,6 +488,43 @@ function _walkGjcSessionFiles(dir) {
   return out;
 }
 
+// --- Chief REST REPL sessions ----------------------------------------------
+//
+// chief-repl writes launcher-owned session directories:
+//   <chiefSessionsDir>/<launcher-session-id>/summary.json + updates.jsonl
+// with one simple transcript row per visible turn:
+//   { role: "user"|"assistant", text, timestamp }
+
+function _chiefSessionsDir(cwd) {
+  return getChiefPaths(cwd).sessionsDir;
+}
+
+function _readChiefSummary(sessionDir) {
+  try {
+    const p = path.join(sessionDir, 'summary.json');
+    if (!fs.existsSync(p)) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function _walkChiefSessionDirs(dir) {
+  const out = [];
+  let ids;
+  try { ids = fs.readdirSync(dir); } catch { return out; }
+  for (const id of ids) {
+    const sessionDir = path.join(dir, id);
+    let st;
+    try { st = fs.statSync(sessionDir); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    const updatesPath = path.join(sessionDir, 'updates.jsonl');
+    const summaryPath = path.join(sessionDir, 'summary.json');
+    if (fs.existsSync(updatesPath) || fs.existsSync(summaryPath)) out.push(sessionDir);
+  }
+  return out;
+}
+
 // First user prompt (single line) from a gjc head — title fallback when the
 // header carries no title yet.
 function _gjcFirstUserPrompt(head) {
@@ -551,6 +588,60 @@ function findGjcSessionPath(sessionId, _dir, cwd) {
   return null;
 }
 
+function _chiefSummaryInfo(summary) {
+  return (summary && typeof summary === 'object' && summary.info && typeof summary.info === 'object')
+    ? summary.info
+    : (summary && typeof summary === 'object' ? summary : {});
+}
+
+function _chiefTimestampMs(summary, updatesPath) {
+  const info = _chiefSummaryInfo(summary);
+  const raw = info.updated_at || info.created_at || summary?.updated_at || summary?.created_at;
+  const parsed = Date.parse(raw || '');
+  if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  try { return fs.statSync(updatesPath).mtimeMs; } catch { return 0; }
+}
+
+function _chiefFirstUserFromUpdates(updatesPath) {
+  try {
+    const head = _splitJsonLines(_readChunk(updatesPath, 65536));
+    const msg = _extractChiefMessages(head).find((m) => m.role === 'user');
+    return msg ? msg.text.trim().split('\n')[0].trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function findChiefSessionPath(sessionId, _dir, cwd) {
+  if (!sessionId) return null;
+  const dir = _dir || _chiefSessionsDir(cwd);
+  return path.join(dir, String(sessionId), 'updates.jsonl');
+}
+
+function listChiefSessions(cwd, _dir) {
+  const dir = _dir || _chiefSessionsDir(cwd);
+  const out = [];
+  for (const sessionDir of _walkChiefSessionDirs(dir)) {
+    const sessionId = path.basename(sessionDir);
+    const updatesPath = path.join(sessionDir, 'updates.jsonl');
+    const summary = _readChiefSummary(sessionDir);
+    const info = _chiefSummaryInfo(summary);
+    const metaCwd = info.cwd || '';
+    if (cwd && !_cwdMatch(metaCwd, cwd)) continue;
+    const title = info.generated_title || info.title
+      || summary?.generated_title || summary?.title
+      || (fs.existsSync(updatesPath) ? _chiefFirstUserFromUpdates(updatesPath) : '');
+    out.push({
+      sessionId,
+      title: title || '',
+      cwd: metaCwd,
+      mtime: _chiefTimestampMs(summary, updatesPath),
+    });
+  }
+  out.sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  return out;
+}
+
 function getSessionJsonlPath(sessionId, cwd, agent) {
   // Phase 0: antigravity (agy) stores conversations as protobuf blobs inside a
   // SQLite db (~/.gemini/antigravity-cli/conversations/<id>.db), not jsonl — the
@@ -575,6 +666,9 @@ function getSessionJsonlPath(sessionId, cwd, agent) {
     // placeholder UUID never matches a stem on disk → null (no reader until the
     // panel discovers + pins the real stem, mirroring codex/grok).
     return findGjcSessionPath(sessionId, null, cwd);
+  }
+  if (agent === 'chief') {
+    return findChiefSessionPath(sessionId, null, cwd);
   }
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids. Once we know the REAL id — a
@@ -819,12 +913,23 @@ function _extractGjcMessages(lines) {
   return out;
 }
 
+function _extractChiefMessages(lines) {
+  const out = [];
+  for (const d of lines) {
+    if (!d || (d.role !== 'user' && d.role !== 'assistant')) continue;
+    const text = typeof d.text === 'string' ? d.text : '';
+    if (!text.trim()) continue;
+    out.push({ role: d.role, text, timestamp: d.timestamp || null });
+  }
+  return out;
+}
+
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
-// Kiro, codex, and grok sessions have no title line in the jsonl; return null
+// Kiro, codex, grok, and chief sessions have no title line in the jsonl; return null
 // for them (their titles come from per-agent metadata/list helpers). gjc keeps
 // its (auto/user) title on the session header line, so it's read from there.
 function extractAiTitle(filePath, agent) {
-  if (agent === 'kiro' || agent === 'codex' || agent === 'grok') return null;
+  if (agent === 'kiro' || agent === 'codex' || agent === 'grok' || agent === 'chief') return null;
   const lines = _readLinesCached(filePath);
   if (!lines) return null;
   if (agent === 'gjc') {
@@ -882,6 +987,7 @@ function extractMessages(filePath, agent) {
   if (agent === 'codex') return _extractCodexMessages(lines);
   if (agent === 'grok') return _extractGrokMessages(lines);
   if (agent === 'gjc') return _extractGjcMessages(lines);
+  if (agent === 'chief') return _extractChiefMessages(lines);
   const out = [];
   try {
     for (const d of lines) {
@@ -921,6 +1027,7 @@ function extractMessageCount(filePath, agent) {
   if (agent === 'codex') return _extractCodexMessages(lines).length;
   if (agent === 'grok') return _extractGrokMessages(lines).length;
   if (agent === 'gjc') return _extractGjcMessages(lines).length;
+  if (agent === 'chief') return _extractChiefMessages(lines).length;
   let n = 0;
   try {
     for (const d of lines) {
@@ -954,9 +1061,12 @@ module.exports = {
   findGrokSessionPath,
   listGjcSessions,
   findGjcSessionPath,
+  listChiefSessions,
+  findChiefSessionPath,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,
   extractMessageCount,
+  _extractChiefMessages,
   _clearLineCache,
 };

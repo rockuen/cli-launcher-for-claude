@@ -175,4 +175,30 @@ function resolveGjcCli() {
   return null;
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli };
+function _chiefApiKeyConfigured() {
+  if (process.env.CHIEF_API_KEY) return true;
+  try {
+    const vscode = require('vscode');
+    return !!vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('chief.apiKey', '');
+  } catch (_) {
+    return false;
+  }
+}
+
+// @module pty/resolveCli — locates the bundled Chief REPL wrapper.
+// Chief is a REST service, not an interactive TUI CLI, so the extension spawns
+// Node with bin/chief-repl.js when credentials are configured.
+function resolveChiefCli() {
+  const candidates = [
+    path.join(__dirname, '..', '..', 'bin', 'chief-repl.js'),
+    path.join(process.cwd(), 'bin', 'chief-repl.js'),
+  ];
+  const repl = candidates.find((p) => fs.existsSync(p));
+  if (!repl) return null;
+  if (!_chiefApiKeyConfigured()) return null;
+  return { shell: process.execPath, args: [repl] };
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli, resolveChiefCli };
