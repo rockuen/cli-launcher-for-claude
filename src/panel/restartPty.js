@@ -4,8 +4,8 @@
 const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli } = require('../pty/resolveCli');
-const { findCodexSessionPath, findGrokSessionPath } = require('../lib/sessionJsonl');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli } = require('../pty/resolveCli');
+const { findCodexSessionPath, findGrokSessionPath, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment } = require('../lib/projectSessions');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
@@ -116,6 +116,32 @@ function restartPty(entry, panel, context, extensionPath) {
       grokArgs.push('--always-approve');
     }
     args = [...resolvedGrok.args, ...grokArgs];
+  } else if (agent === 'gjc') {
+    const resolvedGjc = resolveGjcCli();
+    if (!resolvedGjc) {
+      entry._restarting = false;
+      vscode.window.showErrorMessage('Gajae Code CLI (gjc) not found.');
+      return;
+    }
+    shell = resolvedGjc.shell;
+    // gjc resume args, same precedence as createPanel: a resolvable id (Tree-
+    // resume / pinned fresh) → resume the EXACT jsonl by PATH (`gjc -r <path>`);
+    // a known placeholder id → `gjc -c` (cwd-latest); neither → fresh session.
+    const gjcResumePath = (entry.isGjcResume || (entry.sessionId && findGjcSessionPath(entry.sessionId, null, entry.cwd)))
+      ? findGjcSessionPath(entry.sessionId, null, entry.cwd)
+      : null;
+    const gjcArgs = gjcResumePath ? ['-r', gjcResumePath]
+      : (entry.sessionId ? ['-c'] : []);
+    // Model/thinking only on a fresh restart (no sessionId) — a resume restores
+    // the session's own model. Claude's --effort is never passed to gjc.
+    if (!entry.sessionId) {
+      const gjcCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+      const gjcModel = (gjcCfg.get('gjc.model', '') || '').trim();
+      if (gjcModel) gjcArgs.push('--model', gjcModel);
+      const gjcThinking = (gjcCfg.get('gjc.thinking', '') || '').trim();
+      if (gjcThinking) gjcArgs.push('--thinking', gjcThinking);
+    }
+    args = [...resolvedGjc.args, ...gjcArgs];
   } else {
     // agent === 'claude' (default) — original logic preserved
     const resolved = resolveClaudeCli();

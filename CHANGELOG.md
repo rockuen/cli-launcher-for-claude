@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.12.0] - 2026-06-20
+
+### Added
+- **Gajae Code (`gjc`) agent support.** Added Gajae Code (`gjc`, the `gajae-code` Bun package) as a first-class launcher agent — the 6th alongside Claude / Codex / Grok / Kiro / Antigravity. Detection (`~/.bun/bin/gjc(.exe)` → `~/.local/bin` → PATH), new-session / resume commands, unified + split "Gajae Sessions" integration, enabled-agent filtering + `gjcAvailable` view gating, reader names, and tab/status icons (falls back to the Claude icon set).
+- **gjc session reader integration.** gjc sessions are discovered from `<agentDir>/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl` (`agentDir` = `~/.gjc/agent`, overridable via `GJC_CODING_AGENT_DIR`); each transcript's line-1 `{type:"session"}` header carries `cwd` + `title`, and dialogue lines are `{type:"message", message:{role, content}}`. Resume opens the **exact jsonl by path** (`gjc -r <path>`) so it never depends on gjc's internal id resolver (and skips the cross-project fork prompt); fresh sessions are discovered + pinned the same way Codex/Grok are.
+- **Multi-model / OAuth-subscription selection for gjc.** gjc routes one binary to whichever subscription is logged in (Claude Pro/Max, ChatGPT/Codex, Google Antigravity, xAI Grok, …). A new **"Gajae (gjc): Select Model / Subscription…"** command + model button in the Gajae Sessions view title lets you pick a curated subscription model (or type any fuzzy `--model` string / `provider/model`), persisted to `claudeCodeLauncher.gjc.model` and applied to fresh gjc sessions. A **"Gajae (gjc): Log in / Import Subscriptions…"** command runs `gjc setup credentials` (imports existing Claude/Codex logins) and points at `/login` for the rest. New `claudeCodeLauncher.gjc.thinking` setting maps to gjc's `--thinking` (ultra|high|medium|low) effort knob.
+
+### Changed
+- **Project-scoped gjc home.** Project session mode (`sessionStorage.scope = project`) sets `GJC_CODING_AGENT_DIR` to `.agent-sessions/.home/gjc/agent`, links its `sessions` dir to `.agent-sessions/gjc`, and copies gjc's `config.yml` + auth/state DBs so each project keeps a separate history without OneDrive/live-sync junctions.
+- **Effort stays per-agent.** Claude's `--effort max` (autoEffortMax) is never passed to gjc; gjc's effort is its own `gjc.thinking` → `--thinking` setting.
+
+### Implementation
+- `pty/resolveCli.js`: `resolveGjcCli()`. `agents/registry.js`: `gjc` entry (`label: 'Gajae'`, `cliName: 'gjc'`). `lib/projectSessions.js`: `gjcAgentDir` / `gjcSessionsDir` / `getGjcPaths` + `GJC_CODING_AGENT_DIR` env prep. `lib/sessionJsonl.js`: `listGjcSessions` / `findGjcSessionPath` / `_extractGjcMessages` + `getSessionJsonlPath` / `extractAiTitle` / `extractMessages` / `extractMessageCount` wiring. `panel/createPanel.js` + `panel/restartPty.js`: gjc spawn / resume-by-path / continue + `--model` / `--thinking` on fresh sessions + the fresh-session discovery/pin watcher (`_claimedGjcIds`). `tree/SessionTreeDataProvider.js`: `gjc` store-key namespace, MIME pair, `_buildGjcSessions`, unified `UNIFIED_OTHER_AGENTS` entry, drag/sort wiring. `activation.js`: `newGjc` + `gjc.pickModel` + `gjc.setupCredentials` commands, `gjcTreeProvider` + view, `gjcAvailable` context key, resume branch. `handlers/gjcModel.js` (new): the model/subscription picker + credential setup. `package.json`: agent + enabledAgents enums, `gjc.model` / `gjc.thinking` settings, Gajae Sessions view + menus + view-title buttons, reader name.
+
+### Tests
+- Added gjc coverage: registry detection/shape, session listing (cwd filter / newest-first / title-from-header + first-message fallback) + path resolution + jsonl message extraction, project session environment (`GJC_CODING_AGENT_DIR`), and the model catalog/picker helper.
+
 ## [3.11.2] - 2026-06-18
 
 ### Changed

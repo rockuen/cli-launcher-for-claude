@@ -17,7 +17,7 @@ const fs = require('fs');
 const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
-const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions } = require('./lib/sessionJsonl');
+const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions } = require('./lib/sessionJsonl');
 const { getKiroSessionsDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, deviceLocalSet, migrateFromWorkspaceState } = require('./store/sessionStore');
@@ -29,6 +29,7 @@ const { SessionDecorationProvider } = require('./tree/SessionDecorationProvider'
 const { setStatusBar } = require('./panel/statusIndicator');
 const { createPanel } = require('./panel/createPanel');
 const { pickAgent } = require('./handlers/pickAgent');
+const { pickGjcModel, setupGjcCredentials } = require('./handlers/gjcModel');
 const { listAgents } = require('./agents/registry');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
@@ -88,6 +89,9 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.newGrok', () => {
       createPanel(context, extensionPath, null, { agent: 'grok' });
     }),
+    vscode.commands.registerCommand('claudeCodeLauncher.newGjc', () => {
+      createPanel(context, extensionPath, null, { agent: 'gjc' });
+    }),
     // Unified new-session command — backs the Quick Actions view rows (one per
     // installed + enabled agent). Tree-item only (hidden from the palette via
     // package.json menus); newClaude/newKiro/newAntigravity stay as the
@@ -95,6 +99,16 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.newSession', (agentId) => {
       createPanel(context, extensionPath, null, { agent: agentId || 'claude' });
     })
+  );
+
+  // gjc (Gajae Code) model + OAuth-subscription selection. gjc is multi-model:
+  // one binary routes to whichever subscription is logged in (Claude / Codex /
+  // Antigravity / Grok / …). pickGjcModel persists a fuzzy --model to
+  // claudeCodeLauncher.gjc.model (applied to fresh gjc sessions); setupGjc
+  // Credentials imports Claude/Codex logins + points at /login for the rest.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.gjc.pickModel', () => pickGjcModel()),
+    vscode.commands.registerCommand('claudeCodeLauncher.gjc.setupCredentials', () => setupGjcCredentials())
   );
 
   // v3.6.15 — handoff: extract the current session's conversation and inject it
@@ -285,6 +299,16 @@ function activate(context) {
   });
   context.subscriptions.push(grokTreeView);
 
+  // 'Gajae Sessions' (claudeCodeLauncher.gjcSessions) — gjc sessions only,
+  // hidden via the gjcAvailable context key when gjc isn't installed/enabled.
+  state.gjcTreeProvider = new SessionTreeDataProvider(context, 'gjc');
+  const gjcTreeView = vscode.window.createTreeView('claudeCodeLauncher.gjcSessions', {
+    treeDataProvider: state.gjcTreeProvider,
+    dragAndDropController: state.gjcTreeProvider,
+    canSelectMany: true
+  });
+  context.subscriptions.push(gjcTreeView);
+
   // 'Sessions' (claudeCodeLauncher.unifiedSessions) — the unified view (v3.10):
   // claude + kiro + antigravity + codex + grok sessions in one tree, each leaf badged
   // with its model icon, all sharing claude's group / Resume Later / Trash
@@ -324,6 +348,9 @@ function activate(context) {
     }
     if (item && (item.contextValue === 'grokSession' || item._agentMode === 'grok')) {
       return state.grokTreeProvider;
+    }
+    if (item && (item.contextValue === 'gjcSession' || item._agentMode === 'gjc')) {
+      return state.gjcTreeProvider;
     }
     return state.sessionTreeProvider;
   };
@@ -376,6 +403,16 @@ function activate(context) {
   grokTreeView.onDidCollapseElement(e => {
     const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.grokTreeProvider._expandedGroups.delete(key);
+  });
+
+  // Gajae (gjc) view — same expand/collapse tracking.
+  gjcTreeView.onDidExpandElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.gjcTreeProvider._expandedGroups.add(key);
+  });
+  gjcTreeView.onDidCollapseElement(e => {
+    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    if (key) state.gjcTreeProvider._expandedGroups.delete(key);
   });
 
   // Quick Actions — top-of-container view holding the new-session rows (one per
@@ -438,6 +475,18 @@ function activate(context) {
   }
   refreshGrokAvailable();
 
+  // gjcAvailable context key — drives the 'Gajae Sessions' view visibility.
+  // True only when gjc is installed AND 'gjc' is in enabledAgents.
+  function refreshGjcAvailable() {
+    const enabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('enabledAgents', ['claude']);
+    const gjcInstalled = listAgents().some(a => a.id === 'gjc' && a.installed);
+    const available = gjcInstalled && enabled.includes('gjc');
+    vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.gjcAvailable', available);
+  }
+  refreshGjcAvailable();
+
   // unifiedViewActive context key — drives the unified 'Sessions' view vs the
   // five split agent views (package.json views[].when). True when
   // sessionViewMode === 'unified' (the default). When false the unified view
@@ -481,6 +530,7 @@ function activate(context) {
       if (state.antigravityTreeProvider) state.antigravityTreeProvider.refresh();
       if (state.codexTreeProvider) state.codexTreeProvider.refresh();
       if (state.grokTreeProvider) state.grokTreeProvider.refresh();
+      if (state.gjcTreeProvider) state.gjcTreeProvider.refresh();
       if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
     })
   );
@@ -508,9 +558,10 @@ function activate(context) {
     state.antigravityTreeProvider,
     state.codexTreeProvider,
     state.grokTreeProvider,
+    state.gjcTreeProvider,
   ].filter(Boolean);
   const _sessionViews = () => [
-    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView, grokTreeView,
+    unifiedTreeView, treeView, kiroTreeView, antigravityTreeView, codexTreeView, grokTreeView, gjcTreeView,
   ].filter(Boolean);
   const _setFilterAll = (text) => {
     let normalized = '';
@@ -546,6 +597,7 @@ function activate(context) {
         refreshAntigravityAvailable();
         refreshCodexAvailable();
         refreshGrokAvailable();
+        refreshGjcAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
         if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
       }
@@ -614,6 +666,19 @@ function activate(context) {
           context,
           extensionPath,
           { sessionId, cwd: opts.cwd, agent: 'grok', isGrokResume: true, title: grokTitles[sessionId] || opts.title },
+          {}
+        );
+        return;
+      }
+      // gjc resume: sessionId is a real gjc file stem, resumed via `gjc -r <path>`
+      // in its own cwd. Like the other non-claude agents, no claude-side
+      // title/savedSessions bookkeeping (gjc has its own store keys).
+      if (opts && opts.agent === 'gjc') {
+        const gjcTitles = sessionStoreGet('gjcSessionTitles', {});
+        createPanel(
+          context,
+          extensionPath,
+          { sessionId, cwd: opts.cwd, agent: 'gjc', isGjcResume: true, title: gjcTitles[sessionId] || opts.title },
           {}
         );
         return;
@@ -994,6 +1059,7 @@ function activate(context) {
       const isAntigravity = prov === state.antigravityTreeProvider;
       const isCodex = prov === state.codexTreeProvider;
       const isGrok = prov === state.grokTreeProvider;
+      const isGjc = prov === state.gjcTreeProvider;
       // Build candidate list: top-level sessions only (parent empty), not self.
       const parents = sessionStoreGet(prov._storeKey('parent'), {});
       const titleMap = sessionStoreGet(prov._storeKey('titles'), {});
@@ -1020,6 +1086,10 @@ function activate(context) {
         const grokCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
         const grokList = grokCwd ? listGrokSessions(grokCwd) : [];
         candidateIds = grokList.map(s => ({ id: s.sessionId, title: s.title }));
+      } else if (isGjc) {
+        const gjcCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+        const gjcList = gjcCwd ? listGjcSessions(gjcCwd) : [];
+        candidateIds = gjcList.map(s => ({ id: s.sessionId, title: s.title }));
       } else {
         const projDir = state.sessionTreeProvider._getProjectDir();
         if (!projDir) return;

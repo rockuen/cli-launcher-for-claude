@@ -49,6 +49,8 @@ test('project storage paths live under <workspace>/.agent-sessions', () => {
     assert.equal(mod.getAntigravityBaseDir(cwd), path.join(cwd, '.agent-sessions', 'antigravity'));
     assert.equal(mod.getGrokPaths(cwd).home, path.join(cwd, '.agent-sessions', '.home', 'grok'));
     assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'grok'));
+    assert.equal(mod.getGjcPaths(cwd).agentDir, path.join(cwd, '.agent-sessions', '.home', 'gjc', 'agent'));
+    assert.equal(mod.getGjcPaths(cwd).sessionsDir, path.join(cwd, '.agent-sessions', 'gjc'));
   });
 });
 
@@ -63,6 +65,8 @@ test('global storage keeps CLI default locations', () => {
     assert.equal(mod.getAntigravityBaseDir(cwd), path.join(os.homedir(), '.gemini', 'antigravity-cli'));
     assert.equal(mod.getGrokPaths(cwd).home, path.join(os.homedir(), '.grok'));
     assert.equal(mod.getGrokPaths(cwd).sessionsDir, path.join(os.homedir(), '.grok', 'sessions'));
+    assert.equal(mod.getGjcPaths(cwd).agentDir, path.join(os.homedir(), '.gjc', 'agent'));
+    assert.equal(mod.getGjcPaths(cwd).sessionsDir, path.join(os.homedir(), '.gjc', 'agent', 'sessions'));
   });
 });
 
@@ -90,6 +94,12 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(grok.GROK_HOME, path.join(cwd, '.agent-sessions', '.home', 'grok'));
     assert.equal(grok.HOME, os.homedir(), 'Grok uses GROK_HOME, not virtual HOME');
     assert.equal(fs.existsSync(path.join(grok.GROK_HOME, 'sessions')), true);
+
+    const gjc = mod.prepareProjectSessionEnvironment('gjc', cwd, { KEEP: '1', HOME: os.homedir() });
+    assert.equal(gjc.KEEP, '1');
+    assert.equal(gjc.GJC_CODING_AGENT_DIR, path.join(cwd, '.agent-sessions', '.home', 'gjc', 'agent'));
+    assert.equal(gjc.HOME, os.homedir(), 'gjc uses GJC_CODING_AGENT_DIR, not virtual HOME');
+    assert.equal(fs.existsSync(path.join(gjc.GJC_CODING_AGENT_DIR, 'sessions')), true);
 
     fs.rmSync(cwd, { recursive: true, force: true });
   });

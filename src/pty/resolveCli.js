@@ -148,4 +148,31 @@ function resolveGrokCli() {
   return null;
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli };
+// @module pty/resolveCli — locates the Gajae Code CLI (gjc) binary.
+// gjc ships as the `gajae-code` npm package installed via Bun, so its bin lives
+// in the Bun global bin dir (NOT npm). Priority: ~/.bun/bin/gjc(.exe) (bun
+// global install — verified on Windows: gjc.exe present) → ~/.local/bin/gjc →
+// PATH. Requires Bun ≥ 1.3.14 to run, but that's gjc's own runtime concern; the
+// launcher only needs the absolute binary path for node-pty.
+function resolveGjcCli() {
+  const isWin = process.platform === 'win32';
+
+  // 1) ~/.bun/bin/gjc(.exe) — bun global install (gajae-code package).
+  const bunBin = isWin
+    ? path.join(os.homedir(), '.bun', 'bin', 'gjc.exe')
+    : path.join(os.homedir(), '.bun', 'bin', 'gjc');
+  if (fs.existsSync(bunBin)) return { shell: bunBin, args: [] };
+
+  // 2) ~/.local/bin/gjc(.exe) — alternate standalone location.
+  const localBin = isWin
+    ? path.join(os.homedir(), '.local', 'bin', 'gjc.exe')
+    : path.join(os.homedir(), '.local', 'bin', 'gjc');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+
+  // 3) PATH — resolved to an absolute path on Windows (node-pty needs it).
+  const onPath = resolveOnPath('gjc');
+  if (onPath) return { shell: onPath, args: [] };
+  return null;
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli };

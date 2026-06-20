@@ -18,7 +18,7 @@ const chokidar = require('chokidar');
 const state = require('../state');
 const { t, getTranslations, getLocale } = require('../i18n');
 const { saveSessions } = require('../store/sessionManager');
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli } = require('../pty/resolveCli');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
@@ -26,8 +26,8 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
-const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath } = require('../lib/sessionJsonl');
-const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths } = require('../lib/projectSessions');
+const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
+const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths } = require('../lib/projectSessions');
 const { buildMeta, renderBlocks, renderWelcome, resolveReaderNames } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
@@ -64,6 +64,12 @@ const _claimedCodexIds = new Set();
 // sessions under ~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl and
 // the id is not known until the CLI creates that directory.
 const _claimedGrokIds = new Set();
+
+// gjc fresh-session id ownership — same pattern as codex/grok. A new `gjc`
+// names its transcript `<agentDir>/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl`
+// only after it starts, so the launcher's placeholder id never matches on disk
+// until the panel discovers + pins the new file stem.
+const _claimedGjcIds = new Set();
 
 // Split-layout reader watcher: tail the active session's jsonl and broadcast
 // rendered blocks to the webview so the in-panel reader stays in sync with
@@ -173,6 +179,34 @@ function startReaderWatch(entry, panel) {
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'grok');
   };
 
+  // gjc id discovery mirrors codex/grok. Tree-resume/restored sessions already
+  // carry the real file stem; fresh panels carry a placeholder until gjc writes
+  // <agentDir>/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl for this cwd.
+  if (entry.agent === 'gjc' && !entry._gjcPinned && entry.sessionId
+      && (entry.isGjcResume || findGjcSessionPath(entry.sessionId, null, entry.cwd))) {
+    entry._gjcPinned = true;
+    entry.isGjcResume = true;
+    _claimedGjcIds.add(entry.sessionId);
+  }
+  const gjcPreIds = (entry.agent === 'gjc' && !entry._gjcPinned)
+    ? (entry._gjcPreIds || new Set(listGjcSessions(entry.cwd).map(s => s.sessionId)))
+    : null;
+  const resolveGjcPath = () => {
+    if (!entry._gjcPinned) {
+      const fresh = listGjcSessions(entry.cwd)
+        .find(s => !gjcPreIds.has(s.sessionId) && !_claimedGjcIds.has(s.sessionId));
+      if (!fresh) return null; // gjc hasn't written its transcript yet
+      entry.sessionId = fresh.sessionId; // promote placeholder → real stem
+      entry.isGjcResume = true;          // restartPty now resumes via -r <path>
+      entry._gjcPinned = true;
+      _claimedGjcIds.add(fresh.sessionId);
+      try { saveSessions(); } catch (_) {}
+      try { state.refreshSessionTrees(); } catch (_) {}
+      console.log('[panel-reader] gjc session pinned:', fresh.sessionId);
+    }
+    return getSessionJsonlPath(entry.sessionId, entry.cwd, 'gjc');
+  };
+
   const watchTarget = entry.agent === 'kiro'
     ? getKiroSessionsDir(entry.cwd)
     : entry.agent === 'codex'
@@ -185,15 +219,22 @@ function startReaderWatch(entry, panel) {
         ? (entry._grokPinned
             ? getSessionJsonlPath(entry.sessionId, entry.cwd, 'grok')
             : getGrokPaths(entry.cwd).sessionsDir)
+      : entry.agent === 'gjc'
+        // Fresh gjc: watch the whole sessions tree to catch the new file appear.
+        // Pinned/resume gjc: the exact jsonl path (cheaper poll).
+        ? (entry._gjcPinned
+            ? getSessionJsonlPath(entry.sessionId, entry.cwd, 'gjc')
+            : getGjcPaths(entry.cwd).sessionsDir)
       : getSessionJsonlPath(entry.sessionId, entry.cwd, entry.agent);
   if (!watchTarget) return null;
 
-  // Dynamic path resolution: kiro / codex re-evaluate on every render to
-  // discover + pin a fresh session id; claude keeps the fixed path (avoids
-  // repeated stat/scan on the common hot path).
+  // Dynamic path resolution: kiro / codex / grok / gjc re-evaluate on every
+  // render to discover + pin a fresh session id; claude keeps the fixed path
+  // (avoids repeated stat/scan on the common hot path).
   const resolvePath = entry.agent === 'kiro' ? resolveKiroPath
     : entry.agent === 'codex' ? resolveCodexPath
     : entry.agent === 'grok' ? resolveGrokPath
+    : entry.agent === 'gjc' ? resolveGjcPath
     : () => watchTarget;
 
   let debounceTimer = null;
@@ -208,7 +249,7 @@ function startReaderWatch(entry, panel) {
     debounceTimer = null;
     if (entry._disposed) return;
     const jsonlPath = resolvePath();
-    if ((entry.agent === 'kiro' && entry._kiroPinned) || (entry.agent === 'codex' && entry._codexPinned) || (entry.agent === 'grok' && entry._grokPinned)) {
+    if ((entry.agent === 'kiro' && entry._kiroPinned) || (entry.agent === 'codex' && entry._codexPinned) || (entry.agent === 'grok' && entry._grokPinned) || (entry.agent === 'gjc' && entry._gjcPinned)) {
       if (discoveryTimer) { clearInterval(discoveryTimer); discoveryTimer = null; }
     }
     if (!jsonlPath || !fs.existsSync(jsonlPath)) return;
@@ -270,7 +311,7 @@ function startReaderWatch(entry, panel) {
     watcher.on('change', () => schedule());
     watcher.on('error', (e) => console.error('[panel-reader] watcher error:', e && e.message));
     console.log('[panel-reader] watching ' + watchTarget);
-    if ((entry.agent === 'kiro' && !entry._kiroPinned) || (entry.agent === 'codex' && !entry._codexPinned) || (entry.agent === 'grok' && !entry._grokPinned)) {
+    if ((entry.agent === 'kiro' && !entry._kiroPinned) || (entry.agent === 'codex' && !entry._codexPinned) || (entry.agent === 'grok' && !entry._grokPinned) || (entry.agent === 'gjc' && !entry._gjcPinned)) {
       discoveryTimer = setInterval(schedule, 1000);
       schedule();
     }
@@ -293,6 +334,9 @@ function startReaderWatch(entry, panel) {
     }
     if (entry.agent === 'grok' && entry._grokPinned && entry.sessionId) {
       _claimedGrokIds.delete(entry.sessionId);
+    }
+    if (entry.agent === 'gjc' && entry._gjcPinned && entry.sessionId) {
+      _claimedGjcIds.delete(entry.sessionId);
     }
   };
 }
@@ -447,6 +491,9 @@ function createPanel(context, extensionPath, session, opts) {
   const grokPreSessionIds = (agent === 'grok' && !session?.isGrokResume && !findGrokSessionPath(session?.sessionId, null, cwd))
     ? new Set(listGrokSessions(cwd).map(s => s.sessionId))
     : null;
+  const gjcPreSessionIds = (agent === 'gjc' && !session?.isGjcResume && !findGjcSessionPath(session?.sessionId, null, cwd))
+    ? new Set(listGjcSessions(cwd).map(s => s.sessionId))
+    : null;
 
   let shell, args;
   if (agent === 'kiro') {
@@ -582,6 +629,50 @@ function createPanel(context, extensionPath, session, opts) {
       grokArgs.push('--always-approve');
     }
     args = [...resolvedGrok.args, ...grokArgs];
+  } else if (agent === 'gjc') {
+    const resolvedGjc = resolveGjcCli();
+    if (!resolvedGjc) {
+      const install = 'Install Gajae Code (gjc)';
+      vscode.window.showErrorMessage(
+        'Gajae Code CLI (gjc) not found. Install with: bun add -g gajae-code (requires Bun ≥ 1.3.14).',
+        install
+      ).then(choice => {
+        if (choice === install) {
+          vscode.env.openExternal(vscode.Uri.parse('https://gaebal-gajae.dev'));
+        }
+      });
+      panel.dispose();
+      return;
+    }
+    shell = resolvedGjc.shell;
+    // gjc assigns its own session ids (the file stem `<ts>_<uuid>`), like
+    // kiro/codex/grok:
+    //   - isGjcResume (Tree resume) OR a saved id that resolves to a jsonl on
+    //     disk → resume that EXACT session by PATH (`gjc -r <path>`; gjc opens a
+    //     path directly, bypassing id-resolution + the cross-project fork
+    //     prompt the bare-id path triggers).
+    //   - sessionId without a resolvable path (placeholder from auto-restore) →
+    //     `gjc -c` (continue the cwd's most recent session).
+    //   - neither → [] (fresh TUI session).
+    const gjcResumePath = (session?.isGjcResume || (session?.sessionId && findGjcSessionPath(session.sessionId, null, cwd)))
+      ? findGjcSessionPath(session.sessionId, null, cwd)
+      : null;
+    const gjcArgs = gjcResumePath ? ['-r', gjcResumePath]
+      : (session?.sessionId ? ['-c'] : []);
+    // Model + thinking (effort) come from gjc-specific settings only on a FRESH
+    // session — a resume/continue restores the session's own model, so forcing
+    // --model would override the user's in-session choice. gjc is multi-model:
+    // the fuzzy --model string (e.g. "opus", "gpt-5.2-codex", "gemini-3-pro",
+    // "grok-code-fast-1") routes to whichever OAuth subscription is logged in.
+    // --thinking is gjc's effort knob (ultra|high|medium|low); Claude's
+    // --effort/autoEffortMax is NEVER passed to gjc.
+    if (!session?.sessionId) {
+      const gjcModel = (config.get('gjc.model', '') || '').trim();
+      if (gjcModel) gjcArgs.push('--model', gjcModel);
+      const gjcThinking = (config.get('gjc.thinking', '') || '').trim();
+      if (gjcThinking) gjcArgs.push('--thinking', gjcThinking);
+    }
+    args = [...resolvedGjc.args, ...gjcArgs];
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
     const resolved = resolveClaudeCli();
@@ -687,9 +778,14 @@ function createPanel(context, extensionPath, session, opts) {
     // grok Tree-resume flag. When true, sessionId is a real grok session id,
     // so createPanel/restartPty resume via `--resume <id>` instead of cwd-latest.
     isGrokResume: !!(session && session.isGrokResume),
+    // gjc Tree-resume flag. When true, sessionId is a real gjc file stem, so
+    // createPanel/restartPty resume via `gjc -r <path>` and the reader resolves
+    // the exact jsonl.
+    isGjcResume: !!(session && session.isGjcResume),
     _kiroPreIds: kiroPreSessionIds,
     _codexPreIds: codexPreSessionIds,
     _grokPreIds: grokPreSessionIds,
+    _gjcPreIds: gjcPreSessionIds,
     state: 'running',
     idleTimer: null,
     backend: backend,

@@ -32,6 +32,13 @@ test('listAgents: returns one entry per registered agent with the expected shape
   assert.ok(ids.includes('antigravity'));
   assert.ok(ids.includes('codex'));
   assert.ok(ids.includes('grok'));
+  assert.ok(ids.includes('gjc'));
+
+  // gjc registry entry uses the expected label + cliName.
+  const gjc = agents.find((a) => a.id === 'gjc');
+  assert.ok(gjc, 'expected a gjc agent entry');
+  assert.equal(gjc!.label, 'Gajae');
+  assert.equal(gjc!.cliName, 'gjc');
 });
 
 test('isKnownAgent: true for registered ids, false otherwise', () => {
@@ -40,5 +47,6 @@ test('isKnownAgent: true for registered ids, false otherwise', () => {
   assert.equal(isKnownAgent('antigravity'), true);
   assert.equal(isKnownAgent('codex'), true);
   assert.equal(isKnownAgent('grok'), true);
+  assert.equal(isKnownAgent('gjc'), true);
   assert.equal(isKnownAgent('nope'), false);
 });

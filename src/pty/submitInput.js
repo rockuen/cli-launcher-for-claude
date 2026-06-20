@@ -20,10 +20,11 @@ function buildSubmitInputWrites(text, opts = {}) {
     ? '\x1b[200~' + normalized + '\x1b[201~'
     : normalized;
 
-  // claude, codex, kiro, and grok all use a deferred Enter: their readline/TUI
-  // implementations on macOS have a race where text + CR in the same PTY write
-  // can miss the submit. Send text first, then CR after a short delay.
-  if (opts.agent === 'claude' || opts.agent === 'codex' || opts.agent === 'kiro' || opts.agent === 'grok') {
+  // claude, codex, kiro, grok, and gjc all use a deferred Enter: their
+  // readline/TUI implementations on macOS have a race where text + CR in the
+  // same PTY write can miss the submit. Send text first, then CR after a short
+  // delay. (gjc is an opencode-style Ink TUI, same as the others here.)
+  if (opts.agent === 'claude' || opts.agent === 'codex' || opts.agent === 'kiro' || opts.agent === 'grok' || opts.agent === 'gjc') {
     return [
       { data: pastePayload, delayMs: 0 },
       { data: '\r', delayMs: 120 },

@@ -11,7 +11,7 @@
 // machine (delegated to pty/resolveCli so detection stays consistent with the
 // shell actually spawned).
 
-const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli } = require('../pty/resolveCli');
+const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli } = require('../pty/resolveCli');
 
 const AGENTS = [
   { id: 'claude',      label: 'Claude Code', cliName: 'claude',   detect: () => !!resolveClaudeCli() },
@@ -19,6 +19,7 @@ const AGENTS = [
   { id: 'antigravity', label: 'Antigravity', cliName: 'agy',       detect: () => !!resolveAntigravityCli() },
   { id: 'codex',       label: 'Codex',       cliName: 'codex',     detect: () => !!resolveCodexCli() },
   { id: 'grok',        label: 'Grok',        cliName: 'grok',      detect: () => !!resolveGrokCli() },
+  { id: 'gjc',         label: 'Gajae',       cliName: 'gjc',       detect: () => !!resolveGjcCli() },
 ];
 
 // Lightweight, serializable view of the registry for UIs (webview / QuickPick).

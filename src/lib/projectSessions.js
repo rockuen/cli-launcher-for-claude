@@ -69,6 +69,21 @@ function antigravityBaseDir(cwd) {
   return root ? path.join(root, 'antigravity') : path.join(os.homedir(), '.gemini', 'antigravity-cli');
 }
 
+// gjc (Gajae Code) stores sessions under <agentDir>/sessions/<encoded-cwd>/,
+// where agentDir defaults to ~/.gjc/agent and is overridable via the
+// GJC_CODING_AGENT_DIR env var (verified in gjc's CLI help). Project scope puts
+// the agent dir under .agent-sessions/.home/gjc/agent and links its sessions to
+// .agent-sessions/gjc, mirroring the codex/grok layout.
+function gjcAgentDir(cwd) {
+  const root = projectSessionRoot(cwd);
+  return root ? path.join(root, '.home', 'gjc', 'agent') : path.join(os.homedir(), '.gjc', 'agent');
+}
+
+function gjcSessionsDir(cwd) {
+  const root = projectSessionRoot(cwd);
+  return root ? path.join(root, 'gjc') : path.join(gjcAgentDir(cwd), 'sessions');
+}
+
 function _mkdirp(p) {
   if (p) fs.mkdirSync(p, { recursive: true });
 }
@@ -181,6 +196,29 @@ function _prepareGrokHome(cwd) {
   return home;
 }
 
+function _prepareGjcHome(cwd) {
+  const agentDir = gjcAgentDir(cwd);
+  const real = path.join(os.homedir(), '.gjc', 'agent');
+  const sessionsDir = gjcSessionsDir(cwd);
+  _mkdirp(agentDir);
+  _mkdirp(sessionsDir);
+  _linkDirIfExists(sessionsDir, path.join(agentDir, 'sessions'));
+  // gjc honors GJC_CODING_AGENT_DIR directly, so no HOME/USERPROFILE
+  // virtualization is needed. Copy gjc's config + auth/state SQLite DBs so the
+  // project agent dir runs standalone (credentials can be re-imported if they
+  // rotate). The -shm/-wal sidecars are copied alongside each DB so an open
+  // WAL transaction isn't left dangling.
+  for (const file of [
+    'config.yml',
+    'agent.db', 'agent.db-shm', 'agent.db-wal',
+    'history.db', 'history.db-shm', 'history.db-wal',
+    'models.db', 'models.db-shm', 'models.db-wal',
+  ]) {
+    _copyFileIfExists(path.join(real, file), path.join(agentDir, file));
+  }
+  return agentDir;
+}
+
 function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
   const env = { ...(baseEnv || process.env) };
   if (!isProjectSessionStorageEnabled() || !projectSessionRoot(cwd)) return env;
@@ -197,6 +235,8 @@ function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
       _setVirtualHome(env, _prepareAntigravityHome(cwd));
     } else if (agent === 'grok') {
       env.GROK_HOME = _prepareGrokHome(cwd);
+    } else if (agent === 'gjc') {
+      env.GJC_CODING_AGENT_DIR = _prepareGjcHome(cwd);
     }
   } catch (_) {}
   return env;
@@ -234,6 +274,14 @@ function getGrokSessionsDir(cwd) {
   return getGrokPaths(cwd).sessionsDir;
 }
 
+function getGjcPaths(cwd) {
+  if (isProjectSessionStorageEnabled() && projectSessionRoot(cwd)) {
+    return { agentDir: gjcAgentDir(cwd), sessionsDir: gjcSessionsDir(cwd) };
+  }
+  const agentDir = path.join(os.homedir(), '.gjc', 'agent');
+  return { agentDir, sessionsDir: path.join(agentDir, 'sessions') };
+}
+
 module.exports = {
   isProjectSessionStorageEnabled,
   projectSessionRoot,
@@ -244,10 +292,13 @@ module.exports = {
   grokSessionsDir,
   kiroSessionsDir,
   antigravityBaseDir,
+  gjcAgentDir,
+  gjcSessionsDir,
   prepareProjectSessionEnvironment,
   getCodexPaths,
   getKiroSessionsDir,
   getAntigravityBaseDir,
   getGrokPaths,
   getGrokSessionsDir,
+  getGjcPaths,
 };

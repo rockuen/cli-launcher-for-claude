@@ -180,15 +180,15 @@ test('_relTime helper exists with the expected branch ladder', () => {
 test('No CollapsibleState.None on session/trash item rows', () => {
   // Legitimate `.None` leaf rows: the shared metadata row (live + trash),
   // the kiro session item, the kiro trash item, the antigravity + codex + grok
-  // session items, the unified view's other-agent session leaf
-  // (_loadOtherAgentItems builds kiro/codex/grok/agy leaves for the merged tree),
+  // + gjc session items, the unified view's other-agent session leaf
+  // (_loadOtherAgentItems builds kiro/codex/grok/gjc/agy leaves for the merged tree),
   // and the v3.11 search "no match" placeholder row.
   // Caret-bearing rows (groups, sessions with children) must use
   // Collapsed/Expanded instead.
   const noneCount = (treeSrc.match(/TreeItemCollapsibleState\.None/g) || []).length;
   assert.ok(
-    noneCount <= 9,
-    `expected ≤ 9 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + grok session leaf + unified other-agent leaf + search no-match row), got ${noneCount}`,
+    noneCount <= 10,
+    `expected ≤ 10 None usages (metadata row + kiro session + kiro trash leaf + antigravity session leaf + codex session leaf + grok session leaf + gjc session leaf + unified other-agent leaf + search no-match row), got ${noneCount}`,
   );
 });
 

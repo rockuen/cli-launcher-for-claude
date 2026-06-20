@@ -12,7 +12,7 @@
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir, getGrokPaths } = require('./projectSessions');
+const { getCodexPaths, getKiroSessionsDir, getAntigravityBaseDir, getGrokPaths, getGjcPaths } = require('./projectSessions');
 
 // Find the most-recently-updated Kiro session jsonl that matches the given cwd.
 // Kiro writes a companion .json metadata file alongside each .jsonl (same dir,
@@ -439,6 +439,118 @@ function listGrokSessions(cwd, _dir) {
   return out;
 }
 
+// --- gjc (Gajae Code) CLI sessions ------------------------------------------
+//
+// gjc stores each conversation as a jsonl under a cwd-encoded directory:
+//   <agentDir>/sessions/<encoded-cwd>/<ISO-timestamp>_<uuidv7>.jsonl
+// (agentDir defaults to ~/.gjc/agent, overridable via GJC_CODING_AGENT_DIR.)
+// Line 1 is a `{ type:"session", id, title?, timestamp, cwd }` header; later
+// lines are `{ type:"message", message:{ role, content } }` plus other entry
+// types (model_change, compaction, …). The encoded-cwd dir name is
+// gjc-internal, so we read each file's header `cwd` and match it to the
+// workspace (like codex) rather than reversing the encoding.
+//
+// The id the launcher tracks is the FILE STEM (`<ts>_<uuid>`), which uniquely
+// names the transcript. Resume passes the absolute jsonl PATH to `gjc -r <path>`
+// (gjc opens a path directly; only bare ids go through gjc's id resolver + the
+// cross-project fork prompt), so the launcher never depends on gjc's internal
+// id matching. A fresh `gjc` names its own file, so the panel discovers + pins
+// the new stem the same way kiro/codex/grok do.
+const GJC_META_CHUNK = 65536;
+
+function _gjcSessionsDir(cwd) {
+  return getGjcPaths(cwd).sessionsDir;
+}
+
+function _gjcStem(filePath) {
+  return path.basename(filePath).replace(/\.jsonl$/i, '');
+}
+
+// Walk <sessionsDir>/<encoded-cwd>/*.jsonl. Empty/aborted gjc sessions leave an
+// artifacts directory (`<stem>/`) with no sibling `<stem>.jsonl`; globbing only
+// .jsonl files skips those cleanly. Returns absolute jsonl paths; [] when the
+// tree doesn't exist (gjc never run for any cwd).
+function _walkGjcSessionFiles(dir) {
+  const out = [];
+  let groups;
+  try { groups = fs.readdirSync(dir); } catch { return out; }
+  for (const g of groups) {
+    const groupDir = path.join(dir, g);
+    let groupStat;
+    try { groupStat = fs.statSync(groupDir); } catch { continue; }
+    if (!groupStat.isDirectory()) continue;
+    let files;
+    try { files = fs.readdirSync(groupDir); } catch { continue; }
+    for (const f of files) {
+      if (f.endsWith('.jsonl')) out.push(path.join(groupDir, f));
+    }
+  }
+  return out;
+}
+
+// First user prompt (single line) from a gjc head — title fallback when the
+// header carries no title yet.
+function _gjcFirstUserPrompt(head) {
+  for (const d of head) {
+    if (!d || d.type !== 'message' || !d.message || d.message.role !== 'user') continue;
+    const c = d.message.content;
+    if (typeof c === 'string') {
+      const t = c.trim().split('\n')[0].trim();
+      if (t) return t;
+    } else if (Array.isArray(c)) {
+      for (const b of c) {
+        if (b && typeof b === 'object' && typeof b.text === 'string' && b.text.trim()) {
+          return b.text.trim().split('\n')[0].trim();
+        }
+      }
+    }
+  }
+  return '';
+}
+
+// List gjc sessions for a cwd, newest first. Reads only the 64 KB head of each
+// jsonl (the header is line 1) for cwd + title. Entry shape matches the other
+// agent lists: { sessionId, title, cwd, mtime }. `_dir` is test-only injection.
+function listGjcSessions(cwd, _dir) {
+  const dir = _dir || _gjcSessionsDir(cwd);
+  const out = [];
+  for (const p of _walkGjcSessionFiles(dir)) {
+    let stat;
+    try { stat = fs.statSync(p); } catch { continue; }
+    let metaCwd = '';
+    let title = '';
+    let firstMsg = '';
+    try {
+      const head = _splitJsonLines(_readChunk(p, GJC_META_CHUNK));
+      for (const d of head) {
+        if (d && d.type === 'session') {
+          if (typeof d.cwd === 'string') metaCwd = d.cwd;
+          if (typeof d.title === 'string' && d.title.trim()) title = d.title.trim();
+        }
+      }
+      if (!title) firstMsg = _gjcFirstUserPrompt(head);
+    } catch { continue; }
+    out.push({ sessionId: _gjcStem(p), title: title || firstMsg || '', cwd: metaCwd, mtime: stat.mtimeMs });
+  }
+  let result = out;
+  if (cwd) result = result.filter((s) => _cwdMatch(s.cwd, cwd));
+  result.sort((a, b) => b.mtime - a.mtime);
+  return result;
+}
+
+// Resolve a gjc session id (the file stem) to its jsonl path (or null). The
+// stem embeds a uuidv7 so it's globally unique — a directory walk + stem match,
+// no header reads or cwd filter needed.
+function findGjcSessionPath(sessionId, _dir, cwd) {
+  if (!sessionId) return null;
+  const dir = _dir || _gjcSessionsDir(cwd);
+  const needle = String(sessionId);
+  for (const p of _walkGjcSessionFiles(dir)) {
+    if (_gjcStem(p) === needle) return p;
+  }
+  return null;
+}
+
 function getSessionJsonlPath(sessionId, cwd, agent) {
   // Phase 0: antigravity (agy) stores conversations as protobuf blobs inside a
   // SQLite db (~/.gemini/antigravity-cli/conversations/<id>.db), not jsonl — the
@@ -456,6 +568,13 @@ function getSessionJsonlPath(sessionId, cwd, agent) {
   }
   if (agent === 'grok') {
     return findGrokSessionPath(sessionId, null, cwd);
+  }
+  if (agent === 'gjc') {
+    // gjc assigns its own session ids (the file stem). A Tree-resume / pinned
+    // fresh session carries the real stem → exact jsonl path; a fresh session's
+    // placeholder UUID never matches a stem on disk → null (no reader until the
+    // panel discovers + pins the real stem, mirroring codex/grok).
+    return findGjcSessionPath(sessionId, null, cwd);
   }
   if (agent === 'kiro') {
     // Kiro auto-assigns its own session ids. Once we know the REAL id — a
@@ -669,13 +788,54 @@ function _extractGrokMessages(lines) {
   return out;
 }
 
+// gjc JSONL parser helper. Line 1 is a `{ type:"session" }` header; dialogue
+// lines are `{ type:"message", message:{ role, content } }` where content is a
+// string OR an array of blocks (text blocks carry a `.text` string; tool_use /
+// thinking / image blocks are dropped — matching the claude extractor). Only
+// user + assistant turns surface; other roles and non-message entries (model
+// changes, compaction, custom messages) are skipped.
+function _extractGjcMessages(lines) {
+  const out = [];
+  for (const d of lines) {
+    if (!d || d.type !== 'message' || !d.message) continue;
+    const role = d.message.role;
+    if (role !== 'user' && role !== 'assistant') continue;
+    const content = d.message.content;
+    let text = '';
+    if (typeof content === 'string') {
+      text = content;
+    } else if (Array.isArray(content)) {
+      const parts = [];
+      for (const blk of content) {
+        if (blk && typeof blk === 'object' && typeof blk.text === 'string' && blk.text.trim()) {
+          parts.push(blk.text);
+        }
+      }
+      text = parts.join('\n\n');
+    }
+    if (!text.trim()) continue;
+    out.push({ role, text, timestamp: d.timestamp || null });
+  }
+  return out;
+}
+
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
 // Kiro, codex, and grok sessions have no title line in the jsonl; return null
-// for them (their titles come from per-agent metadata/list helpers).
+// for them (their titles come from per-agent metadata/list helpers). gjc keeps
+// its (auto/user) title on the session header line, so it's read from there.
 function extractAiTitle(filePath, agent) {
   if (agent === 'kiro' || agent === 'codex' || agent === 'grok') return null;
   const lines = _readLinesCached(filePath);
   if (!lines) return null;
+  if (agent === 'gjc') {
+    let gjcTitle = null;
+    for (const d of lines) {
+      if (d && d.type === 'session' && typeof d.title === 'string' && d.title.trim()) {
+        gjcTitle = d.title.trim(); // latest header wins (gjc rewrites it)
+      }
+    }
+    return gjcTitle;
+  }
   let title = null;
   for (const d of lines) {
     if (d.type === 'ai-title' && typeof d.aiTitle === 'string' && d.aiTitle.trim()) {
@@ -721,6 +881,7 @@ function extractMessages(filePath, agent) {
   if (agent === 'kiro') return _extractKiroMessages(lines);
   if (agent === 'codex') return _extractCodexMessages(lines);
   if (agent === 'grok') return _extractGrokMessages(lines);
+  if (agent === 'gjc') return _extractGjcMessages(lines);
   const out = [];
   try {
     for (const d of lines) {
@@ -759,6 +920,7 @@ function extractMessageCount(filePath, agent) {
   if (agent === 'kiro') return _extractKiroMessages(lines).length;
   if (agent === 'codex') return _extractCodexMessages(lines).length;
   if (agent === 'grok') return _extractGrokMessages(lines).length;
+  if (agent === 'gjc') return _extractGjcMessages(lines).length;
   let n = 0;
   try {
     for (const d of lines) {
@@ -790,6 +952,8 @@ module.exports = {
   findCodexSessionPath,
   listGrokSessions,
   findGrokSessionPath,
+  listGjcSessions,
+  findGjcSessionPath,
   extractAiTitle,
   extractFirstUserMessage,
   extractMessages,
