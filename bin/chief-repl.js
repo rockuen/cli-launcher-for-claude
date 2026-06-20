@@ -13,6 +13,17 @@ const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 120000;
 const DEFAULT_BASE_URL = 'https://api.storytell.ai';
 const PROMPT = 'chief> ';
+const PROFILE_GENERAL = 'general';
+const PROFILE_WRITING = 'writing';
+
+const WRITING_PROFILE_PROMPT = [
+  'You are Chief, a conversation and writing assistant.',
+  'Your job is to transform rough user speech into context-appropriate writing.',
+  'Preserve the user intent, facts, nuance, and level of commitment.',
+  'Choose the right format for the situation: short message, reply, email, memo, brief, proposal, announcement, or document.',
+  'Prefer Korean when the user writes Korean. Use natural business Korean unless another tone is requested.',
+  'Return the usable result first. Add brief alternatives or notes only when they materially help.',
+].join('\n');
 
 function parseArgs(argv) {
   const out = {};
@@ -72,6 +83,71 @@ function shouldSet(value) {
   return typeof value === 'string' && value.trim();
 }
 
+function normalizeProfile(value) {
+  return value === PROFILE_WRITING ? PROFILE_WRITING : PROFILE_GENERAL;
+}
+
+function applyProfile(prompt, profile) {
+  if (normalizeProfile(profile) !== PROFILE_WRITING) return prompt;
+  return `${WRITING_PROFILE_PROMPT}\n\nUser input:\n${prompt}`;
+}
+
+function writingPreset(cmd, input) {
+  const text = String(input || '').trim();
+  const presets = {
+    '/wash': {
+      usage: 'Usage: /wash <rough text>',
+      prompt: [
+        'Preset: wash rough text.',
+        'Rewrite the following rough text into polished, context-appropriate writing.',
+        'Keep the intent and facts. Remove rambling, ambiguity, and unnecessary hedging.',
+        'Return the best version first, then up to two shorter alternatives if useful.',
+      ],
+    },
+    '/reply': {
+      usage: 'Usage: /reply <situation or message to answer>',
+      prompt: [
+        'Preset: write a reply.',
+        'Write a ready-to-send reply for the following situation or message.',
+        'Infer the relationship, channel, and goal. Use a tone that is respectful and practical.',
+        'If the situation is ambiguous, provide a default reply and one softer alternative.',
+      ],
+    },
+    '/doc': {
+      usage: 'Usage: /doc <notes or rough explanation>',
+      prompt: [
+        'Preset: turn rough notes into a document.',
+        'Convert the following notes into the most suitable document format.',
+        'Use a clear title, concise summary, structured body, and action items when relevant.',
+        'Choose between memo, announcement, email, proposal, brief, or checklist based on the content.',
+      ],
+    },
+    '/tone': {
+      usage: 'Usage: /tone <tone/style instruction and text>',
+      prompt: [
+        'Preset: adjust tone.',
+        'Rewrite the following text in the requested tone or style.',
+        'If no explicit tone is named, make it calm, clear, and professionally natural.',
+        'Keep the original meaning and do not overstate certainty.',
+      ],
+    },
+    '/shorten': {
+      usage: 'Usage: /shorten <text>',
+      prompt: [
+        'Preset: shorten.',
+        'Condense the following text while preserving the point, nuance, and necessary details.',
+        'Return a concise version first. Add a one-line version if useful.',
+      ],
+    },
+  };
+  const preset = presets[cmd];
+  if (!preset) return null;
+  if (!text) return { usage: preset.usage };
+  return {
+    prompt: `${preset.prompt.join('\n')}\n\nInput:\n${text}`,
+  };
+}
+
 class ChiefClient {
   constructor(env) {
     this.baseUrl = normalizeBaseUrl(env.CHIEF_BASE_URL);
@@ -79,6 +155,7 @@ class ChiefClient {
     this.projectId = env.CHIEF_PROJECT_ID || '';
     this.intelligence = env.CHIEF_INTELLIGENCE || 'auto';
     this.provider = env.CHIEF_PROVIDER || 'automatic';
+    this.profile = normalizeProfile(env.CHIEF_PROFILE || PROFILE_GENERAL);
     this.publicData = String(env.CHIEF_WEB || '').toLowerCase() === 'true';
   }
 
@@ -96,7 +173,7 @@ class ChiefClient {
   }
 
   body(prompt) {
-    const body = { prompt };
+    const body = { prompt: applyProfile(prompt, this.profile) };
     if (shouldSet(this.intelligence)) body.intelligence = this.intelligence;
     if (shouldSet(this.provider)) body.provider = this.provider;
     body.public_data = !!this.publicData;
@@ -216,9 +293,15 @@ function stopSpinner(timer, label) {
 function printHelp() {
   process.stdout.write([
     'Commands:',
+    '  /profile general|writing',
     '  /intel fast|expert|research|auto',
     '  /provider automatic|anthropic|openai|google',
     '  /web on|off',
+    '  /wash <rough text>',
+    '  /reply <situation or message to answer>',
+    '  /doc <notes or rough explanation>',
+    '  /tone <tone/style instruction and text>',
+    '  /shorten <text>',
     '  /upload <path>',
     '  /new',
     '  /exit',
@@ -262,6 +345,17 @@ async function handleSlash(line, client, transcript, cwd) {
   if (cmd === '/exit' || cmd === '/quit') {
     process.exit(0);
   }
+  if (cmd === '/profile') {
+    if (!value) {
+      process.stdout.write(`profile=${client.profile}\n`);
+    } else if (![PROFILE_GENERAL, PROFILE_WRITING].includes(value)) {
+      process.stdout.write('Usage: /profile general|writing\n');
+    } else {
+      client.profile = value;
+      process.stdout.write(`profile=${value}\n`);
+    }
+    return true;
+  }
   if (cmd === '/intel') {
     if (!['fast', 'expert', 'research', 'auto'].includes(value)) {
       process.stdout.write('Usage: /intel fast|expert|research|auto\n');
@@ -289,6 +383,15 @@ async function handleSlash(line, client, transcript, cwd) {
     }
     return true;
   }
+  const preset = writingPreset(cmd, line.trim().slice(cmd.length).trim());
+  if (preset) {
+    if (preset.usage) {
+      process.stdout.write(`${preset.usage}\n`);
+    } else {
+      await askChief(preset.prompt, client, transcript, { displayPrompt: line.trim() });
+    }
+    return true;
+  }
   if (cmd === '/new') {
     transcript.update({ chat_id: null });
     process.stdout.write('Started a new Chief chat for this launcher session.\n');
@@ -306,8 +409,9 @@ async function handleSlash(line, client, transcript, cwd) {
   return false;
 }
 
-async function askChief(prompt, client, transcript) {
-  transcript.append('user', prompt);
+async function askChief(prompt, client, transcript, options) {
+  const displayPrompt = options && options.displayPrompt ? options.displayPrompt : prompt;
+  transcript.append('user', displayPrompt);
   const label = 'Chief thinking';
   const spinner = startSpinner(label);
   try {
@@ -319,8 +423,8 @@ async function askChief(prompt, client, transcript) {
       messageId = created.message_id;
       transcript.update({
         chat_id: chatId,
-        title: transcript.info.title || titleFromPrompt(prompt),
-        generated_title: transcript.info.generated_title || titleFromPrompt(prompt),
+        title: transcript.info.title || titleFromPrompt(displayPrompt),
+        generated_title: transcript.info.generated_title || titleFromPrompt(displayPrompt),
       });
     } else {
       const sent = await client.sendMessage(chatId, prompt);

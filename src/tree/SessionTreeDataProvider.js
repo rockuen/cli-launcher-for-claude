@@ -950,7 +950,7 @@ class SessionTreeDataProvider {
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       const mtime = s.mtime || 0;
       item.description = mtime ? _relTime(mtime) : '';
-      item.iconPath = new vscode.ThemeIcon('comment-discussion');
+      item.iconPath = this._agentIcon('chief');
       item.contextValue = 'chiefSession';
       item._agentMode = 'chief';
       item.tooltip = `Chief session: ${s.sessionId}\n${s.cwd || ''}`;

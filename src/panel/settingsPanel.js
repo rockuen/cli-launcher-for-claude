@@ -554,6 +554,13 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             ['automatic', 'anthropic', 'openai', 'google'],
             'Chief provider bias for newly opened and restarted Chief sessions.'
           );
+          addChiefSelect(
+            'chief.profile',
+            'Profile',
+            GLOBALS.chiefProfile || 'general',
+            ['general', 'writing'],
+            'Chief prompt profile. Writing mode turns rough speech into context-appropriate messages, replies, and documents.'
+          );
         }
 
         // Claude-only: startup flags — Effort max (--effort max) + Bypass
@@ -825,6 +832,7 @@ function openGlobalSettings(context) {
     grokTrustAllTools: cfg.get('grok.trustAllTools', false),
     chiefIntelligence: cfg.get('chief.intelligence', 'auto'),
     chiefProvider: cfg.get('chief.provider', 'automatic'),
+    chiefProfile: cfg.get('chief.profile', 'general'),
     readerNames: cfg.get('readerNames', {}),
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
@@ -848,6 +856,7 @@ function openGlobalSettings(context) {
     'grok.trustAllTools',
     'chief.intelligence',
     'chief.provider',
+    'chief.profile',
     'readerNames',
     'repoSync.enabled',
     'repoSync.path',

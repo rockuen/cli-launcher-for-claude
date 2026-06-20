@@ -106,6 +106,7 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(chief.CHIEF_BASE_URL, 'https://api.storytell.ai');
     assert.equal(chief.CHIEF_INTELLIGENCE, 'auto');
     assert.equal(chief.CHIEF_PROVIDER, 'automatic');
+    assert.equal(chief.CHIEF_PROFILE, 'general');
     assert.equal(chief.CHIEF_SESSIONS_DIR, path.join(cwd, '.agent-sessions', 'chief'));
     assert.equal(fs.existsSync(chief.CHIEF_SESSIONS_DIR), true);
 

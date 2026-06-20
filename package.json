@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Grok, Chief, Kiro & Antigravity",
   "description": "Run Claude Code, Codex, Grok, Chief, Kiro, and Antigravity agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.11.2",
+  "version": "3.12.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1280,6 +1280,15 @@
           ],
           "default": "automatic",
           "description": "Chief provider setting passed to /v1/chats."
+        },
+        "claudeCodeLauncher.chief.profile": {
+          "type": "string",
+          "enum": [
+            "general",
+            "writing"
+          ],
+          "default": "general",
+          "description": "Chief prompt profile. 'general' sends prompts as-is. 'writing' prepends a conversation/writing assistant profile for polishing rough speech into context-appropriate messages, replies, and documents."
         },
         "claudeCodeLauncher.readerNames": {
           "type": "object",

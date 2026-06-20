@@ -17,6 +17,7 @@ function getClientScript(ctx) {
     const IS_ANTIGRAVITY = ${JSON.stringify(agent === 'antigravity')};
     const IS_CODEX = ${JSON.stringify(agent === 'codex')};
     const IS_GROK = ${JSON.stringify(agent === 'grok')};
+    const IS_CHIEF = ${JSON.stringify(agent === 'chief')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
     // colors. 'auto' (the default) follows the agent: claude -> coral,
@@ -1823,7 +1824,7 @@ function getClientScript(ctx) {
 
     // Slash command menu
     const slashMenu = document.getElementById('slash-menu');
-    const slashCommands = [
+    const claudeSlashCommands = [
       { cmd: '/compact', desc: T.slashCompact },
       { cmd: '/clear', desc: T.slashClear },
       { cmd: '/context', desc: T.slashContext },
@@ -1840,8 +1841,25 @@ function getClientScript(ctx) {
       { cmd: '/login', desc: T.slashLogin },
       { cmd: '/logout', desc: T.slashLogout },
       { cmd: '/terminal-setup', desc: T.slashTerminalSetup },
+    ];
+    const chiefSlashCommands = [
+      { cmd: '/wash', desc: T.slashChiefWash },
+      { cmd: '/reply', desc: T.slashChiefReply },
+      { cmd: '/doc', desc: T.slashChiefDoc },
+      { cmd: '/tone', desc: T.slashChiefTone },
+      { cmd: '/shorten', desc: T.slashChiefShorten },
+      { cmd: '/profile', desc: T.slashChiefProfile },
+      { cmd: '/new', desc: T.slashChiefNew },
+      { cmd: '/intel', desc: T.slashChiefIntel },
+      { cmd: '/provider', desc: T.slashChiefProvider },
+      { cmd: '/web', desc: T.slashChiefWeb },
+      { cmd: '/upload', desc: T.slashChiefUpload },
+      { cmd: '/help', desc: T.slashHelp },
+    ];
+    const slashCommands = [
+      ...(IS_CHIEF ? chiefSlashCommands : claudeSlashCommands),
       ...CUSTOM_SLASH,
-      ...EXTRA_SLASH,
+      ...(IS_CHIEF ? [] : EXTRA_SLASH),
     ];
     let slashActiveIndex = 0;
     let slashFiltered = [];

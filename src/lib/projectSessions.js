@@ -232,12 +232,14 @@ function _applyChiefEnvironment(env, cwd) {
   const baseUrl = _getExplicitConfigValue('chief.baseUrl');
   const intelligence = _getExplicitConfigValue('chief.intelligence');
   const provider = _getExplicitConfigValue('chief.provider');
+  const profile = _getExplicitConfigValue('chief.profile');
 
   if (apiKey) env.CHIEF_API_KEY = apiKey;
   if (projectId) env.CHIEF_PROJECT_ID = projectId;
   env.CHIEF_BASE_URL = baseUrl || env.CHIEF_BASE_URL || 'https://api.storytell.ai';
   env.CHIEF_INTELLIGENCE = intelligence || env.CHIEF_INTELLIGENCE || 'auto';
   env.CHIEF_PROVIDER = provider || env.CHIEF_PROVIDER || 'automatic';
+  env.CHIEF_PROFILE = profile || env.CHIEF_PROFILE || 'general';
 }
 
 function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {

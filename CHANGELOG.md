@@ -5,6 +5,11 @@
 ### Added
 - **Chief as the 6th launcher agent.** Added a bundled `chief-repl` Node wrapper that runs Chief REST chats inside a PTY tab, polls asynchronous Chief responses, records launcher-owned transcripts, and resumes by the launcher session id.
 - **Chief session integration.** Added Chief detection, project/global transcript storage, reader parsing, split and unified Sessions support, status icons, and settings for API key, project id, base URL, intelligence, and provider.
+- **Chief writing profile and presets.** Added a `chief.profile` setting with `general` and `writing` modes. Writing mode prepends a conversation/writing assistant profile, and Chief panels now expose Chief-native slash presets: `/wash`, `/reply`, `/doc`, `/tone`, and `/shorten`.
+
+### Changed
+- **Chief defaults are easier to tune from Settings.** Settings → Agent → Chief now shows Profile alongside Intelligence and Provider. Chief panels show Chief-specific slash commands instead of Claude-only commands.
+- **Chief icon consistency.** Chief session rows now use the Chief SVG agent icon instead of the generic comment icon.
 
 ### Security
 - Chief PATs are read only from machine-scoped VS Code settings or `CHIEF_API_KEY` and are passed through process env. They are not written to launcher metadata or transcripts.
