@@ -38,7 +38,7 @@ function restartPty(entry, panel, context, extensionPath) {
   const agent = entry.agent
     || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent')
     || 'claude';
-  let shell, args;
+  let shell, args, extraEnv = {};
   if (agent === 'kiro') {
     const resolvedKiro = resolveKiroCli();
     if (!resolvedKiro) {
@@ -146,10 +146,11 @@ function restartPty(entry, panel, context, extensionPath) {
     const resolvedChief = resolveChiefCli();
     if (!resolvedChief) {
       entry._restarting = false;
-      vscode.window.showErrorMessage('Chief is not configured. Set Chief API key and project id first.');
+      vscode.window.showErrorMessage('Chief launcher wrapper is missing from this extension install. Reinstall CLI Launcher for Claude.');
       return;
     }
     shell = resolvedChief.shell;
+    extraEnv = resolvedChief.env || {};
     const hadSessionId = !!entry.sessionId;
     if (!entry.sessionId) entry.sessionId = require('crypto').randomUUID();
     const chiefArgs = hadSessionId
@@ -188,7 +189,7 @@ function restartPty(entry, panel, context, extensionPath) {
   entry._disposed = false;
 
   try {
-    const sessionEnv = prepareProjectSessionEnvironment(agent, entry.cwd, process.env);
+    const sessionEnv = { ...prepareProjectSessionEnvironment(agent, entry.cwd, process.env), ...extraEnv };
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: entry._lastCols || 120,

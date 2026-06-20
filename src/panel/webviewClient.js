@@ -17,18 +17,21 @@ function getClientScript(ctx) {
     const IS_ANTIGRAVITY = ${JSON.stringify(agent === 'antigravity')};
     const IS_CODEX = ${JSON.stringify(agent === 'codex')};
     const IS_GROK = ${JSON.stringify(agent === 'grok')};
+    const IS_GJC = ${JSON.stringify(agent === 'gjc')};
     const IS_CHIEF = ${JSON.stringify(agent === 'chief')};
     const IS_DARK = ${JSON.stringify(isDark)};
     // Theme = INPUT-AREA tone (accent / panel bg / caret / glow), NOT terminal
     // colors. 'auto' (the default) follows the agent: claude -> coral,
-    // kiro -> purple, antigravity -> azure, codex -> slate, grok -> black/dark.
-    // An explicit claude/kiro/antigravity/codex/grok pick in Settings pins one tone for all
-    // panels; legacy values (default/midnight/...) resolve to 'auto'.
+    // kiro -> purple, antigravity -> azure, codex -> slate, grok -> black/dark,
+    // gjc -> strong red/yellow.
+    // An explicit claude/kiro/antigravity/codex/grok/gjc pick in Settings pins
+    // one tone for all panels; legacy values (default/midnight/...) resolve to
+    // 'auto'.
     // For Grok, always force the black theme for the input area (brand match).
     // Other agents respect explicit defaultTheme or fall back to auto (agent-specific).
     const initialPanelTheme = IS_GROK
       ? 'grok'
-      : (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok')
+      : (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok' || SETTINGS.defaultTheme === 'gjc')
         ? SETTINGS.defaultTheme
         : 'auto';
     let currentThemeName = initialPanelTheme;
@@ -114,10 +117,20 @@ function getClientScript(ctx) {
     // and keeps Claude's input naturally at the pane bottom.)
     fitAddon.fit();
 
-    // Grok renders as a full-screen frame and may clear/redraw with 2J bursts.
-    // Its terminal uses scrollback 0 and an unconditional bottom pin after each
-    // write. Kiro keeps standard scrollback on current builds, so it follows the
-    // normal "only scroll when already at bottom" output path.
+    // Keep terminal panes bottom-pinned by default. Long-running agent TUIs
+    // frequently redraw near the bottom, and users reported stale upper rows
+    // staying visible after output/resize. Manual scrollback is still available;
+    // the next output chunk intentionally follows the live bottom.
+    const PIN_TERMINAL_TO_BOTTOM = true;
+    function terminalWasAtBottom() {
+      try { return term.buffer.active.viewportY >= term.buffer.active.baseY; } catch (_) { return true; }
+    }
+    function shouldPinTerminal(wasAtBottom) {
+      return PIN_TERMINAL_TO_BOTTOM || wasAtBottom;
+    }
+    function scrollTerminalToBottom() {
+      try { term.scrollToBottom(); } catch (_) {}
+    }
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──
     // Claude CLI's fullscreen mode uses alternate screen buffer + mouse
@@ -871,6 +884,11 @@ function getClientScript(ctx) {
         // Black / near-black tone to match Grok's identity (very dark input + subtle light accents)
         dark:  { accent: '#e5e5e5', accentStrong: '#f4f4f5', accentDeep: '#a1a1aa', panelBg: '#0a0a0a', inputBg: '#171717', glow: 'rgba(229,229,229,0.18)', glowStrong: 'rgba(229,229,229,0.32)', muted: '#52525b' },
         light: { accent: '#18181b', accentStrong: '#27272a', accentDeep: '#3f3f46', panelBg: '#f4f4f5', inputBg: '#ffffff', glow: 'rgba(24,24,27,0.12)', glowStrong: 'rgba(24,24,27,0.22)', muted: '#71717a' }
+      },
+      gjc: {
+        // Gajae Code — intense red as the base, with yellow used only as the hot accent.
+        dark:  { accent: '#ff261f', accentStrong: '#ffd22e', accentDeep: '#b80000', panelBg: '#2d0505', inputBg: '#180303', glow: 'rgba(255,38,31,0.34)', glowStrong: 'rgba(255,210,46,0.42)', muted: '#ff8a64' },
+        light: { accent: '#d90000', accentStrong: '#ffb800', accentDeep: '#a40000', panelBg: '#fff1e6', inputBg: '#fffaf6', glow: 'rgba(217,0,0,0.22)', glowStrong: 'rgba(255,184,0,0.34)', muted: '#bd5a45' }
       }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
@@ -889,7 +907,7 @@ function getClientScript(ctx) {
     // changes tone.
     function applyTheme(themeName) {
       // 'auto' resolves to this panel's agent tone.
-      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : IS_GROK ? 'grok' : 'claude') : themeName;
+      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : IS_GROK ? 'grok' : IS_GJC ? 'gjc' : 'claude') : themeName;
       const def = themes[resolvedName];
       if (!def) return;
       const t = IS_DARK ? def.dark : def.light;
@@ -1066,15 +1084,12 @@ function getClientScript(ctx) {
         const cleaned = stripMouseMode(msg.data);
         if (IS_GROK) {
           // Grok is a full-screen TUI with 2J/synchronized redraw bursts; with
-          // scrollback 0 this just keeps the live frame pinned.
-          term.write(cleaned, () => term.scrollToBottom());
+          // scrollback 0 this keeps the live frame pinned.
+          term.write(cleaned, scrollTerminalToBottom);
         } else {
-          // v3.10.4: all agents (kiro included) only auto-scroll to the bottom if
-          // the viewport was already there, so scrolling up to read history stays
-          // put instead of being yanked back down by the next output chunk.
-          const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+          const wasAtBottom = terminalWasAtBottom();
           term.write(cleaned, () => {
-            if (wasAtBottom) term.scrollToBottom();
+            if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();
           });
         }
       }
@@ -1695,9 +1710,9 @@ function getClientScript(ctx) {
       } else {
         term.focus();
       }
-      const wasBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+      const wasBottom = terminalWasAtBottom();
       fitAddon.fit();
-      if (wasBottom) term.scrollToBottom();
+      if (shouldPinTerminal(wasBottom)) scrollTerminalToBottom();
       vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows });
     }
 
@@ -1906,12 +1921,29 @@ function getClientScript(ctx) {
       if (item) selectSlashCommand(parseInt(item.dataset.index));
     });
 
-    function autoResizeTextarea() {
-      editorTextarea.style.height = 'auto';
-      const h = Math.max(36, Math.min(editorTextarea.scrollHeight, 200));
-      editorTextarea.style.height = h + 'px';
-      editorTextarea.style.overflowY = editorTextarea.scrollHeight > 200 ? 'auto' : 'hidden';
+    let inputResizeFrame = null;
+    function refitTerminalAfterInputResize(wasAtBottom) {
+      if (inputResizeFrame) cancelAnimationFrame(inputResizeFrame);
+      inputResizeFrame = requestAnimationFrame(() => {
+        inputResizeFrame = null;
+        try {
+          fitAddon.fit();
+          if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();
+          vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows });
+        } catch (_) {}
+      });
     }
+
+    function autoResizeTextarea() {
+      const wasAtBottom = terminalWasAtBottom();
+      editorTextarea.style.height = 'auto';
+      const maxHeight = Math.max(120, Math.min(Math.round(window.innerHeight * 0.4), 320));
+      const h = Math.max(36, Math.min(editorTextarea.scrollHeight, maxHeight));
+      editorTextarea.style.height = h + 'px';
+      editorTextarea.style.overflowY = editorTextarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+      refitTerminalAfterInputResize(wasAtBottom);
+    }
+    window.addEventListener('resize', autoResizeTextarea);
 
     // Typing effects
     const typingRipple = document.getElementById('typing-ripple');
@@ -2106,9 +2138,9 @@ function getClientScript(ctx) {
       lastObsHeight = rect.height;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        const wasAtBottom = term.buffer.active.viewportY >= term.buffer.active.baseY;
+        const wasAtBottom = terminalWasAtBottom();
         fitAddon.fit();
-        if (wasAtBottom) term.scrollToBottom();
+        if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();
         if (term.cols !== lastCols || term.rows !== lastRows) {
           lastCols = term.cols;
           lastRows = term.rows;

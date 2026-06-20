@@ -21,3 +21,19 @@ test('grok running icon uses the shared running yellow, not done green', () => {
   assert.equal(running, sharedRunning);
   assert.notEqual(running, done);
 });
+
+test('gjc idle icon uses the shared idle gray without a square background', () => {
+  const idle = readIcon('gjc-idle.svg');
+  const sharedIdle = firstHexColor(readIcon('claude-idle.svg'));
+
+  assert.equal(idle.includes('<rect'), false, 'gjc idle icon must not use a boxed background');
+  assert.equal(firstHexColor(idle), sharedIdle);
+  assert.match(idle, /stroke="#888888"/);
+});
+
+test('gjc running icon uses the shared running yellow', () => {
+  const running = firstHexColor(readIcon('gjc-running.svg'));
+  const sharedRunning = firstHexColor(readIcon('claude-running.svg'));
+
+  assert.equal(running, sharedRunning);
+});

@@ -970,7 +970,7 @@ class SessionTreeDataProvider {
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
       const mtime = s.mtime || 0;
       item.description = mtime ? _relTime(mtime) : '';
-      item.iconPath = new vscode.ThemeIcon('comment-discussion');
+      item.iconPath = this._agentIcon('gjc');
       item.contextValue = 'gjcSession';
       item._agentMode = 'gjc';
       item.tooltip = `Gajae (gjc) session: ${s.sessionId}\n${s.cwd || ''}`;

@@ -495,7 +495,7 @@ function createPanel(context, extensionPath, session, opts) {
     ? new Set(listGjcSessions(cwd).map(s => s.sessionId))
     : null;
 
-  let shell, args;
+  let shell, args, extraEnv = {};
   if (agent === 'kiro') {
     const resolvedKiro = resolveKiroCli();
     if (!resolvedKiro) {
@@ -677,12 +677,13 @@ function createPanel(context, extensionPath, session, opts) {
     const resolvedChief = resolveChiefCli();
     if (!resolvedChief) {
       vscode.window.showErrorMessage(
-        'Chief is not configured. Set claudeCodeLauncher.chief.apiKey (machine scope) or CHIEF_API_KEY, then set claudeCodeLauncher.chief.projectId or CHIEF_PROJECT_ID.'
+        'Chief launcher wrapper is missing from this extension install. Reinstall CLI Launcher for Claude.'
       );
       panel.dispose();
       return;
     }
     shell = resolvedChief.shell;
+    extraEnv = resolvedChief.env || {};
     // chief-repl is launcher-owned like Claude Code: fresh sessions receive
     // --session-id <launcher-id>, and resumes receive --resume <same id>.
     const chiefArgs = session?.sessionId
@@ -731,7 +732,7 @@ function createPanel(context, extensionPath, session, opts) {
 
   console.log('[Claude Launcher] Spawning:', spawnBin, spawnArgs.join(' '), '| cwd:', cwd, '| backend:', backend);
   console.log('[Claude Launcher] resolved shell:', shell, '| agent:', agent, '| args:', args);
-  const sessionEnv = prepareProjectSessionEnvironment(agent, cwd, process.env);
+  const sessionEnv = { ...prepareProjectSessionEnvironment(agent, cwd, process.env), ...extraEnv };
 
   let ptyProcess;
   try {

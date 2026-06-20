@@ -313,8 +313,8 @@ function activate(context) {
   context.subscriptions.push(gjcTreeView);
 
   // 'Chief Sessions' (claudeCodeLauncher.chiefSessions) — chief-repl sessions
-  // only, hidden via the chiefAvailable context key when Chief credentials
-  // are not configured or the agent is not enabled.
+  // only, hidden via the chiefAvailable context key when the bundled wrapper is
+  // unavailable or the agent is not enabled.
   state.chiefTreeProvider = new SessionTreeDataProvider(context, 'chief');
   const chiefTreeView = vscode.window.createTreeView('claudeCodeLauncher.chiefSessions', {
     treeDataProvider: state.chiefTreeProvider,

@@ -175,30 +175,62 @@ function resolveGjcCli() {
   return null;
 }
 
-function _chiefApiKeyConfigured() {
-  if (process.env.CHIEF_API_KEY) return true;
-  try {
-    const vscode = require('vscode');
-    return !!vscode.workspace
-      .getConfiguration('claudeCodeLauncher')
-      .get('chief.apiKey', '');
-  } catch (_) {
-    return false;
-  }
-}
-
-// @module pty/resolveCli — locates the bundled Chief REPL wrapper.
-// Chief is a REST service, not an interactive TUI CLI, so the extension spawns
-// Node with bin/chief-repl.js when credentials are configured.
-function resolveChiefCli() {
+function _resolveChiefReplPath() {
   const candidates = [
     path.join(__dirname, '..', '..', 'bin', 'chief-repl.js'),
     path.join(process.cwd(), 'bin', 'chief-repl.js'),
   ];
-  const repl = candidates.find((p) => fs.existsSync(p));
-  if (!repl) return null;
-  if (!_chiefApiKeyConfigured()) return null;
-  return { shell: process.execPath, args: [repl] };
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+function _resolveNodeRuntime() {
+  const own = path.basename(process.execPath || '').toLowerCase();
+  if (own === 'node.exe' || own === 'node') return process.execPath;
+
+  const onPath = resolveOnPath('node');
+  if (onPath) return onPath;
+
+  if (process.platform === 'win32') {
+    const programFiles = [
+      process.env.ProgramFiles,
+      process.env['ProgramFiles(x86)'],
+    ].filter(Boolean);
+    for (const root of programFiles) {
+      const candidate = path.join(root, 'nodejs', 'node.exe');
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+
+  return null;
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli, resolveChiefCli };
+
+// @module pty/resolveCli — locates the bundled Chief REPL wrapper.
+//
+// Chief is a REST service, not an external TUI CLI. Treat the bundled wrapper as
+// "installed" even before credentials are configured, so the Settings UI can
+// expose Chief and let the user enter claudeCodeLauncher.chief.* values.
+//
+// VS Code / VSCodium extension hosts run on Electron. process.execPath points at
+// the GUI app executable there; launching that through node-pty silently exits on
+// Windows instead of running the script. Chief's bundled wrapper is plain Node, so
+// prefer a real node runtime. The Electron fallback is kept for non-PTY probes,
+// but normal launcher installs should resolve node from PATH or Program Files.
+function isChiefCliAvailable() {
+  return !!(_resolveChiefReplPath() && (_resolveNodeRuntime() || process.execPath));
+}
+
+function resolveChiefCli() {
+  const repl = _resolveChiefReplPath();
+  if (!repl) return null;
+  const nodeRuntime = _resolveNodeRuntime();
+  if (nodeRuntime) {
+    return { shell: nodeRuntime, args: [repl], env: {} };
+  }
+  return {
+    shell: process.execPath,
+    args: [repl],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  };
+}
+
+module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli, resolveChiefCli, isChiefCliAvailable };

@@ -683,17 +683,21 @@ function getStyles(ctx) {
       width: 100%;
       height: 36px;
       min-height: 36px;
-      max-height: 200px;
+      max-height: min(40vh, 320px);
       padding: 8px 12px;
       border: 1px solid transparent;
       outline: none;
       resize: none;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
       background: var(--accent-input-bg, ${isDark ? '#1e1a18' : '#ffffff'});
       color: ${fg};
       font-size: 12px;
       font-family: "D2Coding", "D2Coding ligature", Consolas, monospace;
       line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
       border-radius: 4px;
       transition: border-color 0.3s, box-shadow 0.3s;
     }
@@ -789,6 +793,10 @@ function getStyles(ctx) {
       font-size: 10px;
       color: ${statusGray};
       margin-left: 12px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     /* Queue */

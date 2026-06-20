@@ -149,7 +149,8 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     .switch.disabled { opacity: 0.55; }
 
     /* Generic global-settings controls (General/Sync/Account/Slash/Files). */
-    input[type="text"].g-input {
+    input[type="text"].g-input,
+    input[type="password"].g-input {
       height: 30px;
       padding: 0 8px;
       border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, rgba(128,128,128,0.4)));
@@ -159,7 +160,8 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
       font-size: 13px;
       outline: none;
     }
-    input[type="text"].g-input:focus { border-color: var(--accent); }
+    input[type="text"].g-input:focus,
+    input[type="password"].g-input:focus { border-color: var(--accent); }
     .g-toggle {
       display: inline-flex;
       align-items: center;
@@ -384,6 +386,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
       claude: 'Install the Claude Code CLI — see https://docs.anthropic.com/claude/docs/claude-code',
       kiro: 'Install with the kiro-cli CLI, then authenticate via kiro-cli login. Sessions resume by working directory.',
       grok: 'Install xAI Grok CLI so the grok command is available, then authenticate with grok login.',
+      chief: 'Chief is bundled with this extension. Reinstall CLI Launcher for Claude if this wrapper is missing.',
     };
 
     const listEl = document.getElementById('agent-list');
@@ -515,9 +518,31 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(approve);
         }
 
-        // Chief-only: public API routing presets. Chief does not expose direct
-        // model or effort fields; these map to /v1/chats intelligence/provider.
+        // Chief-only: credentials + public API routing presets. Chief does not
+        // expose direct model or effort fields; intelligence/provider map to
+        // /v1/chats request fields.
         if (a.id === 'chief') {
+          const addChiefInput = (key, label, initial, placeholder, title, secret = false) => {
+            const wrap = document.createElement('label');
+            wrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+            wrap.title = title;
+            const txt = document.createElement('span');
+            txt.textContent = label;
+            const input = document.createElement('input');
+            input.type = secret ? 'password' : 'text';
+            input.className = 'g-input';
+            input.autocomplete = 'off';
+            input.spellcheck = false;
+            input.placeholder = placeholder;
+            input.value = initial || '';
+            input.style.cssText = 'height:26px;min-width:240px;margin-left:8px;';
+            input.addEventListener('change', () => {
+              vscode.postMessage({ type: 'set-global', key, value: input.value.trim() });
+            });
+            wrap.appendChild(txt);
+            wrap.appendChild(input);
+            main.appendChild(wrap);
+          };
           const addChiefSelect = (key, label, initial, options, title) => {
             const wrap = document.createElement('label');
             wrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
@@ -540,6 +565,28 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             wrap.appendChild(sel);
             main.appendChild(wrap);
           };
+          addChiefInput(
+            'chief.apiKey',
+            'API Token',
+            GLOBALS.chiefApiKey || '',
+            'pat_...',
+            'Chief PAT token. Stored in the machine-scoped claudeCodeLauncher.chief.apiKey setting.',
+            true
+          );
+          addChiefInput(
+            'chief.projectId',
+            'Project ID',
+            GLOBALS.chiefProjectId || '',
+            'project_...',
+            'Chief project id used as X-Project-Id for Chief API calls.'
+          );
+          addChiefInput(
+            'chief.baseUrl',
+            'API Base URL',
+            GLOBALS.chiefBaseUrl || 'https://api.storytell.ai',
+            'https://api.storytell.ai',
+            'Chief API base URL. Leave as the default unless using a custom endpoint.'
+          );
           addChiefSelect(
             'chief.intelligence',
             'Intelligence',
@@ -830,6 +877,9 @@ function openGlobalSettings(context) {
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
     codexTrustAllTools: cfg.get('codex.trustAllTools', false),
     grokTrustAllTools: cfg.get('grok.trustAllTools', false),
+    chiefApiKey: cfg.get('chief.apiKey', ''),
+    chiefProjectId: cfg.get('chief.projectId', ''),
+    chiefBaseUrl: cfg.get('chief.baseUrl', 'https://api.storytell.ai'),
     chiefIntelligence: cfg.get('chief.intelligence', 'auto'),
     chiefProvider: cfg.get('chief.provider', 'automatic'),
     chiefProfile: cfg.get('chief.profile', 'general'),
@@ -854,6 +904,9 @@ function openGlobalSettings(context) {
     'antigravity.trustAllTools',
     'codex.trustAllTools',
     'grok.trustAllTools',
+    'chief.apiKey',
+    'chief.projectId',
+    'chief.baseUrl',
     'chief.intelligence',
     'chief.provider',
     'chief.profile',

@@ -1028,17 +1028,19 @@
             "kiro",
             "antigravity",
             "codex",
-            "grok"
+            "grok",
+            "gjc"
           ],
           "enumDescriptions": [
-            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure, Codex → slate, Grok → black)",
+            "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure, Codex → slate, Grok → black, Gajae → red/yellow)",
             "Claude Dark — coral input tone for every panel",
             "Kiro Purple — purple input tone for every panel",
             "Antigravity Spectrum — azure input tone for every panel",
             "Codex Slate — slate input tone for every panel",
-            "Grok — black/dark input tone for every panel"
+            "Grok — black/dark input tone for every panel",
+            "Gajae Red — intense red input tone with yellow hot accents"
           ],
-          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity'/'codex'/'grok' pin one tone for all panels."
+          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity'/'codex'/'grok'/'gjc' pin one tone for all panels."
         },
         "claudeCodeLauncher.defaultFontSize": {
           "type": "number",

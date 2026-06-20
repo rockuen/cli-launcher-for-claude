@@ -5,7 +5,7 @@
 Combined release adding two new launcher agents — Gajae Code (`gjc`) and Chief — bringing the total to seven (Claude / Codex / Grok / Kiro / Antigravity / Gajae / Chief).
 
 ### Added
-- **Gajae Code (`gjc`) agent support.** Added Gajae Code (`gjc`, the `gajae-code` Bun package) as a first-class launcher agent. Detection (`~/.bun/bin/gjc(.exe)` → `~/.local/bin` → PATH), new-session / resume commands, unified + split "Gajae Sessions" integration, enabled-agent filtering + `gjcAvailable` view gating, reader names, and tab/status icons (falls back to the Claude icon set).
+- **Gajae Code (`gjc`) agent support.** Added Gajae Code (`gjc`, the `gajae-code` Bun package) as a first-class launcher agent. Detection (`~/.bun/bin/gjc(.exe)` → `~/.local/bin` → PATH), new-session / resume commands, unified + split "Gajae Sessions" integration, enabled-agent filtering + `gjcAvailable` view gating, reader names, dedicated unboxed gray crab tab/status/session icons, and a Gajae red/yellow panel theme.
 - **gjc session reader integration.** gjc sessions are discovered from `<agentDir>/sessions/<encoded-cwd>/<ts>_<uuid>.jsonl` (`agentDir` = `~/.gjc/agent`, overridable via `GJC_CODING_AGENT_DIR`); each transcript's line-1 `{type:"session"}` header carries `cwd` + `title`, and dialogue lines are `{type:"message", message:{role, content}}`. Resume opens the **exact jsonl by path** (`gjc -r <path>`) so it never depends on gjc's internal id resolver (and skips the cross-project fork prompt); fresh sessions are discovered + pinned the same way Codex/Grok are.
 - **Multi-model / OAuth-subscription selection for gjc.** gjc routes one binary to whichever subscription is logged in (Claude Pro/Max, ChatGPT/Codex, Google Antigravity, xAI Grok, …). A new **"Gajae (gjc): Select Model / Subscription…"** command + model button in the Gajae Sessions view title lets you pick a curated subscription model (or type any fuzzy `--model` string / `provider/model`), persisted to `claudeCodeLauncher.gjc.model` and applied to fresh gjc sessions. A **"Gajae (gjc): Log in / Import Subscriptions…"** command runs `gjc setup credentials` (imports existing Claude/Codex logins) and points at `/login` for the rest. New `claudeCodeLauncher.gjc.thinking` setting maps to gjc's `--thinking` (ultra|high|medium|low) effort knob.
 - **Chief launcher agent.** Added a bundled `chief-repl` Node wrapper that runs Chief REST chats inside a PTY tab, polls asynchronous Chief responses, records launcher-owned transcripts, and resumes by the launcher session id.
@@ -15,8 +15,10 @@ Combined release adding two new launcher agents — Gajae Code (`gjc`) and Chief
 ### Changed
 - **Project-scoped gjc home.** Project session mode (`sessionStorage.scope = project`) sets `GJC_CODING_AGENT_DIR` to `.agent-sessions/.home/gjc/agent`, links its `sessions` dir to `.agent-sessions/gjc`, and copies gjc's `config.yml` + auth/state DBs so each project keeps a separate history without OneDrive/live-sync junctions.
 - **Effort stays per-agent.** Claude's `--effort max` (autoEffortMax) is never passed to gjc; gjc's effort is its own `gjc.thinking` → `--thinking` setting.
-- **Chief defaults are easier to tune from Settings.** Settings → Agent → Chief now shows Profile alongside Intelligence and Provider. Chief panels show Chief-specific slash commands instead of Claude-only commands.
+- **Chief setup is editable from Settings.** Settings → Agent → Chief now treats the bundled wrapper as installed before credentials are configured, exposes API Token, Project ID, and API Base URL fields, and keeps Profile / Intelligence / Provider tuning in the same Chief section. Chief panels show Chief-specific slash commands instead of Claude-only commands.
 - **Chief icon consistency.** Chief session rows now use the Chief SVG agent icon instead of the generic comment icon.
+- **Terminal panes stay bottom-pinned.** Webview terminal output and resize/refit paths now keep the live bottom visible by default, and the bottom editor refits the terminal as long input grows so lengthy prompts wrap/scroll instead of visually clipping.
+- **Chief wrapper uses a real Node runtime in PTY tabs.** VSCodium/VS Code's Electron executable exits silently when launched through node-pty on Windows, so Chief now resolves `node(.exe)` from the current runtime, PATH, or Program Files before falling back to Electron-as-Node. Exit/restart footer copy is now agent-neutral instead of saying Claude for every agent.
 
 ### Security
 - Chief PATs are read only from machine-scoped VS Code settings or `CHIEF_API_KEY` and are passed through process env. They are not written to launcher metadata or transcripts.
@@ -27,6 +29,7 @@ Combined release adding two new launcher agents — Gajae Code (`gjc`) and Chief
 ### Tests
 - Added gjc coverage: registry detection/shape, session listing (cwd filter / newest-first / title-from-header + first-message fallback) + path resolution + jsonl message extraction, project session environment (`GJC_CODING_AGENT_DIR`), and the model catalog/picker helper.
 - Added Chief coverage for registry detection, resolver behavior without credentials, project env injection, direct session path resolution, transcript parsing, and session listing.
+- Added webview coverage for the Gajae red/yellow theme and terminal bottom-pin behavior.
 
 ## [3.11.2] - 2026-06-18
 
