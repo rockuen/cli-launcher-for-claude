@@ -89,12 +89,12 @@ function render(): void {
   if (modelLabel) parts.push(`$(sparkle) ${modelLabel}`);
 
   if (usage?.fiveHour) {
-    parts.push(`$(clock) 5h ${pct(usage.fiveHour.utilization)}`);
+    parts.push(`$(clock) 5h ${pct(usage.fiveHour.utilization)}${resetTag(usage.fiveHour, "time")}`);
   }
-  // Prefer the most-constrained weekly window for the compact label.
-  const weekly = pickTightestWeekly(usage);
-  if (weekly) {
-    parts.push(`$(calendar) wk ${pct(weekly.bucket.utilization)}`);
+  // Weekly: when the plan exposes per-model windows (Opus / Sonnet) show each
+  // one ("which model at what %"); otherwise show the single account weekly.
+  for (const w of collectWeeklies(usage)) {
+    parts.push(`$(calendar) ${w.label} ${pct(w.bucket.utilization)}${resetTag(w.bucket, "date")}`);
   }
 
   if (parts.length === 0) {
@@ -113,25 +113,29 @@ function pct(v: number): string {
   return `${Math.round(v)}%`;
 }
 
-/** Of seven_day / seven_day_opus / seven_day_sonnet, the one with the highest
- *  utilization (what the user is most likely to hit). */
-function pickTightestWeekly(
+/** Compact "resets at" suffix for the bar text. `time` → clock only (5-hour
+ *  window); `date` → weekday + clock (weekly window). Empty when unknown. */
+function resetTag(bucket: UsageBucket, kind: "time" | "date"): string {
+  if (!bucket.resetsAt) return "";
+  const d = new Date(bucket.resetsAt);
+  const clock = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (kind === "time") return ` \u21BA${clock}`;
+  const dow = d.toLocaleDateString([], { weekday: "short" });
+  return ` \u21BA${dow} ${clock}`;
+}
+
+/** Weekly windows to display: the per-model windows (Opus / Sonnet) when the
+ *  plan exposes them, else the single aggregate account weekly. */
+function collectWeeklies(
   usage: ClaudeUsage | null,
-): { label: string; bucket: UsageBucket } | null {
-  if (!usage) return null;
-  const cands: Array<{ label: string; bucket: UsageBucket | null }> = [
-    { label: "7d", bucket: usage.sevenDay },
-    { label: "7d Opus", bucket: usage.sevenDayOpus },
-    { label: "7d Sonnet", bucket: usage.sevenDaySonnet },
-  ];
-  let best: { label: string; bucket: UsageBucket } | null = null;
-  for (const c of cands) {
-    if (!c.bucket) continue;
-    if (!best || c.bucket.utilization > best.bucket.utilization) {
-      best = { label: c.label, bucket: c.bucket };
-    }
-  }
-  return best;
+): Array<{ label: string; bucket: UsageBucket }> {
+  if (!usage) return [];
+  const perModel: Array<{ label: string; bucket: UsageBucket }> = [];
+  if (usage.sevenDayOpus) perModel.push({ label: "wk·Opus", bucket: usage.sevenDayOpus });
+  if (usage.sevenDaySonnet) perModel.push({ label: "wk·Sonnet", bucket: usage.sevenDaySonnet });
+  if (perModel.length > 0) return perModel;
+  if (usage.sevenDay) return [{ label: "wk", bucket: usage.sevenDay }];
+  return [];
 }
 
 function usageColor(usage: ClaudeUsage | null): vscode.ThemeColor | undefined {

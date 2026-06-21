@@ -115,11 +115,23 @@ function setStatusBar(nextState) {
 function refreshActiveSessionModel() {
   let model = null;
   try {
+    const { getSessionModel } = require('../lib/sessionJsonl');
     const id = state.activeTabId;
-    const entry = id != null ? state.panels.get(id) : null;
-    if (entry && entry.sessionId) {
-      const { getSessionModel } = require('../lib/sessionJsonl');
-      model = getSessionModel(entry.sessionId, entry.cwd, entry.agent) || null;
+    const active = id != null ? state.panels.get(id) : null;
+    if (active && active.sessionId) {
+      model = getSessionModel(active.sessionId, active.cwd, active.agent) || null;
+    }
+    // Fallback: no focused launcher tab (or it has no model line yet) → use the
+    // newest session that DOES report a model, so the bar isn't blank on a cold
+    // start / when focus is on a non-launcher editor.
+    if (!model) {
+      const entries = Array.from(state.panels.values());
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const e = entries[i];
+        if (!e || !e.sessionId) continue;
+        const m = getSessionModel(e.sessionId, e.cwd, e.agent);
+        if (m) { model = m; break; }
+      }
     }
   } catch (_) {}
   try {
