@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.14.0] - 2026-06-21
+
+Adds a bottom-bar usage indicator (current session model + Claude 5-hour / weekly per-model limits with reset times) and gives Chief its own gold/amber input theme instead of borrowing Claude's coral.
+
+### Added
+- **Usage status bar (model + limits).** A new right-aligned status bar item shows, for the focused launcher session, the model in use plus the active Claude account's **5-hour** and **weekly (7-day)** usage with reset times. The tooltip breaks out each window — 5h, 7d, and the **per-model weekly windows (Opus / Sonnet)** — with reset date+time in local time and a relative countdown. This is the launcher-side equivalent of the model + usage line Gajae Code prints in its TUI. The item hides when no Claude OAuth credentials exist; clicking it (or running **"Refresh Claude Usage / Limits"**) forces an immediate refetch.
+- **Live usage source with token refresh.** Usage is read from Anthropic's OAuth usage endpoint (`/api/oauth/usage`) using the same credentials Claude Code stores. An expired access token is transparently refreshed via `/v1/oauth/token` and the rotated tokens are written back to the live credential store (file or macOS Keychain), so the indicator stays current without logging the user out. Reports are cached (60s) and refreshed on a timer + after account switches.
+- **Per-session model in the bottom bar.** The launcher now reads the active session's model from its transcript tail (`getSessionModel`), updating the status bar on tab focus, session close, and a slow timer so a mid-session `/model` switch is reflected. Model ids are shortened for display (e.g. `claude-opus-4-7` → `Opus 4.7`, `gpt-5.2-codex` → `GPT 5.2 Codex`).
+- **Chief gold/amber theme.** Chief panels now use a dedicated gold/amber input-area tone matching the Chief brand mark (`#F5C842`) instead of falling through to Claude's coral. Added as a first-paint CSS injection, a client-side `themes.chief` palette + `auto`-resolver branch, a theme-picker swatch, and a `chief` value for `claudeCodeLauncher.defaultTheme`.
+
+### Implementation
+- `account/usage.ts` (new): `parseBucket` / `parseUsagePayload` normalizers, OAuth token refresh + write-back, fetch + 60s cache (`refreshUsage` / `getCachedUsage` / `hasClaudeCredentials`), and the `formatModelLabel` helper. `account/usageStatusBar.ts` (new): the status bar item, `setActiveSessionModel`, `refreshUsageStatusBar`, tooltip with per-model weekly windows + reset times. `account/index.ts`: re-exports the new surface. `account/switcher.ts`: forces a usage refetch after a profile switch. `lib/sessionJsonl.js`: `getSessionModel` (tail-read + backward scan) + `_modelFromLine`. `panel/statusIndicator.js`: `refreshActiveSessionModel` (active tab → model → status bar). `panel/createPanel.js`: tracks `state.activeTabId` on focus + clears it on dispose. `state.js`: `activeTabId`. `activation.js`: creates the usage status bar, registers `claudeCodeLauncher.refreshUsage`, and runs a slow active-model recompute timer. `panel/webviewClient.js` + `panel/webviewContent.js`: chief theme palette / resolver / first-paint CSS / picker. `i18n/{en,ko}.js`: `themeChief`. `package.json`: `defaultTheme` `chief` enum + `refreshUsage` command.
+
+### Tests
+- Added `usage` coverage: `parseBucket` (clamp / missing util / invalid reset / non-record), `parseUsagePayload` (full / partial team-plan shape / no-usable-windows), and `formatModelLabel` (Claude family + version, `provider/` stripping, GPT/Gemini/Grok, fallbacks).
+- Added `_modelFromLine` coverage for Claude `message.model`, gjc `model_change`, top-level `model` / `modelID`, and no-model lines.
+
 ## [3.13.0] - 2026-06-20
 
 Combined release adding two new launcher agents — Gajae Code (`gjc`) and Chief — bringing the total to seven (Claude / Codex / Grok / Kiro / Antigravity / Gajae / Chief).

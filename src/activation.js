@@ -1322,6 +1322,24 @@ function activate(context) {
   // via switcher.ts:refreshActiveProfile().
   account.createAccountStatusBar(context);
 
+  // v3.14: right-aligned usage status bar — for the focused session it shows
+  // the model + the Claude account's 5-hour and weekly (per-model) limits with
+  // reset times (same data Gajae Code surfaces in its TUI). Hides when no
+  // Claude OAuth credentials exist. A click forces an immediate refetch.
+  account.createUsageStatusBar(context);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.refreshUsage', () => {
+      try { account.refreshUsageStatusBar(true); } catch (_) {}
+    }),
+  );
+  // Recompute the focused session's model on a slow cadence so a mid-session
+  // /model switch (which the transcript reflects without a focus change) still
+  // updates the bottom bar. setActiveSessionModel no-ops when unchanged.
+  const _activeModelTimer = setInterval(() => {
+    try { require('./panel/statusIndicator').refreshActiveSessionModel(); } catch (_) {}
+  }, 60_000);
+  context.subscriptions.push({ dispose: () => clearInterval(_activeModelTimer) });
+
   // v3.6.2: opt-in diagnostics for freeze investigation. The toggle is
   // off by default — when on, an OutputChannel named "CLI Launcher —
   // Diagnostics" gets a memory + per-panel chunk-stats dump every 10

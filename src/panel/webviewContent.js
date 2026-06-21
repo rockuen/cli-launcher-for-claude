@@ -62,6 +62,24 @@ ${agent === 'gjc' ? `
 #editor-send:hover { background: #b80000; }
 #queue-add { border-color: #ff261f; color: #ffd22e; }
 ` : ''}
+
+${agent === 'chief' ? `
+/* Early Chief gold/amber theme injection - matches the chief panel before client JS runs */
+:root {
+  --accent: #F5C842;
+  --accent-strong: #FFDB6B;
+  --accent-deep: #C99A1E;
+  --accent-panel-bg: #2a2410;
+  --accent-input-bg: #1c1808;
+  --accent-glow: rgba(245,200,66,0.32);
+  --accent-glow-strong: rgba(245,200,66,0.5);
+  --accent-muted: #b3a05f;
+}
+#input-panel { border-top-color: #F5C842; }
+#editor-send { background: #F5C842; color: #2a2410; border: 1px solid #C99A1E; }
+#editor-send:hover { background: #C99A1E; }
+#queue-add { border-color: #F5C842; color: #F5C842; }
+` : ''}
 </style>
 </head>
 <body>
@@ -114,13 +132,14 @@ ${agent === 'gjc' ? `
     <div id="scroll-fab" title="${T.scrollBottomTip}">&#x25BC;</div>
     <div id="theme-picker">
       <h4>${T.themeTitle}</h4>
-      <div class="theme-item" data-theme="auto"><div class="theme-preview" style="background:linear-gradient(135deg,#D97757 0 16%,#9d7bff 16% 32%,#34c2e0 32% 48%,#64748b 48% 64%,#111111 64% 80%,#ff261f 80%);border-color:#888"></div>${T.themeAuto}</div>
+      <div class="theme-item" data-theme="auto"><div class="theme-preview" style="background:linear-gradient(135deg,#D97757 0 14%,#9d7bff 14% 28%,#34c2e0 28% 42%,#64748b 42% 56%,#111111 56% 70%,#ff261f 70% 84%,#F5C842 84%);border-color:#888"></div>${T.themeAuto}</div>
       <div class="theme-item" data-theme="claude"><div class="theme-preview" style="background:#D97757;border-color:#C96442"></div>${T.themeClaude}</div>
       <div class="theme-item" data-theme="kiro"><div class="theme-preview" style="background:#9d7bff;border-color:#7c5cff"></div>${T.themeKiro}</div>
       <div class="theme-item" data-theme="antigravity"><div class="theme-preview" style="background:linear-gradient(135deg,#F0613C,#F2A03D,#8FD44A,#34c2e0,#5A6FE0);border-color:#34c2e0"></div>${T.themeAntigravity}</div>
       <div class="theme-item" data-theme="codex"><div class="theme-preview" style="background:#64748b;border-color:#475569"></div>${T.themeCodex}</div>
       <div class="theme-item" data-theme="grok"><div class="theme-preview" style="background:#111111;border-color:#333333"></div>${T.themeGrok}</div>
       <div class="theme-item" data-theme="gjc"><div class="theme-preview" style="background:linear-gradient(135deg,#ff261f 0 72%,#ffd22e 72%);border-color:#b80000"></div>${T.themeGjc}</div>
+      <div class="theme-item" data-theme="chief"><div class="theme-preview" style="background:#F5C842;border-color:#C99A1E"></div>${T.themeChief}</div>
     </div>
     <div id="settings-modal">
       <h4>&#x2699; Settings</h4>
@@ -134,6 +153,7 @@ ${agent === 'gjc' ? `
           <option value="codex">${T.themeCodex}</option>
           <option value="grok">${T.themeGrok}</option>
           <option value="gjc">${T.themeGjc}</option>
+          <option value="chief">${T.themeChief}</option>
         </select>
       </div>
       <div class="settings-row">

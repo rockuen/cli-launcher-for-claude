@@ -6,6 +6,7 @@
 const state = {
   panels: new Map(),       // tabId → entry
   tabCounter: 0,
+  activeTabId: null,       // tabId of the currently focused launcher panel (for the usage/model status bar)
   statusBar: null,         // vscode.StatusBarItem
   sessionTreeProvider: null,  // 'Claude Sessions' view provider (agentMode 'claude')
   kiroTreeProvider: null,     // 'Kiro Sessions' view provider (agentMode 'kiro')

@@ -11,3 +11,9 @@ export {
   createAccountStatusBar,
   refreshAccountStatusBar,
 } from "./accountStatusBar";
+export {
+  createUsageStatusBar,
+  refreshUsageStatusBar,
+  setActiveSessionModel,
+  disposeUsageStatusBar,
+} from "./usageStatusBar";

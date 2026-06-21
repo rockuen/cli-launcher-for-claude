@@ -1050,8 +1050,66 @@ function extractMessageCount(filePath, agent) {
   return n;
 }
 
+// Read the last `bytes` of a file as utf-8. Used by getSessionModel so a
+// model lookup on a multi-MB transcript only touches the recent tail (the
+// partial first line is dropped by _splitJsonLines' per-line try/parse).
+function _readTail(filePath, bytes) {
+  let fd;
+  try {
+    const size = fs.statSync(filePath).size;
+    const start = Math.max(0, size - bytes);
+    const len = size - start;
+    fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(len);
+    const n = fs.readSync(fd, buf, 0, len, start);
+    return buf.toString('utf-8', 0, n);
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+function _modelFromLine(o) {
+  if (!o || typeof o !== 'object') return null;
+  // Claude / Kiro: model rides on the message envelope.
+  if (o.message && typeof o.message === 'object' && typeof o.message.model === 'string') {
+    return o.message.model;
+  }
+  // gjc / opencode model_change events, and any top-level model field.
+  if (o.type === 'model_change' && typeof o.to === 'string') return o.to;
+  if (typeof o.model === 'string') return o.model;
+  if (typeof o.modelID === 'string') return o.modelID;
+  return null;
+}
+
+// Most-recent model id used in a session's transcript, or null when the
+// transcript is missing/unreadable or carries no model field. Scans from the
+// end so a mid-session /model switch is reflected.
+const _MODEL_TAIL_BYTES = 256 * 1024;
+function getSessionModel(sessionId, cwd, agent) {
+  const filePath = getSessionJsonlPath(sessionId, cwd, agent);
+  if (!filePath) return null;
+  let stat;
+  try { stat = fs.statSync(filePath); } catch { return null; }
+  let lines;
+  if (stat.size > _MODEL_TAIL_BYTES) {
+    const tail = _readTail(filePath, _MODEL_TAIL_BYTES);
+    lines = tail ? _splitJsonLines(tail) : [];
+  } else {
+    lines = _readLinesCached(filePath) || [];
+  }
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = _modelFromLine(lines[i]);
+    if (m) return m;
+  }
+  return null;
+}
+
 module.exports = {
   getSessionJsonlPath,
+  getSessionModel,
+  _modelFromLine,
   findLatestKiroSessionPath,
   listKiroSessions,
   listAntigravitySessions,

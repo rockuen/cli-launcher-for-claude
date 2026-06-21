@@ -31,7 +31,7 @@ function getClientScript(ctx) {
     // Other agents respect explicit defaultTheme or fall back to auto (agent-specific).
     const initialPanelTheme = IS_GROK
       ? 'grok'
-      : (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok' || SETTINGS.defaultTheme === 'gjc')
+      : (SETTINGS.defaultTheme === 'claude' || SETTINGS.defaultTheme === 'kiro' || SETTINGS.defaultTheme === 'antigravity' || SETTINGS.defaultTheme === 'codex' || SETTINGS.defaultTheme === 'grok' || SETTINGS.defaultTheme === 'gjc' || SETTINGS.defaultTheme === 'chief')
         ? SETTINGS.defaultTheme
         : 'auto';
     let currentThemeName = initialPanelTheme;
@@ -889,6 +889,11 @@ function getClientScript(ctx) {
         // Gajae Code — intense red as the base, with yellow used only as the hot accent.
         dark:  { accent: '#ff261f', accentStrong: '#ffd22e', accentDeep: '#b80000', panelBg: '#2d0505', inputBg: '#180303', glow: 'rgba(255,38,31,0.34)', glowStrong: 'rgba(255,210,46,0.42)', muted: '#ff8a64' },
         light: { accent: '#d90000', accentStrong: '#ffb800', accentDeep: '#a40000', panelBg: '#fff1e6', inputBg: '#fffaf6', glow: 'rgba(217,0,0,0.22)', glowStrong: 'rgba(255,184,0,0.34)', muted: '#bd5a45' }
+      },
+      chief: {
+        // Chief (Storytell.ai) — warm gold/amber brand, matching the chief tab icon (#F5C842).
+        dark:  { accent: '#F5C842', accentStrong: '#FFDB6B', accentDeep: '#C99A1E', panelBg: '#2a2410', inputBg: '#1c1808', glow: 'rgba(245,200,66,0.32)', glowStrong: 'rgba(245,200,66,0.5)', muted: '#b3a05f' },
+        light: { accent: '#B8860B', accentStrong: '#E0A92A', accentDeep: '#946c08', panelBg: '#fdf8e6', inputBg: '#fffdf5', glow: 'rgba(184,134,11,0.2)', glowStrong: 'rgba(184,134,11,0.35)', muted: '#9c8a52' }
       }
     };
     const termWrapper = document.getElementById('terminal-wrapper');
@@ -907,7 +912,7 @@ function getClientScript(ctx) {
     // changes tone.
     function applyTheme(themeName) {
       // 'auto' resolves to this panel's agent tone.
-      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : IS_GROK ? 'grok' : IS_GJC ? 'gjc' : 'claude') : themeName;
+      const resolvedName = themeName === 'auto' ? (IS_KIRO ? 'kiro' : IS_ANTIGRAVITY ? 'antigravity' : IS_CODEX ? 'codex' : IS_GROK ? 'grok' : IS_GJC ? 'gjc' : IS_CHIEF ? 'chief' : 'claude') : themeName;
       const def = themes[resolvedName];
       if (!def) return;
       const t = IS_DARK ? def.dark : def.light;

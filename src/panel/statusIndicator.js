@@ -107,11 +107,32 @@ function setStatusBar(nextState) {
   state.statusBar.backgroundColor = config.bg ? new vscode.ThemeColor(config.bg) : undefined;
 }
 
+// v3.14: push the focused session's model into the usage status bar (bottom
+// IDE bar). The model id is read from the active session's transcript tail;
+// the account module owns the actual status bar item. Both requires are lazy
+// + guarded so a missing build (out/account) or jsonl read never throws on
+// the focus hot path.
+function refreshActiveSessionModel() {
+  let model = null;
+  try {
+    const id = state.activeTabId;
+    const entry = id != null ? state.panels.get(id) : null;
+    if (entry && entry.sessionId) {
+      const { getSessionModel } = require('../lib/sessionJsonl');
+      model = getSessionModel(entry.sessionId, entry.cwd, entry.agent) || null;
+    }
+  } catch (_) {}
+  try {
+    require('../../out/account').setActiveSessionModel(model);
+  } catch (_) {}
+}
+
 module.exports = {
   setTabIcon,
   setStatusBar,
   updateStatusBar,
   setIdleIcon,
   hasFreshBackgroundShell,
-  BG_SHELL_TTL_MS
+  BG_SHELL_TTL_MS,
+  refreshActiveSessionModel
 };

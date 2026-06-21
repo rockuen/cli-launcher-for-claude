@@ -54,7 +54,7 @@ module.exports = {
   dropFiles: '파일을 여기에 놓으세요',
   scrollBottomTip: '맨 아래로',
   themeTitle: '에이전트 테마',
-  themeAuto: 'Auto (에이전트 따라)', themeClaude: 'Claude Dark', themeKiro: 'Kiro Purple', themeAntigravity: 'Antigravity Spectrum', themeCodex: 'Codex Slate', themeGrok: 'Grok', themeGjc: 'Gajae Red',
+  themeAuto: 'Auto (에이전트 따라)', themeClaude: 'Claude Dark', themeKiro: 'Kiro Purple', themeAntigravity: 'Antigravity Spectrum', themeCodex: 'Codex Slate', themeGrok: 'Grok', themeGjc: 'Gajae Red', themeChief: 'Chief Gold',
   themeDefault: 'Claude Dark',
   inputPlaceholder: '메시지를 입력하세요... (Enter: 전송 / Shift+Enter: 줄바꿈 / /: 명령어)',
   inputHint: 'Enter 전송 · Shift+Enter 줄바꿈 · / 명령어',

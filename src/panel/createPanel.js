@@ -24,7 +24,7 @@ const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
-const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
+const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon, refreshActiveSessionModel } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths } = require('../lib/projectSessions');
@@ -1089,6 +1089,13 @@ function createPanel(context, extensionPath, session, opts) {
   let lastViewColumn = panel.viewColumn;
   panel.onDidChangeViewState(e => {
     if (entry._disposed) return;
+    // v3.14: track the focused panel so the usage status bar can show THIS
+    // session's model. Recompute on every focus gain (cheap; reads the
+    // transcript tail) so switching tabs updates the bottom bar.
+    if (e.webviewPanel.active) {
+      state.activeTabId = tabId;
+      try { refreshActiveSessionModel(); } catch (_) {}
+    }
     if (e.webviewPanel.active && entry.state === 'needs-attention') {
       entry.state = 'waiting';
       setIdleIcon(panel, entry, extensionPath);
@@ -1248,6 +1255,12 @@ function createPanel(context, extensionPath, session, opts) {
       }
     }
     state.panels.delete(tabId);
+    // v3.14: if the closed tab was the focused one, drop the active-model
+    // pointer so the usage status bar stops showing a stale session model.
+    if (state.activeTabId === tabId) {
+      state.activeTabId = null;
+      try { refreshActiveSessionModel(); } catch (_) {}
+    }
     // v3.6.2: drop this tab's diagnostics counters so closed-and-reopened
     // tabs don't leak entries in the rolling-stats map.
     if (state.diagnostics) state.diagnostics.removePanel(tabId);

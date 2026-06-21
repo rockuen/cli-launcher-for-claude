@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.13.0",
+  "version": "3.14.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -296,6 +296,12 @@
       {
         "command": "claudeCodeLauncher.saveAccount",
         "title": "Save Current Claude Account as Profile…",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.refreshUsage",
+        "title": "Refresh Claude Usage / Limits",
+        "icon": "$(graph)",
         "category": "Claude"
       },
       {
@@ -1029,7 +1035,8 @@
             "antigravity",
             "codex",
             "grok",
-            "gjc"
+            "gjc",
+            "chief"
           ],
           "enumDescriptions": [
             "Auto — follow each panel's agent (Claude → coral, Kiro → purple, Antigravity → azure, Codex → slate, Grok → black, Gajae → red/yellow)",
@@ -1038,9 +1045,10 @@
             "Antigravity Spectrum — azure input tone for every panel",
             "Codex Slate — slate input tone for every panel",
             "Grok — black/dark input tone for every panel",
-            "Gajae Red — intense red input tone with yellow hot accents"
+            "Gajae Red — intense red input tone with yellow hot accents",
+            "Chief Gold — warm gold/amber input tone for every panel"
           ],
-          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity'/'codex'/'grok'/'gjc' pin one tone for all panels."
+          "description": "Input-area accent tone for panels. 'auto' follows the agent of each panel; 'claude'/'kiro'/'antigravity'/'codex'/'grok'/'gjc'/'chief' pin one tone for all panels."
         },
         "claudeCodeLauncher.defaultFontSize": {
           "type": "number",
