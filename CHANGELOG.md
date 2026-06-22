@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.14.2] - 2026-06-22
+
+Fixes a Claude (or any agent's) session opening with the wrong CLI when a different agent is set as the default.
+
+### Fixed
+- **Sessions opened as the default agent instead of their own agent.** Resuming a Claude session (clicking it in the session list, or auto-restore on reload) spawned whatever agent was set as the default — so with **Gajae Code (`gjc`) as the default agent, Claude sessions opened in `gjc`** (and likewise any agent could hijack another's session). The Claude resume path created the panel session without an `agent` field, and the panel's agent resolver fell through to the configured `claudeCodeLauncher.agent` default. Now an **existing** session always keeps its **own** agent — a Claude session stays Claude, a gjc session stays gjc, regardless of the default. The configured default agent applies **only** to a brand-new, agentless launch (status bar / quick "+"). The PTY restart path was hardened the same way (`entry.agent` only, never the global default).
+
+### Implementation
+- `lib/resolveSessionAgent.js` (new): single source of truth — `opts.agent` (forced) → existing `session.agent` (else `'claude'` for legacy agent-less sessions) → configured default only for brand-new sessions. `panel/createPanel.js`: agent resolution routed through it. `activation.js`: Claude resume now tags the session `agent: 'claude'` explicitly (mirrors the other agent branches). `panel/restartPty.js`: restarts with `entry.agent || 'claude'`, dropping the global-default fallback.
+
+### Tests
+- Added `sessionAgentResolve` coverage: Claude/gjc/each-agent session keeps its own agent when the default is a different agent, legacy agent-less session → `claude` (never the default), `opts.agent` force wins, and a brand-new agentless launch uses the configured default (else `claude`).
+
 ## [3.14.1] - 2026-06-22
 
 Fixes Chief sending a multi-line message as one message-per-line.

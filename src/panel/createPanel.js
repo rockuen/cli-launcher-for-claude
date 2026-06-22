@@ -31,6 +31,7 @@ const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, get
 const { buildMeta, renderBlocks, renderWelcome, resolveReaderNames } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { resolveExtraSlashes } = require('../lib/slashRegistry');
+const { resolveSessionAgent } = require('../lib/resolveSessionAgent');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
@@ -380,7 +381,14 @@ function createPanel(context, extensionPath, session, opts) {
 
   state.tabCounter++;
   const tabId = state.tabCounter;
-  const agent = (opts && opts.agent) || (session && session.agent) || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent') || 'claude';
+  // Agent resolution: opts.agent (forced) wins; an existing session keeps its
+  // OWN agent (never the configured default — see lib/resolveSessionAgent); only
+  // a brand-new session falls back to the configured default agent / 'claude'.
+  const agent = resolveSessionAgent({
+    optsAgent: opts && opts.agent,
+    session,
+    configuredDefaultAgent: vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent'),
+  });
   const agentLabel = (listAgents().find(a => a.id === agent) || {}).label || 'Claude Code';
   const tabTitle = session?.title || (state.tabCounter === 1 ? agentLabel : `${agentLabel} (${state.tabCounter})`);
 

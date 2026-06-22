@@ -752,7 +752,11 @@ function activate(context) {
       const backend = (opts && opts.backend) || vscode.workspace
         .getConfiguration('claudeCodeLauncher')
         .get('terminal.defaultBackend', 'webview');
-      createPanel(context, extensionPath, { sessionId, title }, { backend });
+      // Claude resume: tag the session as 'claude' explicitly so it spawns
+      // Claude regardless of the configured default agent (a gjc/codex/etc.
+      // default must not hijack a Claude session). Mirrors the agent-tagged
+      // branches above.
+      createPanel(context, extensionPath, { sessionId, title, agent: 'claude' }, { backend });
     }),
     // Phase 10 — explicit backend override commands for the tree context menu.
     // The tree's default click still goes through resumeSession (default backend);

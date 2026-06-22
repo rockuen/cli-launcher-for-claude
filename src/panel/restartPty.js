@@ -29,15 +29,13 @@ function restartPty(entry, panel, context, extensionPath) {
     return;
   }
 
-  // Restart with the PANEL's agent, not the global default. Reading the
+  // Restart with the PANEL's OWN agent, never the global default. Reading the
   // claudeCodeLauncher.agent setting here (the original code) respawned a
-  // kiro/antigravity tab as whatever the global default was — e.g. a kiro tab
-  // restarted while the default is claude ran `claude --resume <kiro-id>`.
-  // entry.agent is set by createPanel for every panel; the setting remains a
-  // fallback for entries restored from a pre-agent-field session store.
-  const agent = entry.agent
-    || vscode.workspace.getConfiguration('claudeCodeLauncher').get('agent')
-    || 'claude';
+  // kiro/antigravity/gjc tab as whatever the global default was — e.g. a Claude
+  // tab restarted while the default is gjc ran `gjc --resume <claude-id>`.
+  // entry.agent is set by createPanel for every panel; legacy agent-less
+  // entries predate the field and were always Claude.
+  const agent = entry.agent || 'claude';
   let shell, args, extraEnv = {};
   if (agent === 'kiro') {
     const resolvedKiro = resolveKiroCli();
