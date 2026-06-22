@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.14.3] - 2026-06-22
+
+Fixes a macOS "keychain not found" dialog on every Antigravity launch under project-scoped session storage.
+
+### Fixed
+- **macOS keychain popup when opening Antigravity (and other HOME-virtualized) sessions.** With `sessionStorage.scope: project`, the launcher virtualizes the agent's `HOME` to `<workspace>/.agent-sessions/.home/<agent>`. On macOS the login keychain is resolved as `$HOME/Library/Keychains/login.keychain-db`, so the virtual HOME has no keychain and Antigravity's `agy` pops a blocking **"키체인을 발견할 수 없음 / keychain not found"** system dialog on every launch (it stores its OAuth credential in the login keychain). `_setVirtualHome` now symlinks the **real** `~/Library/Keychains` into the virtual HOME on macOS so the live login keychain resolves (auth is user-global anyway). The link lives under the gitignored `.agent-sessions/.home`, so it is never synced or committed, and it's a symlink (never a copy) so no keychain secret is ever duplicated. Applies to every HOME-virtualized agent on macOS (Antigravity, Kiro).
+
+### Implementation
+- `lib/projectSessions.js`: new `_symlinkDirNoCopy` (symlink-only, no copy fallback) + a `darwin` branch in `_setVirtualHome` linking `~/Library/Keychains` → `<virtualHome>/Library/Keychains`.
+
+### Tests
+- `projectSessions` antigravity case now asserts (on macOS) the virtual HOME links the real Keychains dir and the link resolves to the real keychain path.
+
 ## [3.14.2] - 2026-06-22
 
 Fixes a Claude (or any agent's) session opening with the wrong CLI when a different agent is set as the default.

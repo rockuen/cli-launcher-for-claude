@@ -92,6 +92,16 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(antigravity.KEEP, '1');
     assert.equal(antigravity.HOME, path.join(cwd, '.agent-sessions', '.home', 'antigravity'));
     assert.equal(antigravity.USERPROFILE, antigravity.HOME);
+    // macOS: the virtual HOME must expose the real login keychain (symlinked),
+    // or agy pops a blocking "keychain not found" dialog on every launch.
+    if (process.platform === 'darwin') {
+      const realKc = path.join(os.homedir(), 'Library', 'Keychains');
+      if (fs.existsSync(realKc)) {
+        const linkedKc = path.join(antigravity.HOME, 'Library', 'Keychains');
+        assert.equal(fs.existsSync(linkedKc), true, 'antigravity virtual HOME links the real Keychains');
+        assert.equal(fs.realpathSync(linkedKc), fs.realpathSync(realKc), 'Keychains link resolves to the real keychain dir');
+      }
+    }
 
     const grok = mod.prepareProjectSessionEnvironment('grok', cwd, { KEEP: '1', HOME: os.homedir() });
     assert.equal(grok.KEEP, '1');

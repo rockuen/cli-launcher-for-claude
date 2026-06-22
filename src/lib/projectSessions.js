@@ -121,6 +121,17 @@ function _linkDirIfExists(src, dst) {
   }
 }
 
+// Symlink src → dst when src exists and dst is absent. Unlike _linkDirIfExists
+// there is NO copy fallback — used for the macOS Keychains dir, which must be
+// the LIVE keychain (a copy would be stale and would leak secrets). Best-effort.
+function _symlinkDirNoCopy(src, dst) {
+  try {
+    if (!fs.existsSync(src) || fs.existsSync(dst)) return;
+    _mkdirp(path.dirname(dst));
+    fs.symlinkSync(src, dst, process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (_) {}
+}
+
 function _prepareCodexHome(cwd) {
   const home = codexHome(cwd);
   const real = path.join(os.homedir(), '.codex');
@@ -151,6 +162,18 @@ function _setVirtualHome(env, home) {
     env.LOCALAPPDATA = path.join(home, 'AppData', 'Local');
     _mkdirp(env.APPDATA);
     _mkdirp(env.LOCALAPPDATA);
+  } else if (process.platform === 'darwin') {
+    // Overriding HOME hides the macOS login keychain (resolved as
+    // $HOME/Library/Keychains/login.keychain-db), so an agent that stores an
+    // OAuth credential there — e.g. Antigravity's `agy` — pops a blocking
+    // "키체인을 발견할 수 없음 / keychain not found" dialog on every launch.
+    // Symlink the real Keychains dir so the LIVE login keychain resolves under
+    // the virtual HOME (auth is user-global anyway). Lives under the gitignored
+    // .agent-sessions/.home, so it is never synced or committed.
+    _symlinkDirNoCopy(
+      path.join(os.homedir(), 'Library', 'Keychains'),
+      path.join(home, 'Library', 'Keychains')
+    );
   }
 }
 
