@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.14.1] - 2026-06-22
+
+Fixes Chief sending a multi-line message as one message-per-line.
+
+### Fixed
+- **Chief multi-line input sent as one message.** Typing or pasting a multi-line message into a Chief tab (e.g. a Slack announcement with blank lines and `@mentions`) delivered each physical line to Chief as a **separate** message. The `chief-repl` wrapper drives input through Node's `readline`, which — unlike the real TUIs (Claude Code, Codex, …) — strips the bracketed-paste markers but still treats every embedded newline as a separate Enter. A new `bin/lib/bracketedPaste.js` joiner now sits between stdin and readline: it detects the `ESC[200~`/`ESC[201~` burst (used by both clipboard paste and the launcher textarea's "submit-input"), normalizes CRLF/CR to LF, and hands readline a single line; `chief-repl` decodes it back to the original multi-line text. Normal typing, slash commands, and single-line submits are untouched.
+
+### Tests
+- Added `chiefPaste` coverage: the paste joiner (single-chunk, split-across-chunks including a marker split mid-sequence, passthrough of normal typing / slash commands, an escape sequence split at `ESC[` not mistaken for a paste, CRLF/CR normalization) plus a node-pty integration test asserting a multi-line paste is recorded as exactly one user turn in the transcript.
+
 ## [3.14.0] - 2026-06-21
 
 Adds a bottom-bar usage indicator (current session model + Claude 5-hour / weekly per-model limits with reset times) and gives Chief its own gold/amber input theme instead of borrowing Claude's coral.

@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
+const { createPasteJoiner, decodePastedLine } = require('./lib/bracketedPaste');
 const { spawn } = require('child_process');
 
 const POLL_INTERVAL_MS = 1500;
@@ -463,8 +464,17 @@ async function main() {
   process.stdout.write('Type /help for commands, /exit to quit.\n');
   if (args.resume) transcript.replay();
 
+  // Pipe stdin through the bracketed-paste joiner so a multi-line paste (or the
+  // launcher textarea's bracketed-paste "submit-input") arrives as ONE readline
+  // line instead of one message per physical line. Raw mode is managed here
+  // because readline only auto-toggles it when its `input` is the TTY itself.
+  const pasteJoiner = createPasteJoiner();
+  const stdinIsTty = !!process.stdin.isTTY;
+  if (stdinIsTty) { try { process.stdin.setRawMode(true); } catch (_) {} }
+  process.stdin.pipe(pasteJoiner);
+
   const rl = readline.createInterface({
-    input: process.stdin,
+    input: pasteJoiner,
     output: process.stdout,
     prompt: PROMPT,
     terminal: true,
@@ -473,7 +483,7 @@ async function main() {
   rl.prompt();
   rl.on('line', async (line) => {
     rl.pause();
-    const text = String(line || '').trim();
+    const text = decodePastedLine(line).trim();
     try {
       if (!text) {
         // no-op
@@ -487,7 +497,10 @@ async function main() {
       rl.prompt();
     }
   });
-  rl.on('close', () => process.exit(0));
+  rl.on('close', () => {
+    if (stdinIsTty) { try { process.stdin.setRawMode(false); } catch (_) {} }
+    process.exit(0);
+  });
 }
 
 main().catch((e) => {
