@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Gajae Code prompt attention detection.** `gjc` sessions now detect selector/input/editor waiting footers on a gjc-only ~1s prompt poll, so animated ask/approval screens can still raise `needs-attention` without waiting for the 3s idle gate. The detector uses clustered footer evidence and keeps `esc to interrupt` / bare `esc cancel` from firing.
+- **Blue waiting tab icons.** `needs-attention` now uses a blue waiting glyph for every agent, distinct from the existing blue background-shell glyph.
+
+### Changed
+- README/README.ko now distinguish yellow running, blue waiting-for-input, green done, blue shell-running, and red error states.
+
 ## [3.14.1] - 2026-06-22
 
 Fixes Chief sending a multi-line message as one message-per-line.

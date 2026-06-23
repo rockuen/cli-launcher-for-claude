@@ -62,15 +62,55 @@ function looksLikeNumberedMenu(text) {
   return rows.length >= 2;
 }
 
-// Return { kind, marker } when the (already-idle) screen tail shows an
-// interactive prompt waiting for the user, else null. `marker` is a short
-// stable string the caller dedupes on so menu-navigation redraws don't
-// re-notify for the same prompt.
-function detectPromptAffordance(rawTail) {
+// Bottom-screen region helper. gjc redraws its waiting footer continuously, so
+// the live footer always sits in the last screenful. Scoping gjc matching to the
+// final ~30 logical lines means a footer that already scrolled off (stale
+// scrollback) can't fire, and the result is lowercased for case-insensitive
+// token checks.
+function gjcBottomRegion(text) {
+  var lines = text.split('\n');
+  return lines.slice(-30).join('\n').toLowerCase();
+}
+
+// gjc input-waiting footers: selector / text-input / editor. Each requires the
+// FULL footer cluster to co-occur in the bottom region, so a bare "esc cancel"
+// (gjc loaders show that too) or a partial redraw never triggers. Generation
+// shows "esc to interrupt", which is excluded. Markers are STABLE per family
+// (no selected-row / caret / nav-variable text) so up/down navigation redraws
+// keep the same marker and don't re-notify.
+function detectGjcPrompt(text) {
+  var low = gjcBottomRegion(text);
+  if (/\besc to interrupt\b/.test(low)) return null;            // generating, not waiting
+  var hasEscCancel = /\besc\b/.test(low) && /\bcancel\b/.test(low);
+  if (!hasEscCancel) return null;                               // no cancel control → not a wait footer
+  // editor first (most specific): "ctrl+enter submit … esc cancel … ctrl+g external editor"
+  if (/ctrl\+enter\b[^\n]*\bsubmit\b/.test(low) && /ctrl\+g\b[^\n]*external[^\n]*editor/.test(low)) {
+    return { kind: 'gjc-editor', marker: 'gjc-editor-footer-v1' };
+  }
+  // selector: "up/down navigate … enter select … esc cancel"
+  if (/up\/down\b[^\n]*\bnavigate\b/.test(low) && /\benter\b[^\n]*\bselect\b/.test(low)) {
+    return { kind: 'gjc-selector', marker: 'gjc-selector-footer-v1' };
+  }
+  // text input: "enter submit … esc cancel"
+  if (/\benter\b[^\n]*\bsubmit\b/.test(low)) {
+    return { kind: 'gjc-input', marker: 'gjc-input-footer-v1' };
+  }
+  return null;
+}
+
+// Return { kind, marker } when the screen tail shows an interactive prompt
+// waiting for the user, else null. `marker` is a short stable string the caller
+// dedupes on so menu-navigation redraws don't re-notify for the same prompt.
+// Pass { agent: 'gjc' } to use gjc's explicit footer-family detector only
+// (selector/input/editor footers). Default/Claude behavior is unchanged.
+function detectPromptAffordance(rawTail, opts) {
   // Normalize CR row-delimiters to LF. Ink's dynamic menus (/theme, /model)
   // delimit option rows with a bare CR and emit no LF, so the line-anchored
   // menu check below needs CR treated as a newline.
   var text = stripAnsi(rawTail).replace(/\r\n?/g, '\n');
+  if (opts && opts.agent === 'gjc') {
+    return detectGjcPrompt(text);
+  }
   for (var i = 0; i < FOOTER_PATTERNS.length; i++) {
     var m = FOOTER_PATTERNS[i].re.exec(text);
     if (m) return { kind: FOOTER_PATTERNS[i].kind, marker: m[0].trim().slice(0, 48).toLowerCase() };

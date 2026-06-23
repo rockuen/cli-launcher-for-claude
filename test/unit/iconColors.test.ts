@@ -37,3 +37,15 @@ test('gjc running icon uses the shared running yellow', () => {
 
   assert.equal(running, sharedRunning);
 });
+
+test('all agents have a blue waiting icon distinct from the shell icon glyph', () => {
+  for (const agent of ['claude', 'codex', 'grok', 'kiro', 'antigravity', 'gjc', 'chief']) {
+    const waiting = readIcon(`${agent}-waiting.svg`);
+    const shell = readIcon(`${agent}-shell.svg`);
+
+    assert.match(waiting, /#[0-9a-fA-F]{6}/, `${agent} waiting icon should contain a hex color`);
+    assert.equal(firstHexColor(waiting), '#4FC3F7');
+    assert.notEqual(waiting, shell, `${agent} waiting icon must not duplicate shell glyph`);
+    assert.match(waiting, /<title>.* waiting<\/title>/);
+  }
+});

@@ -47,7 +47,7 @@ A little more:
 - **Five agents, one panel** — run Claude / Codex / Grok / Kiro / Antigravity in the same Webview tab. Each agent gets its own sessions view, and each tab wears its agent's color.
 - **Session tree + groups** — give each session a title and bucket related ones into groups/folders. Re-open an archived session from the tree to pick up where you left off.
 - **Reader-Live** — watch the running conversation as markdown — code blocks, quotes, tables all rendered — side by side with the xterm.js terminal in a split layout. (Antigravity excepted — see "The five agents".)
-- **Status + notifications** — a tab and its panel border **glow yellow** while a response is in flight and turn **green** when it's done, plus a desktop notification so you notice from another window.
+- **Status + notifications** — a tab and its panel border **glow yellow** while a response is in flight, the tab shows a **blue waiting glyph** when an interactive prompt needs your input, and the tab turns **green** when it's done, plus a desktop notification so you notice from another window.
 - **Hand-off** — pass one agent's conversation context to another. "Did this much with Claude, now continue with Codex."
 - **Repo Sync** — auto commit + push on workspace changes; the device name is stamped into the commit message.
 - **Multi-account switching** — save Claude logins as profiles and swap between them. (file-based on Windows/Linux, **Keychain-based on macOS**.)
@@ -80,7 +80,7 @@ Identifying the session itself follows the same idea. Each CLI tracks sessions b
 
 You see the same session two ways at once: as markdown on top, as the real terminal below. The top pane isn't read-only — you can send a message from the input box at the very bottom. Drag the splitter in the middle to rebalance.
 
-**Second, response state has to be visible at a glance.** When the model thinks hard it can take over a minute, and going to check whether it finished broke my flow every time. So I **made the state visual** — the tab and panel border **glow yellow** while running and turn **green** when done, with a desktop notification too. Working in another window, a glance at the color tells you it's done.
+**Second, response state has to be visible at a glance.** When the model thinks hard it can take over a minute, and going to check whether it finished broke my flow every time. So I **made the state visual** — the tab and panel border **glow yellow** while running, the tab switches to a **blue waiting glyph** when it needs input, and it turns **green** when done, with a desktop notification too. Working in another window, a glance at the color tells you what needs attention.
 
 **Third, multiple devices.** I move between a work PC, a home desktop, and a Mac, and every time I'm unsure whether the other side pushed. **Laziness at shutdown breeds anxiety at startup.** Repo Sync removes the shutdown-side laziness, which dissolves the startup-side doubt too: workspace changes are debounced for 5 minutes and auto committed + pushed, a final commit fires on VSCode exit, and the device name is stamped into the message (`[Mac] auto-sync: …`).
 
@@ -97,7 +97,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 - **Per-agent session views** — a sidebar tree for each of Claude / Codex / Grok / Kiro / Antigravity. Groups, folders (nested up to 3 levels), drag-and-drop, rename, trash.
 - **Reader-Live** — the running conversation as markdown, split-pane or standalone, with a branded welcome screen for empty sessions. (Antigravity excepted.)
 - **Customizable reader sender names** — set the name shown for "you" (global) and a per-agent AI name in Settings.
-- **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a desktop notification immediately.
+- **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a blue waiting tab icon + a desktop notification immediately.
 - **Agent themes** — the input area's tone follows the agent (Auto); pin one tone if you prefer.
 - **Hand-off** — pass conversation context to any other enabled agent.
 - **Multi-account switching** — save / switch Claude logins as profiles. The active account shows in the left status bar; click for a QuickPick. Tokens are read/written from `~/.claude/.credentials.json` on Windows/Linux and from the **Keychain on macOS**.

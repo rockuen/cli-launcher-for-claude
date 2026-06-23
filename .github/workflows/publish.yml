@@ -48,6 +48,17 @@ jobs:
         with:
           node-version: 20
       - run: npm install -g ovsx
+      - name: Create GitHub Release and upload VSIX files
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            *.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to Open VSX
         # Idempotent + transient-resilient publish loop. Failure classes are
         # handled distinctly:
@@ -61,7 +72,7 @@ jobs:
         #     can't overwrite the same version. Surface it as an error so the
         #     run goes red and a version bump is done deliberately.
         #   - transient server/network errors (HTTP 5xx, ECONNRESET,
-        #     ETIMEDOUT, socket hang up) — retried up to 3× with a linear
+        #     ETIMOD, socket hang up) — retried up to 3× with a linear
         #     backoff. Open VSX returns sporadic 503s, more likely on the
         #     larger win32-x64 artifact.
         # Anything else is a real failure and fails the job.
@@ -88,7 +99,7 @@ jobs:
                 echo "::notice::$f already on Open VSX — skipping (partial-publish recovery)"
                 break
               fi
-              if echo "$output" | grep -qE "status 5[0-9][0-9]|ECONNRESET|ETIMEDOUT|socket hang up|EAI_AGAIN"; then
+              if echo "$output" | grep -qE "status 5[0-9][0-9]|ECONNRESET|ETIMOD|socket hang up|EAI_AGAIN"; then
                 if [ $attempt -lt $MAX_ATTEMPTS ]; then
                   wait=$((attempt * 20))
                   echo "::warning::$f transient failure (attempt $attempt/$MAX_ATTEMPTS) — retrying in ${wait}s"

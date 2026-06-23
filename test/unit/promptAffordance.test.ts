@@ -77,3 +77,87 @@ test('marker is stable for dedupe (same menu → same marker)', () => {
   assert.ok(a && b);
   assert.equal(a.marker, b.marker);
 });
+
+// --- gjc: animated prompt screens must notify without broad false positives ---
+
+test('gjc selector footer cluster is detected with a stable family marker', () => {
+  const tail = [
+    '스펙이 준비됐습니다 (ambiguity: 4.8%). 어떻게 진행할까요?',
+    '❯ ralplan 합의로 정제 (Recommended)',
+    '  ultragoal로 바로 실행',
+    '  Other (type your own)',
+    'up/down navigate   enter select   esc cancel',
+  ].join('\n');
+  const r = detectPromptAffordance(tail, { agent: 'gjc' });
+  assert.deepEqual(r, { kind: 'gjc-selector', marker: 'gjc-selector-footer-v1' });
+});
+
+test('gjc selector footer is detected when rows are CR-delimited redraws', () => {
+  const tail = [
+    '  ralplan 합의로 정제 (Recommended)',
+    '❯ ultragoal로 바로 실행',
+    '  Other (type your own)',
+    'up/down navigate   enter select   esc cancel',
+  ].join('\r');
+  const r = detectPromptAffordance(tail, { agent: 'gjc' });
+  assert.deepEqual(r, { kind: 'gjc-selector', marker: 'gjc-selector-footer-v1' });
+});
+
+test('gjc input and editor footer clusters are detected', () => {
+  assert.deepEqual(
+    detectPromptAffordance('Type a message...\nenter submit   esc cancel', { agent: 'gjc' }),
+    { kind: 'gjc-input', marker: 'gjc-input-footer-v1' },
+  );
+  assert.deepEqual(
+    detectPromptAffordance('Editing answer...\nctrl+enter submit   esc cancel   ctrl+g external editor', { agent: 'gjc' }),
+    { kind: 'gjc-editor', marker: 'gjc-editor-footer-v1' },
+  );
+});
+
+test('gjc generation interrupt and bare cancel controls are NOT prompts', () => {
+  assert.equal(detectPromptAffordance('Processing… esc to interrupt', { agent: 'gjc' }), null);
+  assert.equal(detectPromptAffordance('Loading… esc cancel', { agent: 'gjc' }), null);
+  assert.equal(detectPromptAffordance('Loader footer: esc to cancel', { agent: 'gjc' }), null);
+});
+
+test('gjc stale footer outside bottom screen is NOT a prompt', () => {
+  const staleFooter = 'up/down navigate   enter select   esc cancel';
+  const finalLines = Array.from({ length: 31 }, (_, i) => `ordinary output line ${i + 1}`).join('\n');
+  assert.equal(detectPromptAffordance(`${staleFooter}\n${finalLines}`, { agent: 'gjc' }), null);
+});
+
+test('gjc partial redraw without the full footer cluster is NOT a prompt', () => {
+  const partial = [
+    '❯ Option A',
+    '  Option B',
+    'up/down navigate',
+    'esc cancel',
+  ].join('\n');
+  assert.equal(detectPromptAffordance(partial, { agent: 'gjc' }), null);
+});
+
+test('gjc cleared prompt sequence returns null so caller can restore the terminal split', () => {
+  const prompt = '❯ A\n  B\nup/down navigate   enter select   esc cancel';
+  assert.ok(detectPromptAffordance(prompt, { agent: 'gjc' }));
+  assert.equal(detectPromptAffordance('answer accepted\nback to running output', { agent: 'gjc' }), null);
+});
+
+test('gjc selector marker stays stable across selection changes', () => {
+  const selectedFirst = [
+    '❯ ralplan 합의로 정제 (Recommended)',
+    '  ultragoal로 바로 실행',
+    '  Other (type your own)',
+    'up/down navigate   enter select   esc cancel',
+  ].join('\n');
+  const selectedSecond = [
+    '  ralplan 합의로 정제 (Recommended)',
+    '❯ ultragoal로 바로 실행',
+    '  Other (type your own)',
+    'up/down navigate   enter select   esc cancel',
+  ].join('\n');
+  const a = detectPromptAffordance(selectedFirst, { agent: 'gjc' });
+  const b = detectPromptAffordance(selectedSecond, { agent: 'gjc' });
+  assert.ok(a && b);
+  assert.equal(a.marker, b.marker);
+  assert.equal(a.kind, b.kind);
+});

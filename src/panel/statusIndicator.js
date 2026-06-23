@@ -19,6 +19,7 @@ function setTabIcon(panel, status, extensionPath) {
     running: 'running',
     done: 'done',
     error: 'error',
+    waiting: 'waiting',
     'shell-running': 'shell'
   }[status] || 'idle';
 

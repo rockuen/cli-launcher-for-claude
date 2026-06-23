@@ -13,8 +13,11 @@ const { saveSessions } = require('../store/sessionManager');
 const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
+const { detectPromptAffordance } = require('../lib/promptAffordance');
+const { showDesktopNotification } = require('../handlers/desktopNotification');
 
 const IDLE_DELAY_MS = 3000;
+const GJC_PROMPT_POLL_MS = 1000;
 
 function restartPty(entry, panel, context, extensionPath) {
   if (entry._restarting) return;
@@ -186,6 +189,11 @@ function restartPty(entry, panel, context, extensionPath) {
   entry._recentTail = '';   // fresh run — don't let the prior session's prompt
   entry._promptSig = null;  // footer satisfy the idle prompt-affordance check
   if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
+  if (entry._gjcPromptTimer) { clearTimeout(entry._gjcPromptTimer); entry._gjcPromptTimer = null; }
+  if (entry._bgShellsTimer) { clearTimeout(entry._bgShellsTimer); entry._bgShellsTimer = null; }
+  entry._bgShells = 0;
+  entry._bgShellsAt = null;
+  entry._promptTerminalExpanded = false;
   entry._disposed = false;
 
   try {
@@ -210,6 +218,68 @@ function restartPty(entry, panel, context, extensionPath) {
     // Re-attach PTY events with fresh parser instance
     const thisPty = ptyProcess;
     const contextParser = createContextParser();
+    function isGjcPanel() {
+      return agent === 'gjc';
+    }
+
+    function clearGjcPromptTimer() {
+      if (entry._gjcPromptTimer) {
+        clearTimeout(entry._gjcPromptTimer);
+        entry._gjcPromptTimer = null;
+      }
+    }
+
+    function handlePromptAffordanceCheck(ptyToken) {
+      if (!isGjcPanel()) return false;
+      if (entry._disposed || !entry.pty || entry.state === 'done' || entry.state === 'error') return false;
+      if (ptyToken && entry.pty !== ptyToken) return false;
+
+      const affordance = detectPromptAffordance(entry._recentTail || '', { agent: 'gjc' });
+      if (!affordance) {
+        const hadPrompt = !!entry._promptSig || !!entry._promptTerminalExpanded;
+        if (entry._promptTerminalExpanded) {
+          try { panel.webview.postMessage({ type: 'prompt-terminal-restore' }); } catch (_) {}
+          entry._promptTerminalExpanded = false;
+        }
+        if (hadPrompt && entry.state === 'needs-attention') {
+          entry.state = 'waiting';
+          setIdleIcon(panel, entry, extensionPath);
+          try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+          updateStatusBar();
+          state.refreshSessionTrees();
+        }
+        entry._promptSig = null;
+        return false;
+      }
+
+      const sig = affordance.kind + '|' + affordance.marker;
+      const isNewPrompt = entry._promptSig !== sig;
+      entry._promptSig = sig;
+      if (entry.state !== 'needs-attention') {
+        entry.state = 'needs-attention';
+        setTabIcon(panel, 'waiting', extensionPath);
+        try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+        updateStatusBar();
+        state.refreshSessionTrees();
+      }
+      if (isNewPrompt) {
+        showDesktopNotification(entry.title);
+        if (!panel.active) {
+          try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+        }
+        try { panel.webview.postMessage({ type: 'prompt-terminal-expand' }); } catch (_) {}
+        entry._promptTerminalExpanded = true;
+      }
+      return true;
+    }
+
+    function scheduleGjcPromptCheck(ptyToken) {
+      if (!isGjcPanel() || entry._gjcPromptTimer || entry._disposed || !entry.pty) return;
+      entry._gjcPromptTimer = setTimeout(() => {
+        entry._gjcPromptTimer = null;
+        handlePromptAffordanceCheck(ptyToken);
+      }, GJC_PROMPT_POLL_MS);
+    }
     entry._ptyDataSub = ptyProcess.onData(data => {
       if (entry._disposed || entry.pty !== thisPty) return; // disposed/stale handler guard
       sendPtyChunkPaced(panel, data, entry);
@@ -225,8 +295,10 @@ function restartPty(entry, panel, context, extensionPath) {
         entry._bgShells = bgShells;
         entry._bgShellsAt = Date.now();
       }
+      entry._recentTail = ((entry._recentTail || '') + data).slice(-6000);
+      scheduleGjcPromptCheck(thisPty);
 
-      if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+      if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'needs-attention') {
         entry.state = 'running';
         setTabIcon(panel, 'running', extensionPath);
         try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
@@ -237,13 +309,14 @@ function restartPty(entry, panel, context, extensionPath) {
       entry.idleTimer = setTimeout(() => {
         if (entry._disposed) return;
         if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
+        if (handlePromptAffordanceCheck(thisPty)) return;
         if (panel.active) {
           entry.state = 'waiting';
           setIdleIcon(panel, entry, extensionPath);
           try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
         } else {
           entry.state = 'needs-attention';
-          setTabIcon(panel, 'done', extensionPath);
+          setTabIcon(panel, 'waiting', extensionPath);
           try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
           try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
         }
@@ -255,9 +328,16 @@ function restartPty(entry, panel, context, extensionPath) {
     ptyProcess.onExit(({ exitCode }) => {
       if (entry.pty !== thisPty) return; // stale handler guard
       if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      clearGjcPromptTimer();
+      if (entry._bgShellsTimer) { clearTimeout(entry._bgShellsTimer); entry._bgShellsTimer = null; }
+      entry._bgShells = 0;
+      entry._bgShellsAt = null;
       const isSuccess = exitCode === 0 || exitCode === null || exitCode === undefined;
       entry.state = isSuccess ? 'done' : 'error';
       entry.pty = null;
+      entry._recentTail = '';
+      entry._promptSig = null;
+      entry._promptTerminalExpanded = false;
       saveSessions();
       updateStatusBar();
 

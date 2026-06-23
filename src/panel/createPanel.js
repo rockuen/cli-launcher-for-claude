@@ -36,6 +36,10 @@ const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
 
 const IDLE_DELAY_MS = 3000;
+// gjc redraws its prompt screen continuously (color-cycling footer, particles),
+// so the 3s idle timer never fires while a gjc prompt is up. gjc-only fast prompt
+// detection runs on this throttle instead, bypassing the idle gate.
+const GJC_PROMPT_POLL_MS = 1000;
 
 // NOTE (selector removal): the inline y/n prompt-bar and numbered choice-bar
 // — plus their byte-stream detectors (detectBinaryPrompt / detectChoicePrompt)
@@ -896,6 +900,89 @@ function createPanel(context, extensionPath, session, opts) {
   const COALESCE_WINDOW_MS = 32;
   let pendingPayload = '';
   let pendingFlushTimer = null;
+  function isGjcPanel() {
+    return (entry.agent || panel._agent) === 'gjc';
+  }
+
+  function clearGjcPromptTimer() {
+    if (entry._gjcPromptTimer) {
+      clearTimeout(entry._gjcPromptTimer);
+      entry._gjcPromptTimer = null;
+    }
+  }
+
+  function handlePromptAffordanceCheck(ptyToken) {
+    if (entry._disposed || !entry.pty || entry.state === 'done' || entry.state === 'error') return false;
+    if (ptyToken && entry.pty !== ptyToken) return false;
+
+    const affordance = detectPromptAffordance(
+      entry._recentTail || '',
+      isGjcPanel() ? { agent: 'gjc' } : undefined
+    );
+    if (!affordance) {
+      const hadPrompt = !!entry._promptSig || !!entry._promptTerminalExpanded;
+      if (entry._promptTerminalExpanded) {
+        // A prompt just cleared (answered / dismissed) → restore the terminal
+        // pane to the user's ratio. Keep this separate from _promptSig because
+        // focus intentionally clears the dedupe signature to allow re-notify.
+        try { panel.webview.postMessage({ type: 'prompt-terminal-restore' }); } catch (_) {}
+        entry._promptTerminalExpanded = false;
+      }
+      if (hadPrompt && entry.state === 'needs-attention') {
+        entry.state = 'waiting';
+        setIdleIcon(panel, entry, extensionPath);
+        try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+        updateStatusBar();
+        state.refreshSessionTrees();
+      }
+      entry._promptSig = null; // no prompt on screen → let the next one re-notify
+      return false;
+    }
+
+    // A prompt has arrived before the 3s running delay. Prevent the delayed
+    // transition from repainting this same tab back to "running" after we mark
+    // it needs-attention.
+    if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+
+    const sig = affordance.kind + '|' + affordance.marker;
+    const isNewPrompt = entry._promptSig !== sig;
+    entry._promptSig = sig;
+    // Always (re)assert needs-attention while an unanswered prompt is on
+    // screen — idempotent. A menu-navigation redraw can briefly flip the
+    // tab back to 'running' (the running-delay timer re-arms in this state);
+    // re-asserting here corrects that instead of leaving the attention lost.
+    if (entry.state !== 'needs-attention') {
+      entry.state = 'needs-attention';
+      setTabIcon(panel, 'waiting', extensionPath);
+      try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+      updateStatusBar();
+      state.refreshSessionTrees();
+    }
+    // Desktop notification only for a genuinely NEW prompt (dedup on the
+    // marker) so navigation redraws don't spam. Fires on background tabs too.
+    if (isNewPrompt) {
+      showDesktopNotification(entry.title);
+      if (!panel.active) {
+        try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+        startTitleBlink();
+      }
+      // Reader/split view: auto-grow the bottom terminal pane so the menu is
+      // visible and answerable without dragging the splitter. The webview
+      // no-ops when split is off or the terminal is already large, and
+      // restores the user's ratio when the prompt clears (above).
+      try { panel.webview.postMessage({ type: 'prompt-terminal-expand' }); } catch (_) {}
+      entry._promptTerminalExpanded = true;
+    }
+    return true;
+  }
+
+  function scheduleGjcPromptCheck(ptyToken) {
+    if (!isGjcPanel() || entry._gjcPromptTimer || entry._disposed || !entry.pty) return;
+    entry._gjcPromptTimer = setTimeout(() => {
+      entry._gjcPromptTimer = null;
+      handlePromptAffordanceCheck(ptyToken);
+    }, GJC_PROMPT_POLL_MS);
+  }
 
   // v3.6.5: parsing also coalesces on the same window. Previously
   // contextParser / detectShellRunning / detectBinaryPrompt / looksLikePrompt
@@ -941,6 +1028,7 @@ function createPanel(context, extensionPath, session, opts) {
     // current interactive footer. Raw bytes — detectPromptAffordance strips
     // ANSI itself. Capped to ~the latest screen, not the whole history.
     entry._recentTail = ((entry._recentTail || '') + payload).slice(-6000);
+    scheduleGjcPromptCheck(initialPty);
 
     // Running/idle state machine + idle-gated prompt notification. The old
     // looksLikePrompt fast-path (matched raw bytes mid-stream, false-positive
@@ -949,11 +1037,11 @@ function createPanel(context, extensionPath, session, opts) {
     // has SETTLED (in the idle timer below).
 
     // Only transition to 'running' if output persists for 3s+
-    if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+    if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'needs-attention') {
       if (!runningDelayTimer) {
         runningDelayTimer = setTimeout(() => {
           if (entry._disposed) { runningDelayTimer = null; return; }
-          if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+          if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'needs-attention') {
             entry.state = 'running';
             entry.runningStartedAt = Date.now();
             setTabIcon(panel, 'running', extensionPath);
@@ -972,57 +1060,16 @@ function createPanel(context, extensionPath, session, opts) {
 
       // Idle-gated interactive-prompt notification. Output has settled; if the
       // screen shows a prompt waiting on the user (a /model-style menu, a
-      // trust/permission prompt, or y/n), escalate to needs-attention +
-      // desktop notification REGARDLESS of how long Claude ran — these often
-      // appear in <3s, below the running threshold, which is exactly why they
-      // never used to notify. Deduped on the affordance marker so menu
-      // navigation redraws don't re-fire. Works on background tabs too: this
-      // runs ext-side, where output is parsed even when the panel is hidden.
-      const affordance = detectPromptAffordance(entry._recentTail || '');
-      if (affordance) {
-        const sig = affordance.kind + '|' + affordance.marker;
-        const isNewPrompt = entry._promptSig !== sig;
-        entry._promptSig = sig;
-        // Always (re)assert needs-attention while an unanswered prompt is on
-        // screen — idempotent. A menu-navigation redraw can briefly flip the
-        // tab back to 'running' (the running-delay timer re-arms in this state);
-        // re-asserting here corrects that instead of leaving the attention lost.
-        if (entry.state !== 'needs-attention') {
-          entry.state = 'needs-attention';
-          setTabIcon(panel, 'done', extensionPath);
-          try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
-          updateStatusBar();
-          state.refreshSessionTrees();
-        }
-        // Desktop notification only for a genuinely NEW prompt (dedup on the
-        // marker) so navigation redraws don't spam. Fires on background tabs too.
-        if (isNewPrompt) {
-          showDesktopNotification(entry.title);
-          if (!panel.active) {
-            try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
-            startTitleBlink();
-          }
-          // Reader/split view: auto-grow the bottom terminal pane so the menu is
-          // visible and answerable without dragging the splitter. The webview
-          // no-ops when split is off or the terminal is already large, and
-          // restores the user's ratio when the prompt clears (below).
-          try { panel.webview.postMessage({ type: 'prompt-terminal-expand' }); } catch (_) {}
-        }
-        return;
-      }
-      if (entry._promptSig) {
-        // A prompt just cleared (answered / dismissed) → restore the terminal
-        // pane to the user's ratio (no-op if it was never auto-expanded).
-        try { panel.webview.postMessage({ type: 'prompt-terminal-restore' }); } catch (_) {}
-      }
-      entry._promptSig = null; // no prompt on screen → let the next one re-notify
+      // trust/permission prompt, y/n, or a gjc footer in gjc mode), escalate to
+      // needs-attention + desktop notification regardless of how long the CLI ran.
+      if (handlePromptAffordanceCheck(initialPty)) return;
 
       // Brief outputs (< 3s, never reached 'running') stay as-is
       if (entry.state !== 'running') return;
       const runningDuration = Date.now() - entry.runningStartedAt;
       if (runningDuration >= 7000) {
         entry.state = 'needs-attention';
-        setTabIcon(panel, 'done', extensionPath);
+        setTabIcon(panel, 'waiting', extensionPath);
         try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
         showDesktopNotification(entry.title);
         if (!panel.active) {
@@ -1166,6 +1213,7 @@ function createPanel(context, extensionPath, session, opts) {
     if (entry.pty !== initialPty) return; // stale handler guard
     console.log('[Claude Launcher] PTY exited, code:', exitCode, '| dataCount:', dataCount);
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    clearGjcPromptTimer();
     const isSuccess = exitCode === 0 || exitCode === null || exitCode === undefined;
 
     if (isSuccess) {
@@ -1177,6 +1225,7 @@ function createPanel(context, extensionPath, session, opts) {
     entry.pty = null;
     entry._recentTail = '';  // drop the rolling output tail so a stale prompt
     entry._promptSig = null; // footer can't trigger a notification after exit
+    entry._promptTerminalExpanded = false;
     saveSessions();
     updateStatusBar();
 
@@ -1221,6 +1270,8 @@ function createPanel(context, extensionPath, session, opts) {
       entry._ptyDataSub = null;
     }
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
+    clearGjcPromptTimer();
+    entry._promptTerminalExpanded = false;
     if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
     // v3.6.4: drop any coalesced bytes that never got flushed.
     if (pendingFlushTimer) { clearTimeout(pendingFlushTimer); pendingFlushTimer = null; }
