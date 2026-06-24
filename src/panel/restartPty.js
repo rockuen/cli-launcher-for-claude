@@ -83,6 +83,7 @@ function restartPty(entry, panel, context, extensionPath) {
       return;
     }
     shell = resolvedCodex.shell;
+    extraEnv = resolvedCodex.env || {};
     // codex resume args, same precedence as createPanel: Tree-resume (real
     // rollout UUID) → resume <id>; known sessionId (auto-restore) → resume
     // --last; neither → [] (fresh TUI session).

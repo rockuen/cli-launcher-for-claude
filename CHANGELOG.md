@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.14.5] - 2026-06-24
+
+Fixes a Windows Codex startup popup from the launcher.
+
+### Fixed
+- **Codex Windows sandbox helper popup on launch.** On Windows, Codex Desktop / installer stores the real runtime under `%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\`, with `codex-windows-sandbox-setup.exe` beside it. The launcher previously resolved the PATH shim at `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`, so Codex could start but then Windows showed `'codex-windows-sandbox-setup.exe'을(를) 찾을 수 없습니다` when the CLI tried to initialize elevated sandboxing. The launcher now prefers the real runtime from `CODEX_CLI_PATH` / the hashed runtime directory and prepends that directory to the PTY `PATH`.
+- **Codex restart uses the same runtime environment.** Restarted Codex panels now merge the resolver-provided environment just like fresh Codex panels, so the sandbox helper remains discoverable after a restart.
+
+### Tests
+- Added resolver coverage for `CODEX_CLI_PATH`, runtime directories with sandbox helpers, and Codex PTY environment merging.
+
 ## [3.14.4] - 2026-06-24
 
 Fixes reader-pane file links for generated Markdown/HTML reports.

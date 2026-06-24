@@ -584,6 +584,7 @@ function createPanel(context, extensionPath, session, opts) {
       return;
     }
     shell = resolvedCodex.shell;
+    extraEnv = resolvedCodex.env || {};
     // codex args by precedence (codex assigns its own session ids — the
     // rollout filename's trailing UUID — like kiro/agy):
     //   - isCodexResume (Tree resume; sessionId is a REAL rollout UUID on

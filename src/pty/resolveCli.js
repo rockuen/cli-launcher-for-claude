@@ -32,6 +32,80 @@ function resolveOnPath(name) {
   }
 }
 
+function _pathEnvKey(env) {
+  if (process.platform !== 'win32') return 'PATH';
+  return Object.keys(env || process.env).find((k) => k.toLowerCase() === 'path') || 'Path';
+}
+
+function _prependPathDirEnv(dir, baseEnv) {
+  if (!dir) return {};
+  const env = baseEnv || process.env;
+  const key = _pathEnvKey(env);
+  const current = env[key] || '';
+  const alreadyPresent = current.split(path.delimiter).filter(Boolean).some((part) => {
+    const left = path.resolve(part);
+    const right = path.resolve(dir);
+    return process.platform === 'win32'
+      ? left.toLowerCase() === right.toLowerCase()
+      : left === right;
+  });
+  return {
+    [key]: alreadyPresent ? current : [dir, current].filter(Boolean).join(path.delimiter),
+  };
+}
+
+function _codexWindowsEnv(shell) {
+  if (process.platform !== 'win32' || !shell) return {};
+  const dir = path.dirname(shell);
+  return {
+    ..._prependPathDirEnv(dir),
+    CODEX_CLI_PATH: shell,
+  };
+}
+
+function _readCodexCliPathFromConfig(configPath) {
+  try {
+    const text = fs.readFileSync(configPath, 'utf8');
+    const match = text.match(/^\s*CODEX_CLI_PATH\s*=\s*(['"])(.*?)\1\s*$/m);
+    if (!match) return null;
+    if (match[1] === '"') {
+      try {
+        return JSON.parse(match[0].replace(/^\s*CODEX_CLI_PATH\s*=\s*/, '').trim());
+      } catch (_) {
+        return match[2].replace(/\\\\/g, '\\');
+      }
+    }
+    return match[2];
+  } catch (_) {
+    return null;
+  }
+}
+
+function _resolveCodexWindowsRuntimeCli(localAppData) {
+  const binRoot = path.join(localAppData, 'OpenAI', 'Codex', 'bin');
+  try {
+    const candidates = fs.readdirSync(binRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => {
+        const dir = path.join(binRoot, entry.name);
+        const shell = path.join(dir, 'codex.exe');
+        if (!fs.existsSync(shell)) return null;
+        const hasSandboxSetup = fs.existsSync(path.join(dir, 'codex-windows-sandbox-setup.exe'));
+        let mtimeMs = 0;
+        try { mtimeMs = fs.statSync(shell).mtimeMs || 0; } catch (_) {}
+        return { shell, hasSandboxSetup, mtimeMs };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.hasSandboxSetup !== b.hasSandboxSetup) return a.hasSandboxSetup ? -1 : 1;
+        return b.mtimeMs - a.mtimeMs;
+      });
+    return candidates[0] ? candidates[0].shell : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function resolveClaudeCli() {
   const isWin = process.platform === 'win32';
 
@@ -102,26 +176,43 @@ function resolveAntigravityCli() {
 }
 
 // @module pty/resolveCli — locates the OpenAI Codex CLI binary.
-// Priority: ~/.local/bin/codex → %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (Windows installer) → PATH.
+// Priority: Windows bundled runtime with sandbox helpers → ~/.local/bin/codex
+// → %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (Windows shim) → PATH.
 function resolveCodexCli() {
   const isWin = process.platform === 'win32';
+
+  // Windows Codex Desktop / installer keeps the real runtime in a hash-named
+  // dir under %LOCALAPPDATA%\OpenAI\Codex\bin. The sandbox helper exe lives
+  // beside that runtime, not beside the Programs\OpenAI\Codex shim that PATH
+  // usually finds. Launch the real runtime and prepend its dir to PATH so
+  // child processes like codex-windows-sandbox-setup.exe resolve correctly.
+  if (isWin) {
+    const configCli = _readCodexCliPathFromConfig(path.join(os.homedir(), '.codex', 'config.toml'));
+    if (configCli && fs.existsSync(configCli)) {
+      return { shell: configCli, args: [], env: _codexWindowsEnv(configCli) };
+    }
+
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    const runtimeCli = _resolveCodexWindowsRuntimeCli(localAppData);
+    if (runtimeCli) return { shell: runtimeCli, args: [], env: _codexWindowsEnv(runtimeCli) };
+  }
 
   // 1) ~/.local/bin/codex(.exe) — official install script (macOS/Linux)
   const localBin = isWin
     ? path.join(os.homedir(), '.local', 'bin', 'codex.exe')
     : path.join(os.homedir(), '.local', 'bin', 'codex');
-  if (fs.existsSync(localBin)) return { shell: localBin, args: [] };
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [], env: _codexWindowsEnv(localBin) };
 
-  // 2) Windows installer location: %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe (verified)
+  // 2) Windows installer shim: %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe
   if (isWin) {
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
     const winInstall = path.join(localAppData, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe');
-    if (fs.existsSync(winInstall)) return { shell: winInstall, args: [] };
+    if (fs.existsSync(winInstall)) return { shell: winInstall, args: [], env: _codexWindowsEnv(winInstall) };
   }
 
   // 3) PATH — resolved to an absolute path on Windows (node-pty needs it)
   const onPath = resolveOnPath('codex');
-  if (onPath) return { shell: onPath, args: [] };
+  if (onPath) return { shell: onPath, args: [], env: _codexWindowsEnv(onPath) };
   return null;
 }
 
@@ -233,4 +324,18 @@ function resolveChiefCli() {
   };
 }
 
-module.exports = { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli, resolveChiefCli, isChiefCliAvailable };
+module.exports = {
+  resolveClaudeCli,
+  resolveKiroCli,
+  resolveAntigravityCli,
+  resolveCodexCli,
+  resolveGrokCli,
+  resolveGjcCli,
+  resolveChiefCli,
+  isChiefCliAvailable,
+  _test: {
+    readCodexCliPathFromConfig: _readCodexCliPathFromConfig,
+    resolveCodexWindowsRuntimeCli: _resolveCodexWindowsRuntimeCli,
+    prependPathDirEnv: _prependPathDirEnv,
+  },
+};
