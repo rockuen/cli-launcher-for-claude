@@ -293,7 +293,12 @@ function routeWebviewMessage(msg, ctx) {
           let stripped = p.replace(/^file:\/\/[^/]*/i, '');
           p = decodeURIComponent(stripped);
         } catch (_) { /* fall through with raw */ }
+      } else {
+        try { p = decodeURIComponent(p); } catch (_) { /* keep raw href */ }
       }
+      // Markdown links like [section](report.md#summary) should open the file;
+      // the in-file anchor is not meaningful to the OS/default app open path.
+      p = p.replace(/[?#].*$/, '');
       // Trailing :LINE for files. Don't apply to Windows drive prefixes (C:\).
       let line = 0;
       const lineMatch = p.match(/:(\d+)$/);

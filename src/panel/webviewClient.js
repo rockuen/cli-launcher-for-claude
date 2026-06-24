@@ -2232,6 +2232,17 @@ function getClientScript(ctx) {
     (function setupReaderLinks() {
       const reader = document.getElementById('reader-area');
       if (!reader) return;
+      const readerFileExtRe = /\\.(?:md|mdx|txt|json|jsonc|yaml|yml|toml|xml|csv|tsv|log|env|lock|ini|cfg|conf|js|jsx|ts|tsx|mjs|cjs|py|rb|go|rs|java|kt|kts|scala|swift|php|c|cc|cpp|cxx|h|hpp|m|mm|css|scss|sass|less|html?|vue|svelte|sh|bash|zsh|fish|ps1|bat|cmd|sql|graphql|gql|proto|png|jpe?g|gif|webp|svg|ico|bmp|heic|avif|pdf|docx?|xlsx?|pptx?|rtf|odt|ods|zip|tar|gz|tgz|bz2|7z|rar|dmg|iso|mp3|mp4|mov|avi|wav|flac|m4a|webm)(?::\\d+)?$/i;
+      function isReaderPathHref(href) {
+        if (!href) return false;
+        let h = String(href).trim();
+        if (!h || /^https?:\\/\\//i.test(h) || /^mailto:/i.test(h) || /^javascript:/i.test(h) || h[0] === '#') return false;
+        if (/^file:\\/\\//i.test(h) || h.startsWith('/') || h.startsWith('~') || /^[A-Za-z]:[\\\\/]/.test(h)) return true;
+        try { h = decodeURIComponent(h); } catch (_) {}
+        const withoutAnchor = h.replace(/[?#].*$/, '');
+        if (/^(?:\\.{1,2}[\\\\/])/.test(withoutAnchor) && readerFileExtRe.test(withoutAnchor)) return true;
+        return readerFileExtRe.test(withoutAnchor);
+      }
       reader.addEventListener('click', (e) => {
         const a = e.target.closest('a');
         if (!a) return;
@@ -2249,10 +2260,7 @@ function getClientScript(ctx) {
         // relative href without a leading slash still reaches handleOpenFile.
         const isAutoLink = a.classList && a.classList.contains('auto-link');
         if (isAutoLink
-            || /^file:\\/\\//i.test(href)
-            || href.startsWith('/')
-            || href.startsWith('~')
-            || /^[A-Za-z]:[\\\\/]/.test(href)) {
+            || isReaderPathHref(href)) {
           vscode.postMessage({ type: 'open-path', path: href });
           return;
         }

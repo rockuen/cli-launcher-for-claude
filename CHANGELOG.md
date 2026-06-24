@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.14.4] - 2026-06-24
+
+Fixes reader-pane file links for generated Markdown/HTML reports.
+
+### Fixed
+- **Reader markdown links now open files on click.** Relative links rendered from markdown, such as `[report](260624 report.html)` or `[notes](summary.md)`, now route through the same `open-path` handler used by auto-linked file mentions. This makes a normal click behave like selecting the path and choosing **Open File** from the context menu.
+- **Generated Korean report filenames with spaces are linked as whole files.** Date-prefixed filenames like `260624 모션베드 주요모터 수급 현황 종합.md · 260624 모션베드 주요모터 수급 현황 종합.html` are now auto-linked as complete filenames instead of only linking the last token.
+- **Encoded markdown hrefs are normalized before opening.** `%20` spaces and `#anchor` / query fragments are decoded or stripped before resolving the file path against the session cwd.
+
+### Tests
+- Added reader link coverage for date-prefixed Korean `.md` / `.html` filenames and generated webview-client parsing.
+
 ## [3.14.3] - 2026-06-22
 
 Fixes a macOS "keychain not found" dialog on every Antigravity launch under project-scoped session storage.

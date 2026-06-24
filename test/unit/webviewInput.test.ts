@@ -120,3 +120,16 @@ test('toolbar exposes an in-panel handoff button', () => {
   assert.ok(script.includes("document.getElementById('btn-handoff')"));
   assert.ok(script.includes("command: 'claudeCodeLauncher.handoffToOther'"));
 });
+
+test('generated webview client script parses', () => {
+  const script = renderClientScript();
+  assert.doesNotThrow(() => new Function(script));
+});
+
+test('reader links route relative markdown/html hrefs through open-path', () => {
+  const script = renderClientScript();
+
+  assert.ok(script.includes('function isReaderPathHref(href)'));
+  assert.ok(script.includes("vscode.postMessage({ type: 'open-path', path: href });"));
+  assert.match(script, /readerFileExtRe = \/\S*md\S*html\?/);
+});

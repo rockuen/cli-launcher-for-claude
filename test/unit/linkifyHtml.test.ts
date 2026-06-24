@@ -199,3 +199,12 @@ test('linkifyHtml: arbitrary noise around path does not break wrapping', () => {
   assert.match(out, /<a href="\/two\.md" class="auto-link">\/two\.md<\/a>!/);
   assert.match(out, /<a href="\/three\.md" class="auto-link">\/three\.md<\/a>\./);
 });
+
+test('linkifyHtml: date-prefixed Korean filenames with spaces are linked whole', () => {
+  const md = '260624 모션베드 주요모터 수급 현황 종합.md';
+  const html = '260624 모션베드 주요모터 수급 현황 종합.html';
+  const out = linkifyHtml(`${md} · ${html}`);
+  assert.equal(countAnchors(out), 2);
+  assert.match(out, new RegExp(`<a href="${md}" class="auto-link">${md}</a> · `));
+  assert.match(out, new RegExp(`<a href="${html}" class="auto-link">${html}</a>`));
+});
