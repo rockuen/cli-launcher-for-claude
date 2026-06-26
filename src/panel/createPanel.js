@@ -35,6 +35,7 @@ const { resolveSessionAgent } = require('../lib/resolveSessionAgent');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
+const { claudeEffortArgs } = require('../lib/claudeEffort');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -719,7 +720,7 @@ function createPanel(context, extensionPath, session, opts) {
     const claudeArgs = session?.sessionId
       ? ['--resume', session.sessionId]
       : ['--session-id', sessionId];
-    args = [...resolved.args, ...claudeArgs, ...(autoEffortMax ? ['--effort', 'max'] : []), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
+    args = [...resolved.args, ...claudeArgs, ...claudeEffortArgs(config), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
   }
 
   // Multiplexer wrap: keep the webview UI, but spawn an attached tmux/psmux

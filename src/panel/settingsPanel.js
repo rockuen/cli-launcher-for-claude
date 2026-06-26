@@ -630,7 +630,32 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             lab.appendChild(txt);
             main.appendChild(lab);
           };
-          addClaudeFlag(GLOBALS.autoEffortMax, 'Effort max (--effort max)', 'Start Claude sessions at maximum effort (--effort max). Applies to newly opened and restarted Claude sessions.', 'autoEffortMax');
+          // Effort dropdown — pick the startup reasoning effort. auto = no
+          // --effort flag (Claude default). Other values map straight to
+          // --effort value. Applies to newly opened and restarted sessions.
+          const addClaudeSelect = (key, label, initial, options, title) => {
+            const wrap = document.createElement('label');
+            wrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+            wrap.title = title;
+            const txt = document.createElement('span');
+            txt.textContent = label;
+            const sel = document.createElement('select');
+            sel.style.cssText = 'height:26px;min-width:130px;margin-left:8px;';
+            options.forEach(value => {
+              const opt = document.createElement('option');
+              opt.value = value;
+              opt.textContent = value;
+              sel.appendChild(opt);
+            });
+            sel.value = options.includes(initial) ? initial : options[0];
+            sel.addEventListener('change', () => {
+              vscode.postMessage({ type: 'set-global', key, value: sel.value });
+            });
+            wrap.appendChild(txt);
+            wrap.appendChild(sel);
+            main.appendChild(wrap);
+          };
+          addClaudeSelect('claude.effort', 'Effort (--effort)', GLOBALS.claudeEffort || 'auto', ['auto', 'low', 'medium', 'high', 'xhigh', 'max'], 'Startup reasoning effort for Claude sessions. auto uses the Claude default (no --effort flag); other values launch with --effort <level>. Applies to newly opened and restarted Claude sessions.');
           addClaudeFlag(GLOBALS.claudeBypassPermissions, 'Bypass permissions (--dangerously-skip-permissions)', 'Start Claude sessions in bypass-permissions mode (--dangerously-skip-permissions), skipping tool/permission prompts. Use with care. Applies to newly opened and restarted Claude sessions.', 'claude.bypassPermissions');
         }
 
@@ -871,7 +896,7 @@ function openGlobalSettings(context) {
   const globals = {
     defaultBackend: cfg.get('terminal.defaultBackend', 'webview'),
     multiplexerLifecycle: cfg.get('terminal.multiplexerLifecycle', 'kill-on-close'),
-    autoEffortMax: cfg.get('autoEffortMax', false),
+    claudeEffort: cfg.get('claude.effort', 'auto'),
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
@@ -898,7 +923,7 @@ function openGlobalSettings(context) {
     'enabledAgents',
     'terminal.defaultBackend',
     'terminal.multiplexerLifecycle',
-    'autoEffortMax',
+    'claude.effort',
     'claude.bypassPermissions',
     'kiro.trustAllTools',
     'antigravity.trustAllTools',

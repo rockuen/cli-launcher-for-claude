@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.15.0] - 2026-06-26
+
+Pick the Claude startup effort level, not just on/off max.
+
+### Added
+- **Effort dropdown for Claude sessions.** CLI Launcher Settings → Agent (Claude) now offers an **Effort (--effort)** selector with `auto · low · medium · high · xhigh · max` instead of the single "Effort max" checkbox. The chosen level is passed as `--effort <level>` to newly opened and restarted Claude sessions; `auto` passes no flag and uses Claude's default. Backed by the new `claudeCodeLauncher.claude.effort` setting. Effort resolution is centralized in `src/lib/claudeEffort.js` and shared by fresh spawns and restarts.
+  - Values match what the Claude CLI accepts (`low, medium, high, xhigh, max`); unknown values like `auto`/`ultracode` are intentionally not sent as flags.
+
+### Changed
+- **`claudeCodeLauncher.autoEffortMax` is deprecated** in favor of `claudeCodeLauncher.claude.effort`. Existing setups are preserved: when `claude.effort` is left at `auto` and the legacy boolean was on, sessions still launch with `--effort max`.
+
 ## [3.14.5] - 2026-06-24
 
 Fixes a Windows Codex startup popup from the launcher.

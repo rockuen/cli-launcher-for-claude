@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.14.5",
+  "version": "3.15.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1079,10 +1079,24 @@
           "default": true,
           "description": "Enable background particle effects."
         },
+        "claudeCodeLauncher.claude.effort": {
+          "type": "string",
+          "enum": ["auto", "low", "medium", "high", "xhigh", "max"],
+          "enumDescriptions": [
+            "Use Claude's default effort (no --effort flag)",
+            "--effort low",
+            "--effort medium",
+            "--effort high",
+            "--effort xhigh",
+            "--effort max (maximum effort)"
+          ],
+          "default": "auto",
+          "description": "Startup reasoning effort for Claude sessions, passed as '--effort <level>'. 'auto' uses Claude's default (no flag). Choose in CLI Launcher Settings → Agent. Applies to newly opened and restarted Claude sessions."
+        },
         "claudeCodeLauncher.autoEffortMax": {
           "type": "boolean",
           "default": false,
-          "description": "Launch Claude sessions with '--effort max' (maximum effort). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Claude sessions."
+          "description": "Deprecated — use 'claudeCodeLauncher.claude.effort' instead. When 'claude.effort' is left at 'auto', this legacy flag still launches Claude sessions with '--effort max'."
         },
         "claudeCodeLauncher.claude.bypassPermissions": {
           "type": "boolean",

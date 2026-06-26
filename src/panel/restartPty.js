@@ -12,6 +12,7 @@ const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
 const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
+const { claudeEffortArgs } = require('../lib/claudeEffort');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 
 const IDLE_DELAY_MS = 3000;
@@ -166,9 +167,8 @@ function restartPty(entry, panel, context, extensionPath) {
     }
     shell = resolved.shell;
     const claudeCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
-    const autoEffortMax = claudeCfg.get('autoEffortMax', false);
     const bypassPermissions = claudeCfg.get('claude.bypassPermissions', false);
-    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...(autoEffortMax ? ['--effort', 'max'] : []), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
+    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...claudeEffortArgs(claudeCfg), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
   }
 
   // Kill old PTY before spawning new one to prevent orphaned processes.
