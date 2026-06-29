@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.17.1] - 2026-06-29
+
+Fix: settings panel failed to open ("Unexpected identifier 'gjc'") in 3.17.0.
+
+### Fixed
+- **Settings panel crash from the Telegram section.** The Gajae Telegram block added in 3.17.0 had a code comment inside the webview-script template literal that used backticks (`` `gjc notify setup` ``), which prematurely closed the template literal and made `src/panel/settingsPanel.js` throw `SyntaxError: Unexpected identifier 'gjc'` when the settings panel was opened. The comment no longer uses backticks. The Telegram feature, commands, and settings are otherwise unchanged from 3.17.0.
+
+### Tests
+- New `test/unit/sourceSyntax.test.ts` runs `node --check` on every `src/**/*.js`. The build's `tsc` only covers `src/**/*.ts` (`allowJs:false`), so embedded webview-script template literals were never syntax-checked; this guard fails CI on the exact class of error that shipped in 3.17.0. Full suite green (node:test 444 + vitest 54).
+
 ## [3.17.0] - 2026-06-29
 
 Optional Telegram notifications for Gajae (gjc), off by default.

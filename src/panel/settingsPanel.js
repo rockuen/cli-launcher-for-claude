@@ -528,10 +528,12 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(approve);
         }
 
-        // gjc-only: Telegram notifications (thin wrapper over gjc's native daemon).
-        // Buttons run the launcher commands which delegate to `gjc notify setup` /
-        // `gjc config set notifications.enabled false`. The daemon lifecycle, single
+        // gjc-only: Telegram notifications (thin wrapper over the native gjc daemon).
+        // Buttons run the launcher commands which delegate to gjc notify setup /
+        // gjc config set notifications.enabled false. The daemon lifecycle, single
         // long-poll owner per token, and idle cleanup are owned by gjc, not here.
+        // NOTE: this block is inside a webview-script template literal, so it must
+        // never contain backticks or dollar-brace; that would break the literal.
         if (a.id === 'gjc') {
           const tgWrap = document.createElement('div');
           tgWrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
