@@ -19,7 +19,7 @@ const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
 const { buildRenamePrefill } = require('./lib/renamePrefix');
 const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions } = require('./lib/sessionJsonl');
-const { getKiroSessionsDir } = require('./lib/projectSessions');
+const { getKiroSessionsDir, ensureClaudeSessionLink, isProjectSessionStorageEnabled } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, deviceLocalSet, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
@@ -41,6 +41,16 @@ function activate(context) {
 
   // Migrate legacy workspaceState data to JSON file
   migrateFromWorkspaceState(context);
+
+  // Self-heal the Claude session link so Mac/Windows share sessions via git.
+  // Claude always writes to ~/.claude/projects/<encoded-cwd>; when project-scoped
+  // storage is on, route that folder into the git-tracked
+  // <ws>/.agent-sessions/claude (repairs split-brain: real dir / OneDrive /
+  // stale link). Best-effort — never blocks activation.
+  try {
+    const wsCwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+    if (wsCwd && isProjectSessionStorageEnabled()) ensureClaudeSessionLink(wsCwd);
+  } catch (_) {}
 
   state.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   state.statusBar.command = 'claudeCodeLauncher.open';

@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.17.0] - 2026-06-29
+
+Claude sessions now sync across devices (Mac ↔ Windows) on their own — no more "I worked on my Mac, pushed, and nothing shows on Windows."
+
+### Fixed
+- **Claude sessions silently not syncing across machines (split-brain).** Every agent except Claude is already routed into `<workspace>/.agent-sessions/<agent>` via env vars, so its sessions ride along with `git push`/`pull`. Claude Code is the exception: it always writes to `~/.claude/projects/<encoded-cwd>/`, and the only thing routing that into the git-tracked vault was a hand-made symlink (e.g. from `setup-links.sh`). That link drifts into "split-brain" and silently stops a device from syncing — Claude creates a **real** dir before any link exists, or an old link points at **OneDrive** / a stale path. The device's new sessions then never reach git and never appear on the other machine.
+- When project-scoped storage is enabled (`claudeCodeLauncher.sessionStorage.scope` = `project`), the launcher now **self-heals** that folder on every Claude launch and once at activation: it routes `~/.claude/projects/<encoded-cwd>` to `<workspace>/.agent-sessions/claude`, rescuing any sessions found in a pre-link real dir or a stale/OneDrive link target into the vault **first** (no-clobber, no data loss; real dirs are renamed aside as `.pre-link-*` backups, never deleted). Already-correct links are a no-op.
+
+### Implementation
+- New best-effort, idempotent `ensureClaudeSessionLink(cwd)` in `src/lib/projectSessions.js` (+ `claudeProjectFolderName` / `claudeProjectLinkPath`). Junction on Windows, symlink on macOS. Wired into `prepareProjectSessionEnvironment('claude', …)` (every Claude spawn/restart) and called once from `activate()`. Any failure leaves prior state intact so a launch never breaks.
+
+### Tests
+- `test/unit/projectSessions.test.ts` (5 new cases): cwd→folder encoding, fresh link create + idempotent re-run, pre-link real-dir rescue, foreign/OneDrive link repair, and the `prepareProjectSessionEnvironment('claude')` launch path — all exercising real junctions on Windows.
+
 ## [3.16.0] - 2026-06-29
 
 Pre-fill the session rename box with today's date.

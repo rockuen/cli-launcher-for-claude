@@ -303,6 +303,129 @@ function _applyChiefEnvironment(env, cwd) {
   env.CHIEF_PROFILE = profile || env.CHIEF_PROFILE || 'general';
 }
 
+// ── Claude session link self-heal ──────────────────────────────────────────
+//
+// Every agent EXCEPT Claude is relocated into <ws>/.agent-sessions via env vars
+// in prepareProjectSessionEnvironment(). Claude Code has no such knob: it ALWAYS
+// writes sessions to ~/.claude/projects/<encoded-cwd>/<id>.jsonl, where
+// <encoded-cwd> folds every non-alphanumeric char of the absolute cwd to '-'.
+// The vault-git sync model therefore needs that folder to be a junction(win)/
+// symlink(mac) pointing at the git-tracked <ws>/.agent-sessions/claude. A
+// hand-made setup-links.sh link does this, but it drifts into "split-brain"
+// that silently stops a device from syncing:
+//   • Claude creates a REAL dir before any link exists, OR
+//   • an old link points at OneDrive / a stale path.
+// Either way that device's new sessions never reach git and never show on the
+// other device. ensureClaudeSessionLink() repairs all of these, idempotently.
+
+// Claude's project-folder name for a cwd (matches SessionTreeDataProvider's
+// _getProjectDir and the empirically-verified Claude Code encoding).
+function claudeProjectFolderName(cwd) {
+  return String(cwd || '').replace(/[^a-zA-Z0-9]/g, '-');
+}
+
+function claudeProjectLinkPath(cwd) {
+  return path.join(os.homedir(), '.claude', 'projects', claudeProjectFolderName(cwd));
+}
+
+function _stampSuffix() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function _createDirLink(linkPath, target) {
+  fs.symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+}
+
+// True when linkPath and target resolve to the same real directory (case-fold
+// on Windows). Used to detect an already-correct link.
+function _resolvesTo(linkPath, target) {
+  try {
+    const a = fs.realpathSync(linkPath);
+    let b = target;
+    try { b = fs.realpathSync(target); } catch (_) {}
+    const norm = (p) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+    return norm(a) === norm(b);
+  } catch (_) {
+    return false;
+  }
+}
+
+// Recursively copy files from src into dst WITHOUT overwriting any existing dst
+// file (no data loss — a session already synced into the vault always wins).
+// Best-effort; rescues sessions out of a stale link target / pre-link real dir
+// into the git-tracked vault folder. Returns the number of files copied.
+function _mergeCopyNoClobber(src, dst) {
+  let entries;
+  try { entries = fs.readdirSync(src, { withFileTypes: true }); } catch (_) { return 0; }
+  let copied = 0;
+  _mkdirp(dst);
+  for (const ent of entries) {
+    const s = path.join(src, ent.name);
+    const d = path.join(dst, ent.name);
+    try {
+      if (ent.isDirectory()) {
+        copied += _mergeCopyNoClobber(s, d);
+      } else if (ent.isFile()) {
+        if (!fs.existsSync(d)) { fs.copyFileSync(s, d); copied++; }
+      }
+      // symlinks inside a session dir are skipped (rare; avoids link loops)
+    } catch (_) {}
+  }
+  return copied;
+}
+
+// Ensure ~/.claude/projects/<encoded-cwd> routes into <ws>/.agent-sessions/claude.
+// Idempotent + best-effort: any failure leaves the prior state intact so a
+// launch never breaks. Returns a small status object (consumed by tests/logs).
+function ensureClaudeSessionLink(cwd) {
+  const root = projectSessionRoot(cwd);
+  if (!root) return { changed: false, state: 'no-cwd' };
+  const target = path.join(root, 'claude');
+  const linkPath = claudeProjectLinkPath(cwd);
+  try {
+    _mkdirp(target);
+    _mkdirp(path.dirname(linkPath));
+
+    let st = null;
+    try { st = fs.lstatSync(linkPath); } catch (_) { st = null; }
+
+    if (st && st.isSymbolicLink()) {
+      if (_resolvesTo(linkPath, target)) return { changed: false, state: 'ok' };
+      // Foreign/stale link (e.g. OneDrive) — rescue its sessions, then relink.
+      let dest = null;
+      try { dest = fs.realpathSync(linkPath); } catch (_) {}
+      if (dest) _mergeCopyNoClobber(dest, target);
+      try { fs.unlinkSync(linkPath); } catch (_) { try { fs.rmdirSync(linkPath); } catch (__) {} }
+      _createDirLink(linkPath, target);
+      return { changed: true, state: 'relinked-foreign' };
+    }
+
+    if (st && st.isDirectory()) {
+      // Real dir Claude created before any link existed. Merge into the vault
+      // (no-clobber), move the dir aside as a backup, then link.
+      _mergeCopyNoClobber(linkPath, target);
+      const bak = path.join(path.dirname(linkPath), '.' + path.basename(linkPath) + '.pre-link-' + _stampSuffix());
+      try { fs.renameSync(linkPath, bak); }
+      catch (_) { return { changed: true, state: 'merged-no-relink' }; }
+      _createDirLink(linkPath, target);
+      return { changed: true, state: 'relinked-realdir' };
+    }
+
+    if (st) {
+      // A file (or other node) sits where the project dir should be — back it up.
+      try { fs.renameSync(linkPath, linkPath + '.pre-link-' + _stampSuffix()); }
+      catch (_) { return { changed: false, state: 'blocked' }; }
+      _createDirLink(linkPath, target);
+      return { changed: true, state: 'relinked-file' };
+    }
+
+    _createDirLink(linkPath, target);
+    return { changed: true, state: 'created' };
+  } catch (e) {
+    return { changed: false, state: 'error', error: String((e && e.message) || e) };
+  }
+}
+
 function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
   const env = { ...(baseEnv || process.env) };
   if (agent === 'chief') {
@@ -328,6 +451,11 @@ function prepareProjectSessionEnvironment(agent, cwd, baseEnv) {
       env.GROK_HOME = _prepareGrokHome(cwd);
     } else if (agent === 'gjc') {
       env.GJC_CODING_AGENT_DIR = _prepareGjcHome(cwd);
+    } else if (agent === 'claude') {
+      // Claude is the only agent we can't relocate via env — it always writes
+      // to ~/.claude/projects/<encoded-cwd>. Route that folder into the vault so
+      // Claude sessions sync across devices (see ensureClaudeSessionLink).
+      ensureClaudeSessionLink(cwd);
     }
   } catch (_) {}
   return env;
@@ -400,6 +528,9 @@ module.exports = {
   gjcAgentDir,
   gjcSessionsDir,
   prepareProjectSessionEnvironment,
+  ensureClaudeSessionLink,
+  claudeProjectFolderName,
+  claudeProjectLinkPath,
   getCodexPaths,
   getKiroSessionsDir,
   getAntigravityBaseDir,

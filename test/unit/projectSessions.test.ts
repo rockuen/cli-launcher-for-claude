@@ -147,3 +147,114 @@ test('panel and restart paths pass project session env to PTY spawn', () => {
   assert.ok(backend.includes('function spawnEnv(extraEnv)'));
   assert.ok(backend.includes('...(extraEnv || {})'));
 });
+
+// ── Claude session link self-heal (cross-device Mac↔Windows sync) ───────────
+// Claude Code always writes to ~/.claude/projects/<encoded-cwd>; the vault-git
+// sync model needs that folder linked into <ws>/.agent-sessions/claude.
+// ensureClaudeSessionLink() repairs the link on launch so both machines share
+// sessions. We patch the real os singleton so we never touch the real ~/.claude.
+function withFakeHome(fakeHome: string, fn: () => void) {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const osReq = require('os');
+  const orig = osReq.homedir;
+  osReq.homedir = () => fakeHome;
+  try { fn(); } finally { osReq.homedir = orig; }
+}
+
+test('claudeProjectFolderName matches Claude Code cwd encoding', () => {
+  withProjectSessions('project', (mod) => {
+    assert.equal(mod.claudeProjectFolderName("c:\\obsidian\\Won's 2nd Brain"), 'c--obsidian-Won-s-2nd-Brain');
+    assert.equal(mod.claudeProjectFolderName("/Users/rockuen/obsidian/Won's 2nd Brain"), '-Users-rockuen-obsidian-Won-s-2nd-Brain');
+  });
+});
+
+test('ensureClaudeSessionLink creates the link, then is idempotent', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ws-'));
+  withFakeHome(fakeHome, () => {
+    withProjectSessions('project', (mod) => {
+      const target = path.join(cwd, '.agent-sessions', 'claude');
+      const linkPath = mod.claudeProjectLinkPath(cwd);
+
+      const r1 = mod.ensureClaudeSessionLink(cwd);
+      assert.equal(r1.state, 'created');
+      assert.equal(fs.existsSync(target), true);
+      assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), true);
+      assert.equal(fs.realpathSync(linkPath), fs.realpathSync(target));
+
+      const r2 = mod.ensureClaudeSessionLink(cwd);
+      assert.equal(r2.state, 'ok');
+      assert.equal(r2.changed, false);
+    });
+  });
+  fs.rmSync(fakeHome, { recursive: true, force: true });
+  fs.rmSync(cwd, { recursive: true, force: true });
+});
+
+test('ensureClaudeSessionLink rescues a pre-link REAL dir into the vault', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ws-'));
+  withFakeHome(fakeHome, () => {
+    withProjectSessions('project', (mod) => {
+      const target = path.join(cwd, '.agent-sessions', 'claude');
+      const linkPath = mod.claudeProjectLinkPath(cwd);
+      // Claude wrote a session into a REAL projects dir before any link existed.
+      fs.mkdirSync(linkPath, { recursive: true });
+      fs.writeFileSync(path.join(linkPath, 'mac-session.jsonl'), '{"cwd":"x"}\n');
+
+      const r = mod.ensureClaudeSessionLink(cwd);
+      assert.equal(r.state, 'relinked-realdir');
+      // session migrated into the git-tracked vault (no data loss)
+      assert.equal(fs.existsSync(path.join(target, 'mac-session.jsonl')), true);
+      // link path is now a symlink → vault
+      assert.equal(fs.lstatSync(linkPath).isSymbolicLink(), true);
+      assert.equal(fs.realpathSync(linkPath), fs.realpathSync(target));
+      // original dir preserved as a backup (never destructively deleted)
+      const backups = fs.readdirSync(path.dirname(linkPath)).filter((n) => n.includes('.pre-link-'));
+      assert.equal(backups.length >= 1, true);
+    });
+  });
+  fs.rmSync(fakeHome, { recursive: true, force: true });
+  fs.rmSync(cwd, { recursive: true, force: true });
+});
+
+test('ensureClaudeSessionLink repairs a foreign (OneDrive-style) link', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ws-'));
+  const oneDrive = fs.mkdtempSync(path.join(os.tmpdir(), 'onedrive-claude-'));
+  fs.writeFileSync(path.join(oneDrive, 'foreign.jsonl'), '{"cwd":"y"}\n');
+  withFakeHome(fakeHome, () => {
+    withProjectSessions('project', (mod) => {
+      const target = path.join(cwd, '.agent-sessions', 'claude');
+      const linkPath = mod.claudeProjectLinkPath(cwd);
+      fs.mkdirSync(path.dirname(linkPath), { recursive: true });
+      fs.symlinkSync(oneDrive, linkPath, process.platform === 'win32' ? 'junction' : 'dir');
+
+      const r = mod.ensureClaudeSessionLink(cwd);
+      assert.equal(r.state, 'relinked-foreign');
+      // foreign-only session rescued into the vault before relinking
+      assert.equal(fs.existsSync(path.join(target, 'foreign.jsonl')), true);
+      assert.equal(fs.realpathSync(linkPath), fs.realpathSync(target));
+    });
+  });
+  fs.rmSync(fakeHome, { recursive: true, force: true });
+  fs.rmSync(cwd, { recursive: true, force: true });
+  fs.rmSync(oneDrive, { recursive: true, force: true });
+});
+
+test('prepareProjectSessionEnvironment routes the Claude project link on launch', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-home-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-ws-'));
+  withFakeHome(fakeHome, () => {
+    withProjectSessions('project', (mod) => {
+      const env = mod.prepareProjectSessionEnvironment('claude', cwd, { KEEP: '1' });
+      assert.equal(env.KEEP, '1'); // claude needs no env relocation
+      const linkPath = mod.claudeProjectLinkPath(cwd);
+      const target = path.join(cwd, '.agent-sessions', 'claude');
+      assert.equal(fs.existsSync(linkPath), true, 'launching claude creates the project link');
+      assert.equal(fs.realpathSync(linkPath), fs.realpathSync(target));
+    });
+  });
+  fs.rmSync(fakeHome, { recursive: true, force: true });
+  fs.rmSync(cwd, { recursive: true, force: true });
+});
