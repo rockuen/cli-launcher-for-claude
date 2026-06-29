@@ -17,6 +17,7 @@ const fs = require('fs');
 const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
+const { buildRenamePrefill } = require('./lib/renamePrefix');
 const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions } = require('./lib/sessionJsonl');
 const { getKiroSessionsDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
@@ -228,9 +229,16 @@ function activate(context) {
         vscode.window.showWarningMessage(t('noActiveTab'));
         return;
       }
+      const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+      const prefill = buildRenamePrefill({
+        enabled: cfg.get('renamePrefix.enabled', false),
+        format: cfg.get('renamePrefix.format', 'YYMMDD_'),
+        existing: activeEntry.title
+      });
       const newName = await vscode.window.showInputBox({
         prompt: t('enterTabName'),
-        value: activeEntry.title
+        value: prefill.value,
+        valueSelection: prefill.valueSelection
       });
       if (newName) {
         activeEntry.title = newName;
@@ -910,9 +918,16 @@ function activate(context) {
       if (!prov || !id) return;
       const titlesKey = prov._storeKey('titles');
       const titles = sessionStoreGet(titlesKey, {});
+      const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+      const prefill = buildRenamePrefill({
+        enabled: cfg.get('renamePrefix.enabled', false),
+        format: cfg.get('renamePrefix.format', 'YYMMDD_'),
+        existing: titles[id] || ''
+      });
       const name = await vscode.window.showInputBox({
         prompt: 'Session name (leave empty to clear)',
-        value: titles[id] || ''
+        value: prefill.value,
+        valueSelection: prefill.valueSelection
       });
       if (name === undefined) return; // cancelled
       const trimmed = name.trim();

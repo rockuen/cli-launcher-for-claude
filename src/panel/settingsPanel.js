@@ -279,6 +279,16 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             <option value="detached">Leave detached</option>
           </select>
         </div>
+        <div class="field">
+          <div class="field-label">Session Rename Prefix</div>
+          <div class="field-desc">Pre-fill the rename box (tab title click or sidebar "Rename Session") with a date-based prefix, so you can name sessions like <code>260629_my-task</code> in one step. The existing name is selected after the prefix — type to replace it, or press → to keep it. Off by default.</div>
+          <label class="g-toggle" id="set-rename-prefix-enabled"><span class="track"></span><span>Enabled</span></label>
+        </div>
+        <div class="field">
+          <div class="field-label">Rename Prefix Format</div>
+          <div class="field-desc">Template applied when the prefix is enabled. Date tokens: <code>YYYY</code> <code>YY</code> <code>MM</code> <code>DD</code> <code>HH</code> <code>mm</code> <code>ss</code>. Everything else is literal. Example: <code>YYMMDD_</code> → <code>260629_</code>.</div>
+          <input type="text" class="g-input" id="set-rename-prefix-format" placeholder="YYMMDD_" style="width:100%;max-width:280px;">
+        </div>
       </div>
 
       <div class="panel" data-cat="sync">
@@ -741,6 +751,20 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
       });
     }
 
+    // Session rename prefix — toggle (wireToggle is hoisted) + format text box.
+    wireToggle('set-rename-prefix-enabled', 'renamePrefix.enabled', GLOBALS.renamePrefixEnabled);
+    const setRenamePrefixFormat = document.getElementById('set-rename-prefix-format');
+    if (setRenamePrefixFormat) {
+      setRenamePrefixFormat.value = GLOBALS.renamePrefixFormat || '';
+      let rpfTimer = null;
+      setRenamePrefixFormat.addEventListener('input', () => {
+        clearTimeout(rpfTimer);
+        rpfTimer = setTimeout(() => {
+          setGlobal('renamePrefix.format', setRenamePrefixFormat.value);
+        }, 500);
+      });
+    }
+
     function wireToggle(id, key, initial) {
       const el = document.getElementById(id);
       if (!el) return;
@@ -896,6 +920,8 @@ function openGlobalSettings(context) {
   const globals = {
     defaultBackend: cfg.get('terminal.defaultBackend', 'webview'),
     multiplexerLifecycle: cfg.get('terminal.multiplexerLifecycle', 'kill-on-close'),
+    renamePrefixEnabled: cfg.get('renamePrefix.enabled', false),
+    renamePrefixFormat: cfg.get('renamePrefix.format', 'YYMMDD_'),
     claudeEffort: cfg.get('claude.effort', 'auto'),
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
@@ -923,6 +949,8 @@ function openGlobalSettings(context) {
     'enabledAgents',
     'terminal.defaultBackend',
     'terminal.multiplexerLifecycle',
+    'renamePrefix.enabled',
+    'renamePrefix.format',
     'claude.effort',
     'claude.bypassPermissions',
     'kiro.trustAllTools',

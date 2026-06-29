@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.15.0",
+  "version": "3.16.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1064,6 +1064,16 @@
           "maximum": 24,
           "description": "Font size (px) for the reader pane (split layout). Child elements (timestamps, metadata, code blocks) scale proportionally via em. Range: 10–24."
         },
+        "claudeCodeLauncher.renamePrefix.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pre-fill the session rename box with a date-based prefix so you can name sessions like '260629_my-task' in one step. The existing name (if any) is selected after the prefix, so typing replaces it. Off by default."
+        },
+        "claudeCodeLauncher.renamePrefix.format": {
+          "type": "string",
+          "default": "YYMMDD_",
+          "description": "Template used for the rename prefix when 'renamePrefix.enabled' is on. Date tokens: YYYY (4-digit year), YY (2-digit year), MM (month), DD (day), HH (24h hour), mm (minute), ss (second). Everything else is kept literally. Example: 'YYMMDD_' → '260629_'."
+        },
         "claudeCodeLauncher.defaultFontFamily": {
           "type": "string",
           "default": "\"D2Coding\", \"D2Coding ligature\", Consolas, monospace",
@@ -1081,7 +1091,14 @@
         },
         "claudeCodeLauncher.claude.effort": {
           "type": "string",
-          "enum": ["auto", "low", "medium", "high", "xhigh", "max"],
+          "enum": [
+            "auto",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
           "enumDescriptions": [
             "Use Claude's default effort (no --effort flag)",
             "--effort low",

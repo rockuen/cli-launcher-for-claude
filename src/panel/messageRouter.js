@@ -17,6 +17,7 @@ const { t } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { saveSessions } = require('../store/sessionManager');
 const { listAntigravitySessions } = require('../lib/sessionJsonl');
+const { buildRenamePrefill } = require('../lib/renamePrefix');
 const { writePtyChunked } = require('../pty/write');
 const { handleToolbar } = require('../handlers/toolbar');
 const { pickAgent } = require('../handlers/pickAgent');
@@ -131,8 +132,14 @@ function routeWebviewMessage(msg, ctx) {
       }
       return;
 
-    case 'rename-tab':
-      vscode.window.showInputBox({ prompt: t('enterTabName'), value: entry.title }).then(newName => {
+    case 'rename-tab': {
+      const rpCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+      const rpPrefill = buildRenamePrefill({
+        enabled: rpCfg.get('renamePrefix.enabled', false),
+        format: rpCfg.get('renamePrefix.format', 'YYMMDD_'),
+        existing: entry.title
+      });
+      vscode.window.showInputBox({ prompt: t('enterTabName'), value: rpPrefill.value, valueSelection: rpPrefill.valueSelection }).then(newName => {
         if (newName) {
           entry.title = newName;
           panel.title = newName;
@@ -151,6 +158,7 @@ function routeWebviewMessage(msg, ctx) {
         }
       });
       return;
+    }
 
     case 'save-setting': {
       const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');

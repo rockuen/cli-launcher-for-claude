@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.16.0] - 2026-06-29
+
+Pre-fill the session rename box with today's date.
+
+### Added
+- **Date prefix for session renames.** A new opt-in setting pre-fills the rename input with a date-based prefix, so a session can be named like `260629_my-task` in one step. Works across every rename surface: the **Rename Claude Code Tab** command, clicking a panel's title to rename it, and the sidebar **Rename Session** action. Off by default.
+  - **`claudeCodeLauncher.renamePrefix.enabled`** (boolean, default `false`) — turns the prefill on.
+  - **`claudeCodeLauncher.renamePrefix.format`** (string, default `YYMMDD_`) — the editable template. Date tokens `YYYY YY MM DD HH mm ss` are substituted from the current date/time; everything else is kept literally (e.g. `YYMMDD_` → `260629_`).
+  - Both are also exposed in CLI Launcher Settings → **General → Session Rename Prefix** (toggle + format field).
+  - **Non-destructive:** the existing name (if any) is selected right after the prefix, so typing replaces it while pressing → / End keeps it. Renaming an unnamed session just parks the cursor after the prefix.
+
+### Implementation
+- New pure helper `src/lib/renamePrefix.js` (`formatDatePattern` + `buildRenamePrefill`) builds the `{ value, valueSelection }` fed to `showInputBox`. Token substitution is single-pass with `YYYY` taking precedence over `YY`. Wired into `activation.js` (tab + sidebar rename), `panel/messageRouter.js` (webview title-click rename), and `panel/settingsPanel.js` (General category UI + write allowlist).
+
+### Tests
+- `test/unit/renamePrefix.test.ts` (11 cases): token substitution, single-pass `YYYY`/`YY` precedence, literal preservation, disabled passthrough, and the selection math. Extended `settingsPanel.test.ts` to guard that the new settings are surfaced, loaded, and allowlisted for webview writes.
+
 ## [3.15.0] - 2026-06-26
 
 Pick the Claude startup effort level, not just on/off max.

@@ -24,3 +24,20 @@ test('Chief credential settings are loaded and allowed for writes', () => {
     assert.match(source, new RegExp(`'${key.replace('.', '\\.')}'`));
   }
 });
+
+test('rename prefix settings are surfaced, loaded, and allowed for writes', () => {
+  const source = readSource();
+
+  // General-panel controls present.
+  assert.match(source, /id="set-rename-prefix-enabled"/);
+  assert.match(source, /id="set-rename-prefix-format"/);
+  // Wired to the right config keys (toggle + debounced text input).
+  assert.match(source, /wireToggle\('set-rename-prefix-enabled', 'renamePrefix\.enabled'/);
+  assert.match(source, /setGlobal\('renamePrefix\.format'/);
+  // Loaded into the globals payload.
+  assert.match(source, /cfg\.get\('renamePrefix\.enabled', false\)/);
+  assert.match(source, /cfg\.get\('renamePrefix\.format', 'YYMMDD_'\)/);
+  // Allowlisted so the webview write isn't silently dropped.
+  assert.match(source, /'renamePrefix\.enabled',/);
+  assert.match(source, /'renamePrefix\.format',/);
+});
