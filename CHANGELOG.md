@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.17.0] - 2026-06-29
+
+Optional Telegram notifications for Gajae (gjc), off by default.
+
+### Added
+- **Telegram notifications for gjc, opt-in.** A new CLI Launcher Settings → Agent (Gajae) section and command-palette entries wire gjc's native Telegram notifications from the launcher. Off by default; turn it on with **Gajae (gjc): Set up Telegram Notifications…** (prompts for bot token, chat id, and an optional redact toggle) and off with **Gajae (gjc): Disable Telegram Notifications**.
+  - The launcher is a **thin wrapper** — it only configures/detects. The background daemon, the single long-poll owner per bot token, and idle cleanup are owned by gjc, so two open projects share **one** daemon and memory does not grow per session/window.
+  - **ON** delegates to `gjc notify setup --token … --chat-id … [--redact]` (non-interactive, idempotent; the token is passed as an argv entry, never through a shell). **OFF** runs `gjc config set notifications.enabled false` (authoritative — blocks next-session auto-start); the launcher never calls `gjc daemon stop`, so an external terminal gjc session's daemon is never cut. The running daemon is cleaned up by gjc's `notifications.daemon.idleTimeoutMs` (default 60s).
+  - **`claudeCodeLauncher.gjc.telegram.enabled`** (boolean, default `false`) — UI mirror of the ON/OFF state.
+  - **`claudeCodeLauncher.gjc.telegram.redact`** (boolean, default `false`) — preferred redaction passed as `--redact` at setup.
+  - Requires gjc ≥ 0.7.0 (gated via `gjc --version` + `gjc daemon status --all --json` kind=telegram). The command-palette entries are hidden until a supporting gjc is detected (`claudeCodeLauncher.gjc.telegramSupported` context key); the Settings section is always shown and setup self-guards with a clear error on older gjc.
+  - **WARNING:** machine-global — the bot token and ON/OFF affect every gjc session on this machine, including gjc started outside the launcher. The Settings section and setting descriptions disclose this.
+
+### Implementation
+- New `src/handlers/telegramSettings.js` (only new module): async `detectTelegramSupport` (version + kind gate, activate-cached), `setupTelegram` / `promptAndSetupTelegram` (pre-guards + arg-array `notify setup` + OFF rollback), `disableTelegram` (`config set notifications.enabled false`), `telegramStatus`, plus pure helpers. Wired into `activation.js` (command registration + non-blocking detect → `claudeCodeLauncher.gjc.telegramSupported` context key), `package.json` (commands, settings, descriptions), and `panel/settingsPanel.js` (Gajae section buttons + machine-global disclosure + run-command allowlist). No reference-counting and no active `daemon stop` — lifecycle and singleton are delegated to gjc.
+
+### Tests
+- `test/unit/telegramSettings.test.ts` (6 cases): version parsing/gating, bot-token & chat-id validation, `notify setup` arg construction (no shell interpolation), and daemon-status telegram detection. Full suite green (node:test 443 + vitest 54).
+
+### Docs
+- `docs/gjc-telegram-memory-verification.md` — memory/singleton verification procedure and pass criteria (daemon count, RSS non-proportionality, idle CPU, idle cleanup, external-session protection).
+
 ## [3.16.0] - 2026-06-29
 
 Pre-fill the session rename box with today's date.

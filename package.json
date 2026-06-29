@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.16.0",
+  "version": "3.17.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -83,6 +83,18 @@
         "command": "claudeCodeLauncher.gjc.setupCredentials",
         "title": "Gajae (gjc): Log in / Import Subscriptions…",
         "icon": "$(key)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.gjc.telegram.setup",
+        "title": "Gajae (gjc): Set up Telegram Notifications…",
+        "icon": "$(bell)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.gjc.telegram.disable",
+        "title": "Gajae (gjc): Disable Telegram Notifications",
+        "icon": "$(bell-slash)",
         "category": "Claude"
       },
       {
@@ -413,6 +425,14 @@
     ],
     "menus": {
       "commandPalette": [
+        {
+          "command": "claudeCodeLauncher.gjc.telegram.setup",
+          "when": "claudeCodeLauncher.gjc.telegramSupported"
+        },
+        {
+          "command": "claudeCodeLauncher.gjc.telegram.disable",
+          "when": "claudeCodeLauncher.gjc.telegramSupported"
+        },
         {
           "command": "claudeCodeLauncher.newClaude",
           "when": "false"
@@ -1406,6 +1426,16 @@
           ],
           "default": "",
           "description": "Thinking (effort) level for NEW Gajae (gjc) sessions, passed as `gjc --thinking <value>`. gjc's effort knob (ultra|high|medium|low); empty uses gjc's default. This is gjc's equivalent of Claude's effort — Claude's '--effort max' (autoEffortMax) is never passed to gjc."
+        },
+        "claudeCodeLauncher.gjc.telegram.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mirror of the gjc Telegram notifications ON/OFF state (launcher UI source of truth). Turn it on/off via 'Gajae (gjc): Set up Telegram Notifications…' (runs `gjc notify setup`) or 'Disable' (runs `gjc config set notifications.enabled false`) — not by editing this flag directly. The background daemon, single-instance ownership (one long-poll owner per bot token), and idle cleanup are owned by gjc, not the launcher. WARNING: machine-global — the bot token and ON/OFF affect EVERY gjc session on this machine, including gjc started outside the launcher (e.g. a terminal)."
+        },
+        "claudeCodeLauncher.gjc.telegram.redact": {
+          "type": "boolean",
+          "default": false,
+          "description": "Preferred redaction for content sent to Telegram. When enabled, 'Set up Telegram Notifications…' passes `--redact` so gjc masks remote notification content (sets gjc `notifications.redact`). Off by default (matches gjc's default). Useful when session output may contain secrets or paths you don't want on your phone."
         },
         "claudeCodeLauncher.chief.apiKey": {
           "type": "string",

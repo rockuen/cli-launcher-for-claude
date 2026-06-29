@@ -528,6 +528,38 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(approve);
         }
 
+        // gjc-only: Telegram notifications (thin wrapper over gjc's native daemon).
+        // Buttons run the launcher commands which delegate to `gjc notify setup` /
+        // `gjc config set notifications.enabled false`. The daemon lifecycle, single
+        // long-poll owner per token, and idle cleanup are owned by gjc, not here.
+        if (a.id === 'gjc') {
+          const tgWrap = document.createElement('div');
+          tgWrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          tgWrap.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px;';
+          const tgTitle = document.createElement('span');
+          tgTitle.textContent = 'Telegram 알림 (gjc 데몬)';
+          tgTitle.style.cssText = 'font-weight:600;';
+          const tgDesc = document.createElement('span');
+          tgDesc.style.cssText = 'opacity:0.8;font-size:12px;max-width:540px;line-height:1.5;';
+          tgDesc.textContent = '폰에서 gjc 세션 알림을 받고 답장합니다. 기본 꺼짐. 백그라운드 데몬·단일 인스턴스(토큰당 1개)·유휴 정리는 gjc가 관리합니다. ⚠️ ON/OFF와 봇 토큰은 이 머신의 모든 gjc 세션(런처 밖 터미널 포함)에 영향합니다.';
+          const tgBtns = document.createElement('div');
+          tgBtns.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
+          const tgSetup = document.createElement('button');
+          tgSetup.textContent = '텔레그램 설정 / 켜기…';
+          tgSetup.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
+          tgSetup.addEventListener('click', () => runCommand('claudeCodeLauncher.gjc.telegram.setup'));
+          const tgDisable = document.createElement('button');
+          tgDisable.textContent = '끄기';
+          tgDisable.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
+          tgDisable.addEventListener('click', () => runCommand('claudeCodeLauncher.gjc.telegram.disable'));
+          tgBtns.appendChild(tgSetup);
+          tgBtns.appendChild(tgDisable);
+          tgWrap.appendChild(tgTitle);
+          tgWrap.appendChild(tgDesc);
+          tgWrap.appendChild(tgBtns);
+          main.appendChild(tgWrap);
+        }
+
         // Chief-only: credentials + public API routing presets. Chief does not
         // expose direct model or effort fields; intelligence/provider map to
         // /v1/chats request fields.
@@ -976,6 +1008,8 @@ function openGlobalSettings(context) {
     'claudeCodeLauncher.repoSync.setDeviceName',
     'claudeCodeLauncher.switchAccount',
     'claudeCodeLauncher.saveAccount',
+    'claudeCodeLauncher.gjc.telegram.setup',
+    'claudeCodeLauncher.gjc.telegram.disable',
   ]);
 
   panel.webview.onDidReceiveMessage((msg) => {

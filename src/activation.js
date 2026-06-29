@@ -31,6 +31,7 @@ const { setStatusBar } = require('./panel/statusIndicator');
 const { createPanel } = require('./panel/createPanel');
 const { pickAgent } = require('./handlers/pickAgent');
 const { pickGjcModel, setupGjcCredentials } = require('./handlers/gjcModel');
+const { promptAndSetupTelegram, disableTelegram: disableGjcTelegram, detectTelegramSupport } = require('./handlers/telegramSettings');
 const { listAgents } = require('./agents/registry');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
@@ -112,8 +113,15 @@ function activate(context) {
   // Credentials imports Claude/Codex logins + points at /login for the rest.
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.gjc.pickModel', () => pickGjcModel()),
-    vscode.commands.registerCommand('claudeCodeLauncher.gjc.setupCredentials', () => setupGjcCredentials())
+    vscode.commands.registerCommand('claudeCodeLauncher.gjc.setupCredentials', () => setupGjcCredentials()),
+    vscode.commands.registerCommand('claudeCodeLauncher.gjc.telegram.setup', () => promptAndSetupTelegram()),
+    vscode.commands.registerCommand('claudeCodeLauncher.gjc.telegram.disable', () => disableGjcTelegram())
   );
+
+  // gjc 텔레그램 지원 감지 → claudeCodeLauncher.gjc.telegramSupported 컨텍스트키 설정.
+  // 비동기·비블로킹(activate 임계경로 차단 금지). 데몬 수명주기·싱글톤·정리는 gjc가
+  // 소유하므로 런처는 감지/설정만 하고 능동 daemon stop·참조계수는 두지 않는다.
+  detectTelegramSupport().catch(() => {});
 
   // v3.6.15 — handoff: extract the current session's conversation and inject it
   // as context into a new tab running ANOTHER agent. v3.7.20 — the target is
