@@ -265,8 +265,12 @@ async function promptAndSetupTelegramChannel() {
   const headline = result.pluginInstallFailed
     ? '채널을 켰지만 텔레그램 플러그인 자동 설치가 확인되지 않았습니다. 페어링 전에 세션에서 /plugin install telegram@claude-plugins-official 로 설치를 확인하세요. '
     : 'Claude 텔레그램 채널이 구성됐습니다. 새 Claude 세션은 자동으로 --channels로 연결됩니다. ';
+  // 봇 1개는 한 번에 한 세션만 연결된다(텔레그램은 토큰당 long-poll 소비자 1개만 허용,
+  // 플러그인은 새 세션이 채널을 켜면 이전 세션의 폴러를 종료). 여러 세션 동시 사용은
+  // 세션마다 봇을 따로 만들어야 한다. 사용자가 조용히 끊기는 걸 모르지 않도록 안내한다.
+  const concurrencyNote = ' ⚠️ 봇 1개는 한 번에 한 세션만 연결됩니다(텔레그램 제약) — 다른 세션에서 채널을 켜면 이 세션 연결이 끊깁니다. 여러 세션을 동시에 쓰려면 세션마다 봇을 따로 만드세요.';
   const choice = await vscode.window.showInformationMessage(
-    headline + pairingSteps,
+    headline + pairingSteps + concurrencyNote,
     openNew, later,
   );
   if (choice === openNew) {

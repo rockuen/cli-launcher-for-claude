@@ -10,6 +10,7 @@ Optional Telegram **channel** for Claude — a two-way chat bridge, off by defau
   - **Pairing stays manual by design** (Anthropic gates it for security): after setup the wizard offers to open a channel-enabled session and guides you through the one-time pairing — message the bot from Telegram, then run `/telegram:access pair <code>` and `/telegram:access policy allowlist` inside the session.
   - **`claudeCodeLauncher.claude.channels.telegram.enabled`** (boolean, default `false`) — whether new Claude sessions launch with the Telegram channel. Managed by the wizard; also honored if set directly.
   - Requires Claude Code ≥ 2.1.80, Bun (channel plugins are Bun scripts), and claude.ai/Console auth (not on Bedrock/Vertex/Foundry). The wizard pre-guards the Claude version and warns (non-fatal) when Bun is missing.
+  - **One bot = one active session at a time.** Telegram allows a single long-poll consumer per token, and the official plugin SIGTERMs the previous poller when a new session starts the channel — so only the most recently started session receives messages (no broadcast). The wizard's completion notice, the settings description, and the Claude-card UI all state this; for concurrent multi-session use, create a separate bot per session.
   - **Security:** the bot token is never exposed to a shell/terminal history — plugin commands run via `execFile` (no shell), and the token is written only to the 0600 `.env` file; token strings are masked in any error message.
 
 ### Implementation

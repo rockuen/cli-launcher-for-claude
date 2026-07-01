@@ -544,7 +544,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           ctgTitle.style.cssText = 'font-weight:600;';
           const ctgDesc = document.createElement('span');
           ctgDesc.style.cssText = 'opacity:0.8;font-size:12px;max-width:540px;line-height:1.5;';
-          ctgDesc.textContent = '폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다(Claude Code 네이티브 channels, 연구 미리보기). 마법사가 플러그인 설치·봇 토큰 저장·세션 토글까지 자동 처리하고, 마지막 페어링만 세션 안에서(/telegram:access pair) 합니다. 전제: Claude Code 2.1.80+, Bun, claude.ai/Console 인증. gjc 알림과는 별개입니다.';
+          ctgDesc.textContent = '폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다(Claude Code 네이티브 channels, 연구 미리보기). 마법사가 플러그인 설치·봇 토큰 저장·세션 토글까지 자동 처리하고, 마지막 페어링만 세션 안에서(/telegram:access pair) 합니다. 전제: Claude Code 2.1.80+, Bun, claude.ai/Console 인증. gjc 알림과는 별개입니다. ⚠️ 봇 1개는 한 번에 한 세션만 연결됩니다(텔레그램 제약) — 다른 세션에서 채널을 켜면 이전 세션 연결이 끊깁니다. 여러 세션을 동시에 쓰려면 세션마다 봇을 따로 만드세요.';
           const ctgBtns = document.createElement('div');
           ctgBtns.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
           const ctgSetup = document.createElement('button');
