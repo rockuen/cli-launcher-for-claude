@@ -32,6 +32,7 @@ const { createPanel } = require('./panel/createPanel');
 const { pickAgent } = require('./handlers/pickAgent');
 const { pickGjcModel, setupGjcCredentials } = require('./handlers/gjcModel');
 const { promptAndSetupTelegram, disableTelegram: disableGjcTelegram, detectTelegramSupport } = require('./handlers/telegramSettings');
+const { promptAndSetupTelegramChannel, disableTelegramChannel } = require('./handlers/claudeChannelSetup');
 const { listAgents } = require('./agents/registry');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
@@ -115,7 +116,11 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.gjc.pickModel', () => pickGjcModel()),
     vscode.commands.registerCommand('claudeCodeLauncher.gjc.setupCredentials', () => setupGjcCredentials()),
     vscode.commands.registerCommand('claudeCodeLauncher.gjc.telegram.setup', () => promptAndSetupTelegram()),
-    vscode.commands.registerCommand('claudeCodeLauncher.gjc.telegram.disable', () => disableGjcTelegram())
+    vscode.commands.registerCommand('claudeCodeLauncher.gjc.telegram.disable', () => disableGjcTelegram()),
+    // Claude channels (연구 미리보기): 텔레그램 양방향 chat bridge 풀 셋업 마법사.
+    // gjc.telegram(단방향 알림)과 별개. handlers/claudeChannelSetup.js 참조.
+    vscode.commands.registerCommand('claudeCodeLauncher.claude.telegram.setup', () => promptAndSetupTelegramChannel()),
+    vscode.commands.registerCommand('claudeCodeLauncher.claude.telegram.disable', () => disableTelegramChannel())
   );
 
   // gjc 텔레그램 지원 감지 → claudeCodeLauncher.gjc.telegramSupported 컨텍스트키 설정.

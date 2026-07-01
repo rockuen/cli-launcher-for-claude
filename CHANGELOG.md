@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.18.0] - 2026-07-01
+
+Optional Telegram **channel** for Claude — a two-way chat bridge, off by default.
+
+### Added
+- **Claude Telegram channel, opt-in (full setup wizard).** A new CLI Launcher Settings → Agent (Claude) section and command-palette entries set up Claude Code's native **channels** (research preview) so you can drive a running Claude session from Telegram and get replies back on your phone. Off by default; turn it on with **Claude: Set up Telegram Channel (2-way)…** and off with **Claude: Disable Telegram Channel**. This is a **two-way chat bridge** and is entirely separate from the gjc Telegram *notifications* (one-way) added in 3.17.0.
+  - The wizard automates every non-interactive step: prompts for the BotFather bot token (password input), adds the marketplace (`claude plugin marketplace add anthropics/claude-plugins-official`), installs the plugin (`claude plugin install telegram@claude-plugins-official --scope user`), writes the token to `~/.claude/channels/telegram/.env` (`TELEGRAM_BOT_TOKEN=…`, mode 0600), and flips the launcher toggle on. New Claude sessions then start with `--channels plugin:telegram@claude-plugins-official`.
+  - **Pairing stays manual by design** (Anthropic gates it for security): after setup the wizard offers to open a channel-enabled session and guides you through the one-time pairing — message the bot from Telegram, then run `/telegram:access pair <code>` and `/telegram:access policy allowlist` inside the session.
+  - **`claudeCodeLauncher.claude.channels.telegram.enabled`** (boolean, default `false`) — whether new Claude sessions launch with the Telegram channel. Managed by the wizard; also honored if set directly.
+  - Requires Claude Code ≥ 2.1.80, Bun (channel plugins are Bun scripts), and claude.ai/Console auth (not on Bedrock/Vertex/Foundry). The wizard pre-guards the Claude version and warns (non-fatal) when Bun is missing.
+  - **Security:** the bot token is never exposed to a shell/terminal history — plugin commands run via `execFile` (no shell), and the token is written only to the 0600 `.env` file; token strings are masked in any error message.
+
+### Implementation
+- New `src/lib/claudeChannels.js` (`claudeChannelsArgs` / `resolveEnabledChannels` / `CHANNEL_PLUGINS`) — mirrors `claudeEffort.js`: reads config → `--channels` spawn args, empty when off. Wired into `panel/createPanel.js` (Claude arg assembly, next to `claudeEffortArgs`).
+- New `src/handlers/claudeChannelSetup.js` — the wizard: `setupTelegramChannel` / `promptAndSetupTelegramChannel` (version gate → token validation → Bun warn → marketplace add → plugin install → 0600 `.env` write → toggle on → pairing guidance) and `disableTelegramChannel` (toggle off; plugin/token kept). `claude` commands run via `resolveClaudeCli` + `execFile`. Wired into `activation.js` (command registration) and `panel/settingsPanel.js` (Claude section buttons + run-command allowlist).
+- `package.json`: `claudeCodeLauncher.claude.telegram.{setup,disable}` commands + palette entries, `claude.channels.telegram.enabled` setting, version 3.17.1 → 3.18.0.
+
+### Tests
+- `test/unit/claudeChannels.test.ts` (12 cases): channel spawn-arg construction (on/off/unset), Claude version parsing/gating (≥ 2.1.80), bot-token validation, token `.env` path/content, plugin/marketplace argv (no shell interpolation), and token redaction. The existing `sourceSyntax.test.ts` guard also covers the two new `.js` modules.
+
 ## [3.17.1] - 2026-06-29
 
 Fix: settings panel failed to open ("Unexpected identifier 'gjc'") in 3.17.0.

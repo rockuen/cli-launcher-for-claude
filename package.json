@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.17.1",
+  "version": "3.18.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -95,6 +95,18 @@
         "command": "claudeCodeLauncher.gjc.telegram.disable",
         "title": "Gajae (gjc): Disable Telegram Notifications",
         "icon": "$(bell-slash)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.claude.telegram.setup",
+        "title": "Claude: Set up Telegram Channel (2-way)…",
+        "icon": "$(comment-discussion)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.claude.telegram.disable",
+        "title": "Claude: Disable Telegram Channel",
+        "icon": "$(circle-slash)",
         "category": "Claude"
       },
       {
@@ -432,6 +444,12 @@
         {
           "command": "claudeCodeLauncher.gjc.telegram.disable",
           "when": "claudeCodeLauncher.gjc.telegramSupported"
+        },
+        {
+          "command": "claudeCodeLauncher.claude.telegram.setup"
+        },
+        {
+          "command": "claudeCodeLauncher.claude.telegram.disable"
         },
         {
           "command": "claudeCodeLauncher.newClaude",
@@ -1139,6 +1157,11 @@
           "type": "boolean",
           "default": false,
           "description": "Launch Claude sessions with '--dangerously-skip-permissions' (bypass-permissions mode — skips tool/permission prompts). Off by default; use with care. Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Claude sessions."
+        },
+        "claudeCodeLauncher.claude.channels.telegram.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Launch new Claude sessions with the Telegram channel enabled ('--channels plugin:telegram@claude-plugins-official') — Claude Code's native two-way chat bridge to drive the session from Telegram. Turn on/off via the 'Claude: Set up Telegram Channel…' wizard (installs the plugin + saves the bot token to ~/.claude/channels/telegram/.env), not by editing this flag directly. Requires Claude Code 2.1.80+, Bun, and claude.ai/Console auth (research preview; not on Bedrock/Vertex/Foundry). Pairing is done once inside the session (/telegram:access pair <code>). This is SEPARATE from gjc.telegram (one-way notifications). Applies to newly opened and restarted Claude sessions."
         },
         "claudeCodeLauncher.pasteToFileThreshold": {
           "type": "number",

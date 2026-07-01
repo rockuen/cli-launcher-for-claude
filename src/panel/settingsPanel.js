@@ -528,6 +528,41 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           main.appendChild(approve);
         }
 
+        // claude-only: Telegram channel (Claude Code native "channels", research
+        // preview) — a two-way chat bridge. The full wizard installs the plugin,
+        // saves the bot token, and toggles claude.channels.telegram.enabled;
+        // pairing is done once inside the session. Entirely separate from the gjc
+        // Telegram notifications below (one-way, gjc daemon).
+        // NOTE: this block is inside a webview-script template literal, so it must
+        // never contain backticks or dollar-brace; that would break the literal.
+        if (a.id === 'claude') {
+          const ctgWrap = document.createElement('div');
+          ctgWrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          ctgWrap.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px;';
+          const ctgTitle = document.createElement('span');
+          ctgTitle.textContent = 'Telegram 채널 (Claude 양방향)';
+          ctgTitle.style.cssText = 'font-weight:600;';
+          const ctgDesc = document.createElement('span');
+          ctgDesc.style.cssText = 'opacity:0.8;font-size:12px;max-width:540px;line-height:1.5;';
+          ctgDesc.textContent = '폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다(Claude Code 네이티브 channels, 연구 미리보기). 마법사가 플러그인 설치·봇 토큰 저장·세션 토글까지 자동 처리하고, 마지막 페어링만 세션 안에서(/telegram:access pair) 합니다. 전제: Claude Code 2.1.80+, Bun, claude.ai/Console 인증. gjc 알림과는 별개입니다.';
+          const ctgBtns = document.createElement('div');
+          ctgBtns.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
+          const ctgSetup = document.createElement('button');
+          ctgSetup.textContent = '텔레그램 채널 설정 / 켜기…';
+          ctgSetup.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
+          ctgSetup.addEventListener('click', () => runCommand('claudeCodeLauncher.claude.telegram.setup'));
+          const ctgDisable = document.createElement('button');
+          ctgDisable.textContent = '끄기';
+          ctgDisable.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
+          ctgDisable.addEventListener('click', () => runCommand('claudeCodeLauncher.claude.telegram.disable'));
+          ctgBtns.appendChild(ctgSetup);
+          ctgBtns.appendChild(ctgDisable);
+          ctgWrap.appendChild(ctgTitle);
+          ctgWrap.appendChild(ctgDesc);
+          ctgWrap.appendChild(ctgBtns);
+          main.appendChild(ctgWrap);
+        }
+
         // gjc-only: Telegram notifications (thin wrapper over the native gjc daemon).
         // Buttons run the launcher commands which delegate to gjc notify setup /
         // gjc config set notifications.enabled false. The daemon lifecycle, single
@@ -1012,6 +1047,8 @@ function openGlobalSettings(context) {
     'claudeCodeLauncher.saveAccount',
     'claudeCodeLauncher.gjc.telegram.setup',
     'claudeCodeLauncher.gjc.telegram.disable',
+    'claudeCodeLauncher.claude.telegram.setup',
+    'claudeCodeLauncher.claude.telegram.disable',
   ]);
 
   panel.webview.onDidReceiveMessage((msg) => {
