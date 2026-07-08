@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.19.0] - 2026-07-08
+
+Per-agent **session save** toggle — hide an agent's session history and skip save/restore while keeping it launchable.
+
+### Added
+- **Per-agent "Save sessions" toggle (CLI Launcher Settings → Agent).** A second switch beside each agent's **Enabled** toggle controls whether that agent's past sessions are tracked and shown. Turn it **off** for agents you always use fresh and never resume (e.g. an Antigravity full-push workflow): the agent stays launchable (new sessions work, it still shows in the new-session picker), but its sessions are dropped from the unified **Sessions** view and its dedicated split view hides. Independent of **Enabled** (which disables the agent entirely).
+  - **`claudeCodeLauncher.sessionSaveDisabledAgents`** (array, default `[]`) — agent ids whose session history is hidden / not tracked for save-restore. Orthogonal to `enabledAgents`.
+
+### Implementation
+- `src/tree/SessionTreeDataProvider.js`: new `_saveDisabledAgents()` helper; unified `_buildGroups` drops claude's own leaves when claude is save-disabled, and `_loadOtherAgentItems` skips any save-disabled non-claude agent — so their sessions never enter the unified tree.
+- `src/activation.js`: every `refresh<Agent>Available()` now ANDs `!sessionSaveDisabledAgents.includes(id)` into the `<agent>Available` context key so a save-disabled agent's split view hides; the config-change handler re-evaluates on `sessionSaveDisabledAgents` changes without a window reload.
+- `src/panel/settingsPanel.js`: a "Save sessions" switch per agent row (stacked under "Enabled" in a new `.agent-controls` column), wired to `set-global` with the key added to `ALLOWED_GLOBAL_KEYS`.
+- `package.json`: `claudeCodeLauncher.sessionSaveDisabledAgents` setting; version 3.18.0 → 3.19.0.
+
+### Tests
+- Full suite green for the touched areas (session tree / settings panel / store / agent registry). The existing `sourceSyntax.test.ts` guard (`node --check` on every `src/**/*.js`) covers the embedded webview-script edit.
+
 ## [3.18.0] - 2026-07-01
 
 Optional Telegram **channel** for Claude — a two-way chat bridge, off by default.

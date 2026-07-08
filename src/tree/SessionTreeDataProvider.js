@@ -263,6 +263,21 @@ class SessionTreeDataProvider {
     return (STORE_KEYS[this._agentMode] || STORE_KEYS.claude)[logical];
   }
 
+  // Set of agent ids whose session history is hidden / not tracked for
+  // save-restore (claudeCodeLauncher.sessionSaveDisabledAgents). Orthogonal to
+  // enabledAgents: a listed agent can still launch new sessions, but its past
+  // sessions are dropped from the unified tree here (and its split view is
+  // hidden via the <agent>Available context key in activation.js).
+  _saveDisabledAgents() {
+    try {
+      return new Set(vscode.workspace
+        .getConfiguration('claudeCodeLauncher')
+        .get('sessionSaveDisabledAgents', []));
+    } catch (_) {
+      return new Set();
+    }
+  }
+
   refresh() {
     if (this._refreshTimer) return; // a fire is already queued; coalesce
     this._refreshTimer = setTimeout(() => {
@@ -424,8 +439,12 @@ class SessionTreeDataProvider {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
     if (!cwd) return [];
     const unifiedTitles = sessionStoreGet('claudeSessionTitles', {});
+    const saveDisabled = this._saveDisabledAgents();
     const out = [];
     for (const spec of UNIFIED_OTHER_AGENTS) {
+      // Skip agents the user opted out of session save/restore for — their
+      // history never enters the unified tree (they can still be launched).
+      if (saveDisabled.has(spec.agent)) continue;
       let sessions = [];
       try {
         sessions = spec.agent === 'kiro' ? listKiroSessions(cwd)
@@ -532,6 +551,9 @@ class SessionTreeDataProvider {
     }
     const allItems = this._loadSessions(protectedIds, archivedIds);
     if (unified) {
+      // Drop claude's own sessions from the unified tree when claude session
+      // save is disabled; other agents are filtered inside _loadOtherAgentItems.
+      if (this._saveDisabledAgents().has('claude')) allItems.length = 0;
       // Tag the claude leaves with their agent + a model icon, then fold in the
         // other agents' sessions (kiro/codex/grok/agy). They all share the same
       // itemMap / group / Recent / sort logic below, keyed by their own id.

@@ -481,8 +481,11 @@ function activate(context) {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
       .get('enabledAgents', ['claude']);
+    const saveDisabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionSaveDisabledAgents', []);
     const kiroInstalled = listAgents().some(a => a.id === 'kiro' && a.installed);
-    const available = kiroInstalled && enabled.includes('kiro');
+    const available = kiroInstalled && enabled.includes('kiro') && !saveDisabled.includes('kiro');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.kiroAvailable', available);
   }
   refreshKiroAvailable();
@@ -494,8 +497,11 @@ function activate(context) {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
       .get('enabledAgents', ['claude']);
+    const saveDisabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionSaveDisabledAgents', []);
     const agyInstalled = listAgents().some(a => a.id === 'antigravity' && a.installed);
-    const available = agyInstalled && enabled.includes('antigravity');
+    const available = agyInstalled && enabled.includes('antigravity') && !saveDisabled.includes('antigravity');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.antigravityAvailable', available);
   }
   refreshAntigravityAvailable();
@@ -507,8 +513,11 @@ function activate(context) {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
       .get('enabledAgents', ['claude']);
+    const saveDisabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionSaveDisabledAgents', []);
     const codexInstalled = listAgents().some(a => a.id === 'codex' && a.installed);
-    const available = codexInstalled && enabled.includes('codex');
+    const available = codexInstalled && enabled.includes('codex') && !saveDisabled.includes('codex');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.codexAvailable', available);
   }
   refreshCodexAvailable();
@@ -517,8 +526,11 @@ function activate(context) {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
       .get('enabledAgents', ['claude']);
+    const saveDisabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionSaveDisabledAgents', []);
     const grokInstalled = listAgents().some(a => a.id === 'grok' && a.installed);
-    const available = grokInstalled && enabled.includes('grok');
+    const available = grokInstalled && enabled.includes('grok') && !saveDisabled.includes('grok');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.grokAvailable', available);
   }
   refreshGrokAvailable();
@@ -529,8 +541,11 @@ function activate(context) {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
       .get('enabledAgents', ['claude']);
+    const saveDisabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionSaveDisabledAgents', []);
     const gjcInstalled = listAgents().some(a => a.id === 'gjc' && a.installed);
-    const available = gjcInstalled && enabled.includes('gjc');
+    const available = gjcInstalled && enabled.includes('gjc') && !saveDisabled.includes('gjc');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.gjcAvailable', available);
   }
   refreshGjcAvailable();
@@ -539,8 +554,11 @@ function activate(context) {
     const enabled = vscode.workspace
       .getConfiguration('claudeCodeLauncher')
       .get('enabledAgents', ['claude']);
+    const saveDisabled = vscode.workspace
+      .getConfiguration('claudeCodeLauncher')
+      .get('sessionSaveDisabledAgents', []);
     const chiefInstalled = listAgents().some(a => a.id === 'chief' && a.installed);
-    const available = chiefInstalled && enabled.includes('chief');
+    const available = chiefInstalled && enabled.includes('chief') && !saveDisabled.includes('chief');
     vscode.commands.executeCommand('setContext', 'claudeCodeLauncher.chiefAvailable', available);
   }
   refreshChiefAvailable();
@@ -652,7 +670,10 @@ function activate(context) {
   // so the 'Kiro Sessions' view shows/hides without a window reload.
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('claudeCodeLauncher.enabledAgents')) {
+      if (
+        e.affectsConfiguration('claudeCodeLauncher.enabledAgents')
+        || e.affectsConfiguration('claudeCodeLauncher.sessionSaveDisabledAgents')
+      ) {
         refreshKiroAvailable();
         refreshAntigravityAvailable();
         refreshCodexAvailable();

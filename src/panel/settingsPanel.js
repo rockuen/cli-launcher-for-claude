@@ -143,10 +143,11 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     .agent-default { font-size: 11px; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
     .agent-default input { accent-color: var(--accent); }
     .agent-default.hidden { display: none; }
-    .switch { display: flex; align-items: center; gap: 6px; font-size: 11px; user-select: none; }
+    .switch { display: flex; align-items: center; gap: 6px; font-size: 11px; user-select: none; white-space: nowrap; }
     .switch input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
     .switch input:disabled { cursor: not-allowed; }
     .switch.disabled { opacity: 0.55; }
+    .agent-controls { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 
     /* Generic global-settings controls (General/Sync/Account/Slash/Files). */
     input[type="text"].g-input,
@@ -363,6 +364,8 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     let enabledAgents = ${JSON.stringify(enabledAgents)};
     let defaultAgent = ${JSON.stringify(currentAgent)} || 'claude';
     const GLOBALS = ${JSON.stringify(globals)};
+    // Agents whose session save/restore is disabled (hidden from Sessions view).
+    let sessionSaveDisabled = Array.isArray(GLOBALS.sessionSaveDisabledAgents) ? [...GLOBALS.sessionSaveDisabledAgents] : [];
     // Mutable copy of the reader display-name map (global 'user' + per-agent AI
     // names). Inputs below patch a key then post the whole object back.
     let readerNames = (GLOBALS.readerNames && typeof GLOBALS.readerNames === 'object') ? { ...GLOBALS.readerNames } : {};
@@ -784,8 +787,40 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
         sw.appendChild(cb);
         sw.appendChild(swText);
 
+        // Save-sessions toggle — independent of Enabled. When OFF, this agent's
+        // past sessions are hidden from the unified Sessions view and its split
+        // view (and not tracked for save/restore), while the agent stays
+        // launchable. Useful for agents you always use fresh (e.g. Antigravity
+        // full-push) and never resume.
+        const saveOn = !sessionSaveDisabled.includes(a.id);
+        const sw2 = document.createElement('label');
+        sw2.className = 'switch' + (a.installed ? '' : ' disabled');
+        sw2.title = 'Show this agent’s sessions in the Sessions view and keep them for resume. Turn off to hide/skip saving them.';
+        const cb2 = document.createElement('input');
+        cb2.type = 'checkbox';
+        cb2.checked = saveOn;
+        cb2.disabled = !a.installed;
+        cb2.addEventListener('change', () => {
+          if (cb2.checked) {
+            sessionSaveDisabled = sessionSaveDisabled.filter(id => id !== a.id);
+          } else if (!sessionSaveDisabled.includes(a.id)) {
+            sessionSaveDisabled = [...sessionSaveDisabled, a.id];
+          }
+          vscode.postMessage({ type: 'set-global', key: 'sessionSaveDisabledAgents', value: sessionSaveDisabled });
+          render();
+        });
+        const sw2Text = document.createElement('span');
+        sw2Text.textContent = 'Save sessions';
+        sw2.appendChild(cb2);
+        sw2.appendChild(sw2Text);
+
+        const controls = document.createElement('div');
+        controls.className = 'agent-controls';
+        controls.appendChild(sw);
+        controls.appendChild(sw2);
+
         row.appendChild(main);
-        row.appendChild(sw);
+        row.appendChild(controls);
         listEl.appendChild(row);
       });
     }
@@ -1008,6 +1043,7 @@ function openGlobalSettings(context) {
     repoSyncPath: cfg.get('repoSync.path', ''),
     customSlashCommands: cfg.get('customSlashCommands', []),
     fileAssociations: cfg.get('fileAssociations', {}),
+    sessionSaveDisabledAgents: cfg.get('sessionSaveDisabledAgents', []),
   };
   panel.webview.html = getHtml(currentAgent, listAgents(), enabledAgents, globals);
 
@@ -1016,6 +1052,7 @@ function openGlobalSettings(context) {
   const ALLOWED_GLOBAL_KEYS = new Set([
     'agent',
     'enabledAgents',
+    'sessionSaveDisabledAgents',
     'terminal.defaultBackend',
     'terminal.multiplexerLifecycle',
     'renamePrefix.enabled',

@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.18.0",
+  "version": "3.19.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1405,6 +1405,23 @@
             "claude"
           ],
           "description": "Agents shown when creating a new session. Toggle agents on/off in CLI Launcher Settings → Agent. Only enabled agents that are also installed appear in the new-session picker."
+        },
+        "claudeCodeLauncher.sessionSaveDisabledAgents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "kiro",
+              "antigravity",
+              "codex",
+              "grok",
+              "gjc",
+              "chief"
+            ]
+          },
+          "default": [],
+          "description": "Agents whose session history is hidden and not tracked for save/restore. Orthogonal to enabledAgents: an agent listed here can still be launched (new sessions), but its past sessions never appear in the unified 'Sessions' view or its own split view — useful for agents you always use fresh (e.g. Antigravity full-push workflows) and never resume. Toggle per-agent in CLI Launcher Settings → Agent (\"Save sessions\")."
         },
         "claudeCodeLauncher.kiro.trustAllTools": {
           "type": "boolean",
