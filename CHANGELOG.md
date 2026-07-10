@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.19.1] - 2026-07-10
+
+Fix a project-scoped Codex home that was seeded once and then never refreshed, so it drifted away from `~/.codex` until Codex failed to start its MCP servers.
+
+### Fixed
+- **Codex `401 token_expired` after re-login.** `auth.json` was copied into `.agent-sessions/.home/codex` only on first launch. Logging in again against the real home revoked that token, but the project home kept serving the dead one, so launcher-spawned Codex reported `Your access token could not be refreshed because your refresh token was revoked`. Credentials now track the real home whenever it is newer.
+- **Codex `node_repl` MCP failing with `os error 3` (path not found).** Codex stores the `node_repl` binary under a content-hashed runtime directory and rewrites that path in `~/.codex/config.toml` on every runtime upgrade. The copied project `config.toml` kept pointing at the retired directory. The `[mcp_servers.node_repl*]` sections are now re-synced from the real home on each launch, while user settings in the same file (model, `notify`, `hooks.state`) are left untouched.
+
+### Implementation
+- `src/lib/projectSessions.js`: new `_refreshFileIfNewer(src, dst)` (mtime-gated copy, used for `auth.json`) and `_syncTomlSections(src, dst, matches)` + `_tomlSectionRange(lines, matches)` (mirror only the matching TOML sections; also prunes them from the project home when the real home drops them). `_prepareCodexHome` now seeds `config.toml`/`AGENTS.md`/`hooks.json`/`installation_id` once, refreshes `auth.json` by mtime, and re-syncs the `node_repl` block. Both helpers are best-effort and swallow errors, matching the surrounding seeding code.
+- `test/unit/projectSessions.test.ts`: +2 tests covering credential refresh precedence (seed / newer source / newer local / missing source) and section-scoped TOML sync (refresh, user-setting preservation, no import of unrelated sections, pruning).
+
+### Note
+Not caused by the launcher: a stale top-level `state` block in `~/.codex/hooks.json` makes Codex ≥ 0.144 warn `unknown field 'state', expected 'hooks'`. Codex moved hook trust state into `config.toml` under `[hooks.state]`; deleting the `state` key from `hooks.json` clears the warning.
+
 ## [3.19.0] - 2026-07-08
 
 Per-agent **session save** toggle — hide an agent's session history and skip save/restore while keeping it launchable.

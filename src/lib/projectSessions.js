@@ -106,6 +106,69 @@ function _copyFileIfExists(src, dst) {
   } catch (_) {}
 }
 
+// Copy src → dst when src is strictly newer. Used for credentials, which rotate:
+// a one-time seed pins whatever token existed at seed time, so re-logging in
+// against the real home leaves the project home holding a revoked refresh token.
+function _refreshFileIfNewer(src, dst) {
+  try {
+    if (!fs.existsSync(src)) return;
+    if (!fs.existsSync(dst)) {
+      _mkdirp(path.dirname(dst));
+      fs.copyFileSync(src, dst);
+      return;
+    }
+    if (fs.statSync(src).mtimeMs > fs.statSync(dst).mtimeMs) fs.copyFileSync(src, dst);
+  } catch (_) {}
+}
+
+// Locate the contiguous run of TOML sections whose headers match `matches`.
+// Returns null when no such section exists.
+function _tomlSectionRange(lines, matches) {
+  const isHeader = (l) => /^\s*\[/.test(l);
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (matches(lines[i])) { start = i; break; }
+  }
+  if (start === -1) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (isHeader(lines[i]) && !matches(lines[i])) { end = i; break; }
+  }
+  while (end > start && lines[end - 1].trim() === '') end--;
+  return { start, end };
+}
+
+// Mirror the `matches` sections of src into dst, leaving every other section
+// alone. Codex caches machine-local runtime state in config.toml — the
+// node_repl binary path is under a content-hashed runtime dir — and rewrites it
+// in the real home on each runtime upgrade. A project home seeded once never
+// sees those rewrites, so its stale path makes MCP startup fail with
+// "os error 3". Syncing only these sections keeps the user's own settings
+// (model, notify, hooks.state) intact.
+function _syncTomlSections(src, dst, matches) {
+  try {
+    if (!fs.existsSync(dst)) return;
+    const dstLines = fs.readFileSync(dst, 'utf8').split(/\r?\n/);
+    let srcBlock = [];
+    if (fs.existsSync(src)) {
+      const srcLines = fs.readFileSync(src, 'utf8').split(/\r?\n/);
+      const srcRange = _tomlSectionRange(srcLines, matches);
+      if (srcRange) srcBlock = srcLines.slice(srcRange.start, srcRange.end);
+    }
+    const dstRange = _tomlSectionRange(dstLines, matches);
+    let out;
+    if (dstRange) {
+      out = [...dstLines.slice(0, dstRange.start), ...srcBlock, ...dstLines.slice(dstRange.end)];
+    } else if (srcBlock.length) {
+      out = [...dstLines, '', ...srcBlock];
+    } else {
+      return;
+    }
+    const next = out.join('\n');
+    if (next !== dstLines.join('\n')) fs.writeFileSync(dst, next);
+  } catch (_) {}
+}
+
 function _linkDirIfExists(src, dst) {
   try {
     if (!fs.existsSync(src) || fs.existsSync(dst)) return;
@@ -141,9 +204,18 @@ function _prepareCodexHome(cwd) {
   _linkDirIfExists(sessionsDir, path.join(home, 'sessions'));
   // Auth/config stay user-global in spirit. Copy files so the project home can
   // run independently; users can delete/regenerate if credentials rotate.
-  for (const file of ['auth.json', 'config.toml', 'AGENTS.md', 'hooks.json', 'installation_id']) {
+  for (const file of ['config.toml', 'AGENTS.md', 'hooks.json', 'installation_id']) {
     _copyFileIfExists(path.join(real, file), path.join(home, file));
   }
+  // Credentials must track the real home, or a re-login there strands the
+  // project home on a revoked refresh token (401 token_expired).
+  _refreshFileIfNewer(path.join(real, 'auth.json'), path.join(home, 'auth.json'));
+  // Keep Codex's machine-local runtime cache current; see _syncTomlSections.
+  _syncTomlSections(
+    path.join(real, 'config.toml'),
+    path.join(home, 'config.toml'),
+    (line) => /^\s*\[mcp_servers\.node_repl(\.|\])/.test(line)
+  );
   // Reuse installed Codex surfaces without duplicating plugin/package payloads.
   for (const dir of ['agents', 'skills', 'prompts', 'plugins', 'hooks', 'packages']) {
     _linkDirIfExists(path.join(real, dir), path.join(home, dir));
@@ -386,6 +458,8 @@ function getChiefSessionsDir(cwd) {
 }
 
 module.exports = {
+  _refreshFileIfNewer,
+  _syncTomlSections,
   isProjectSessionStorageEnabled,
   projectSessionRoot,
   codexHome,

@@ -134,6 +134,101 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
   });
 });
 
+// A project home seeded once from ~/.codex used to pin whatever auth.json existed
+// at seed time. Re-logging in against the real home revoked that refresh token,
+// so the launcher-spawned Codex failed with "401 token_expired".
+test('_refreshFileIfNewer tracks the real home only when it is newer', () => {
+  withProjectSessions('project', (mod) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-newer-'));
+    const src = path.join(dir, 'src.json');
+    const dst = path.join(dir, 'dst.json');
+
+    // absent dst → seed
+    fs.writeFileSync(src, 'v1');
+    mod._refreshFileIfNewer(src, dst);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'v1');
+
+    // src newer → refresh
+    fs.writeFileSync(src, 'v2');
+    const future = new Date(Date.now() + 60_000);
+    fs.utimesSync(src, future, future);
+    mod._refreshFileIfNewer(src, dst);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'v2');
+
+    // dst newer → keep local edits
+    fs.writeFileSync(dst, 'local');
+    const later = new Date(Date.now() + 120_000);
+    fs.utimesSync(dst, later, later);
+    mod._refreshFileIfNewer(src, dst);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'local');
+
+    // missing src → no-op
+    fs.rmSync(src);
+    mod._refreshFileIfNewer(src, dst);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'local');
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// Codex rewrites the content-hashed node_repl runtime path in the real home on
+// every runtime upgrade. A stale copy made MCP startup fail with "os error 3".
+test('_syncTomlSections refreshes node_repl only, preserving user settings', () => {
+  withProjectSessions('project', (mod) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sync-toml-'));
+    const src = path.join(dir, 'real.toml');
+    const dst = path.join(dir, 'project.toml');
+    const matches = (line: string) => /^\s*\[mcp_servers\.node_repl(\.|\])/.test(line);
+
+    fs.writeFileSync(src, [
+      'model_reasoning_effort = "medium"',
+      '',
+      '[mcp_servers.node_repl]',
+      "command = 'C:\\rt\\NEW\\node_repl.exe'",
+      '',
+      '[mcp_servers.node_repl.env]',
+      "NODE_REPL_NODE_PATH = 'C:\\rt\\NEW\\node.exe'",
+      '',
+      '[tui]',
+      'theme = "dark"',
+      '',
+    ].join('\n'));
+
+    fs.writeFileSync(dst, [
+      'model_reasoning_effort = "xhigh"',
+      '',
+      '[mcp_servers.node_repl]',
+      "command = 'C:\\rt\\OLD\\node_repl.exe'",
+      '',
+      '[mcp_servers.node_repl.env]',
+      "NODE_REPL_NODE_PATH = 'C:\\rt\\OLD\\node.exe'",
+      '',
+      '[hooks.state]',
+      'trusted = true',
+      '',
+    ].join('\n'));
+
+    mod._syncTomlSections(src, dst, matches);
+    const out = fs.readFileSync(dst, 'utf8');
+
+    assert.ok(out.includes('C:\\rt\\NEW\\node_repl.exe'), 'node_repl path refreshed');
+    assert.ok(out.includes('C:\\rt\\NEW\\node.exe'), 'node_repl env refreshed');
+    assert.ok(!out.includes('OLD'), 'no stale runtime path remains');
+    assert.ok(out.includes('model_reasoning_effort = "xhigh"'), 'user setting preserved');
+    assert.ok(out.includes('[hooks.state]'), 'trailing sections preserved');
+    assert.ok(!out.includes('[tui]'), 'unrelated real-home sections not imported');
+
+    // real home dropped the section → project home must not keep a stale copy
+    fs.writeFileSync(src, 'model_reasoning_effort = "medium"\n');
+    mod._syncTomlSections(src, dst, matches);
+    const pruned = fs.readFileSync(dst, 'utf8');
+    assert.ok(!pruned.includes('node_repl'), 'stale node_repl block pruned');
+    assert.ok(pruned.includes('[hooks.state]'), 'other sections survive pruning');
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 test('panel and restart paths pass project session env to PTY spawn', () => {
   const createPanel = fs.readFileSync(path.join(process.cwd(), 'src/panel/createPanel.js'), 'utf8');
   const restartPty = fs.readFileSync(path.join(process.cwd(), 'src/panel/restartPty.js'), 'utf8');
