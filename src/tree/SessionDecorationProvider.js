@@ -12,6 +12,7 @@
 // pieces: Uri builder, EventEmitter, FileDecorationProvider class.
 
 const vscode = require('vscode');
+const { t } = require('../i18n');
 const {
   SCHEME,
   WARN_THRESHOLD,
@@ -22,6 +23,17 @@ const {
   encodeSessionPath,
   getDecoration,
 } = require('./sessionDecorationCore');
+
+// Localized tooltip wording (English default) passed into the vscode-free
+// getDecoration. Built per-call so a display-language change is picked up.
+function _sizeLabels() {
+  return {
+    veryLargeTrash: t('sizeVeryLargeTrash'),
+    veryLargeSplit: t('sizeVeryLargeSplit'),
+    largeTrash: t('sizeLargeTrash'),
+    largeSplit: t('sizeLargeSplit'),
+  };
+}
 
 function buildUri(sessionId, size, trashed) {
   return vscode.Uri.parse(`${SCHEME}://${encodeSessionPath(sessionId)}?${formatQuery(size, trashed)}`);
@@ -36,7 +48,7 @@ class SessionDecorationProvider {
   provideFileDecoration(uri) {
     if (!uri || uri.scheme !== SCHEME) return undefined;
     const { size, trashed } = parseQuery(uri.query);
-    const dec = getDecoration(size, trashed);
+    const dec = getDecoration(size, trashed, _sizeLabels());
     if (!dec) return undefined;
     return {
       color: new vscode.ThemeColor(dec.colorId),

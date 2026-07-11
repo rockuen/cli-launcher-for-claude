@@ -18,6 +18,7 @@
 
 const vscode = require('vscode');
 const { resolveGjcCli } = require('../pty/resolveCli');
+const { t } = require('../i18n');
 
 // Curated fuzzy models grouped by the common OAuth subscriptions. Fuzzy strings
 // (not pinned full ids) keep the list robust against version drift — gjc
@@ -65,7 +66,7 @@ function _runGjcInTerminal(name, args) {
 function setupGjcCredentials() {
   if (!_runGjcInTerminal('gjc setup credentials', ['setup', 'credentials'])) return;
   vscode.window.showInformationMessage(
-    'gjc: Claude·Codex 구독 로그인을 자동 임포트합니다. Antigravity·Grok 등 다른 구독은 gjc 세션 안에서 /login 으로 추가하세요.'
+    t('gjcSetupCredentials')
   );
 }
 
@@ -78,10 +79,10 @@ async function _saveGjcModel(model) {
     .update('gjc.model', value, vscode.ConfigurationTarget.Global);
   if (value) {
     vscode.window.showInformationMessage(
-      `gjc 기본 모델: ${value} — 새 gjc 세션에 적용됩니다(실행 중 세션은 재시작 시 적용).`
+      t('gjcModelSet').replace('{0}', value)
     );
   } else {
-    vscode.window.showInformationMessage('gjc 기본 모델을 초기화했습니다 (gjc 기본값 사용).');
+    vscode.window.showInformationMessage(t('gjcModelCleared'));
   }
 }
 
@@ -101,25 +102,25 @@ async function pickGjcModel() {
     items.push({
       label: (entry.model === current ? '$(check) ' : '') + entry.label,
       description: entry.model,
-      detail: entry.model === current ? '현재 선택됨' : undefined,
+      detail: entry.model === current ? t('gjcModelCurrentSelected') : undefined,
       _model: entry.model,
     });
   }
   items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
-  items.push({ label: '$(edit) Custom model…', description: '직접 입력 (예: provider/model, glm-4.6 …)', _action: 'custom' });
-  items.push({ label: '$(clear-all) Clear (use gjc default)', description: current ? `현재: ${current}` : '이미 기본값', _action: 'clear' });
-  items.push({ label: '$(list-unordered) Show all available models…', description: 'gjc --list-models (로그인된 구독 기준)', _action: 'list' });
-  items.push({ label: '$(key) Log in / import subscriptions…', description: 'gjc setup credentials + /login 안내', _action: 'setup' });
+  items.push({ label: '$(edit) Custom model…', description: t('gjcCustomDesc'), _action: 'custom' });
+  items.push({ label: '$(clear-all) Clear (use gjc default)', description: current ? t('gjcClearCurrent').replace('{0}', current) : t('gjcClearAlready'), _action: 'clear' });
+  items.push({ label: '$(list-unordered) Show all available models…', description: t('gjcListDesc'), _action: 'list' });
+  items.push({ label: '$(key) Log in / import subscriptions…', description: t('gjcSetupDesc'), _action: 'setup' });
 
   const picked = await vscode.window.showQuickPick(items, {
-    placeHolder: current ? `현재 gjc 모델: ${current} — 변경하거나 작업을 선택하세요` : 'gjc 기본 모델을 선택하세요 (OAuth 구독 기준)',
+    placeHolder: current ? t('gjcPickCurrent').replace('{0}', current) : t('gjcPickDefault'),
     matchOnDescription: true,
   });
   if (!picked) return;
 
   if (picked._action === 'custom') {
     const value = await vscode.window.showInputBox({
-      prompt: 'gjc 모델 (퍼지 매칭: opus, gpt-5.2-codex, gemini-3-pro, grok-code-fast-1, 또는 provider/model)',
+      prompt: t('gjcCustomPrompt'),
       value: current,
       placeHolder: 'opus',
     });

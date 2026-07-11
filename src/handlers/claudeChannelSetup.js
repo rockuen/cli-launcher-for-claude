@@ -38,6 +38,9 @@ const { resolveClaudeCli } = require('../pty/resolveCli');
 let vscode = null;
 try { vscode = require('vscode'); } catch (_) { vscode = null; }
 
+// i18n은 vscode require를 자체 가드하므로 vscode 없이도 로드된다(영어 폴백).
+const { t } = require('../i18n');
+
 // 채널(channels, 연구 미리보기)이 도입된 Claude Code 최소 버전.
 const MIN_CLAUDE_VERSION = [2, 1, 80];
 const TELEGRAM_MARKETPLACE = 'anthropics/claude-plugins-official';
@@ -176,7 +179,7 @@ async function setupTelegramChannel(input = {}) {
 
   const resolved = resolveClaudeCli();
   if (!resolved || !resolved.shell) {
-    _showError('Claude Code CLI(claude)를 찾을 수 없습니다. 설치: npm install -g @anthropic-ai/claude-code');
+    _showError(t('ccClaudeNotFound'));
     return { ok: false, error: 'claude-not-found' };
   }
 
@@ -186,22 +189,22 @@ async function setupTelegramChannel(input = {}) {
   // (파싱 성공 + 미달)만 하드 차단하고, 확인 불가(파싱 실패)는 비치명 경고 후 진행.
   const ver = await checkClaudeVersion();
   if (ver.ok && ver.parsed && !ver.supported) {
-    _showError('채널(channels)은 Claude Code 2.1.80 이상이 필요합니다. 업데이트: npm install -g @anthropic-ai/claude-code');
+    _showError(t('ccUnsupportedVersion'));
     return { ok: false, error: 'unsupported-version' };
   }
   if (!ver.ok || !ver.parsed) {
-    _showWarn('Claude 버전을 확인하지 못했습니다(채널은 2.1.80+ 필요). 계속 진행합니다 — 페어링이 안 되면 `claude --version`으로 확인하세요.');
+    _showWarn(t('ccVersionUnknown'));
   }
   // 사전 가드 2: 토큰 형식.
   if (!isValidBotToken(token)) {
-    _showError('봇 토큰 형식이 올바르지 않습니다. BotFather 토큰 "<숫자>:<영숫자_- 30자 이상>"을 입력하세요.');
+    _showError(t('ccInvalidToken'));
     return { ok: false, error: 'invalid-token' };
   }
 
   // 경고: bun 미설치 — 채널 플러그인은 bun으로 실행된다. 진행은 허용(페어링 시 필요).
   const bun = await checkBun();
   if (!bun.ok) {
-    _showWarn('Bun이 감지되지 않았습니다. 텔레그램 채널 플러그인은 Bun으로 실행됩니다. https://bun.sh 에서 설치한 뒤 페어링하세요.');
+    _showWarn(t('ccBunMissing'));
   }
 
   // 1) 마켓플레이스 추가. 이미 추가돼 있으면 비-0을 낼 수 있어 치명 처리하지 않음.
@@ -214,10 +217,7 @@ async function setupTelegramChannel(input = {}) {
   if (!inst.ok) {
     pluginInstallFailed = true;
     _showWarn(
-      '텔레그램 플러그인 자동 설치가 확인되지 않았습니다(이미 설치돼 있을 수 있음). '
-      + '문제가 있으면 세션에서 `/plugin marketplace add anthropics/claude-plugins-official` 후 '
-      + '`/plugin install telegram@claude-plugins-official`를 실행하세요. 상세: '
-      + redactToken(inst.error, token),
+      t('ccPluginInstallWarn') + redactToken(inst.error, token),
     );
   }
 
@@ -228,7 +228,7 @@ async function setupTelegramChannel(input = {}) {
     fs.writeFileSync(p, buildEnvFileContent(token), { mode: 0o600 });
     try { fs.chmodSync(p, 0o600); } catch (_) { /* Windows 등 chmod 미지원 무시 */ }
   } catch (e) {
-    _showError('토큰 저장 실패(' + telegramEnvPath() + '): ' + redactToken(e && e.message, token));
+    _showError(t('ccTokenWriteFail').replace('{0}', telegramEnvPath()).replace('{1}', redactToken(e && e.message, token)));
     return { ok: false, error: 'token-write-failed' };
   }
 
@@ -243,12 +243,12 @@ async function setupTelegramChannel(input = {}) {
 async function promptAndSetupTelegramChannel() {
   if (!vscode) return { ok: false, error: 'no-vscode' };
   const token = await vscode.window.showInputBox({
-    title: 'Claude 텔레그램 채널 설정 (양방향 chat bridge)',
-    prompt: 'Telegram 봇 토큰 (BotFather 발급). 폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다.',
+    title: t('ccSetupTitle'),
+    prompt: t('ccTokenPrompt'),
     password: true,
     ignoreFocusOut: true,
     placeHolder: '123456789:AA...',
-    validateInput: (v) => (isValidBotToken(v) ? undefined : '봇 토큰 형식: "<숫자>:<영숫자_- 30자 이상>" (BotFather 발급)'),
+    validateInput: (v) => (isValidBotToken(v) ? undefined : t('ccTokenValidate')),
   });
   if (token === undefined) return { ok: false, error: 'cancelled' };
 
@@ -257,18 +257,16 @@ async function promptAndSetupTelegramChannel() {
 
   // 페어링(사용자 개입 필수) 안내 + 세션 시작 옵션. plugin 설치가 확인되지 않았으면
   // 성공 토스트가 그 경고를 가리지 않도록 더 신중한 문구로 바꾼다.
-  const openNew = '새 Claude 세션 열기';
-  const later = '나중에';
-  const pairingSteps = '마지막 페어링만 폰에서 하세요: (1) 텔레그램에서 봇에게 아무 메시지나 전송 → '
-    + '(2) 봇이 준 코드로 세션에서 /telegram:access pair <코드> → '
-    + '(3) /telegram:access policy allowlist 로 본인만 허용.';
+  const openNew = t('ccOpenNew');
+  const later = t('ccLater');
+  const pairingSteps = t('ccPairingSteps');
   const headline = result.pluginInstallFailed
-    ? '채널을 켰지만 텔레그램 플러그인 자동 설치가 확인되지 않았습니다. 페어링 전에 세션에서 /plugin install telegram@claude-plugins-official 로 설치를 확인하세요. '
-    : 'Claude 텔레그램 채널이 구성됐습니다. 새 Claude 세션은 자동으로 --channels로 연결됩니다. ';
+    ? t('ccHeadlinePluginUnconfirmed')
+    : t('ccHeadlineConfigured');
   // 봇 1개는 한 번에 한 세션만 연결된다(텔레그램은 토큰당 long-poll 소비자 1개만 허용,
   // 플러그인은 새 세션이 채널을 켜면 이전 세션의 폴러를 종료). 여러 세션 동시 사용은
   // 세션마다 봇을 따로 만들어야 한다. 사용자가 조용히 끊기는 걸 모르지 않도록 안내한다.
-  const concurrencyNote = ' ⚠️ 봇 1개는 한 번에 한 세션만 연결됩니다(텔레그램 제약) — 다른 세션에서 채널을 켜면 이 세션 연결이 끊깁니다. 여러 세션을 동시에 쓰려면 세션마다 봇을 따로 만드세요.';
+  const concurrencyNote = t('ccConcurrencyNote');
   const choice = await vscode.window.showInformationMessage(
     headline + pairingSteps + concurrencyNote,
     openNew, later,
@@ -283,7 +281,7 @@ async function promptAndSetupTelegramChannel() {
 // 세션부터 --channels 없이 시작한다. 이미 열린 세션에는 영향 없음.
 async function disableTelegramChannel() {
   await _setEnabled(false);
-  _showInfo('Claude 텔레그램 채널을 껐습니다. 이후 새 Claude 세션은 --channels 없이 시작됩니다. (플러그인·토큰은 유지 — 다시 켜면 바로 사용)');
+  _showInfo(t('ccDisabled'));
   return { ok: true, error: null };
 }
 

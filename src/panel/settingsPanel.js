@@ -16,6 +16,7 @@
 
 const vscode = require('vscode');
 const { listAgents } = require('../agents/registry');
+const { t } = require('../i18n');
 
 // Module-scoped single-instance cache.
 let panel = null;
@@ -366,6 +367,22 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     const GLOBALS = ${JSON.stringify(globals)};
     // Agents whose session save/restore is disabled (hidden from Sessions view).
     let sessionSaveDisabled = Array.isArray(GLOBALS.sessionSaveDisabledAgents) ? [...GLOBALS.sessionSaveDisabledAgents] : [];
+    // Agents whose new tabs open with the reader pane by default. When non-empty
+    // this list is authoritative; empty falls back to the legacy global boolean.
+    // Antigravity has no reader, so it is never reader-capable.
+    let splitDefaultAgents = Array.isArray(GLOBALS.splitLayoutDefaultAgents) ? [...GLOBALS.splitLayoutDefaultAgents] : [];
+    const READER_NO_SUPPORT = new Set(['antigravity']);
+    function readerCapableIds() {
+      return AGENTS.map(a => a.id).filter(id => !READER_NO_SUPPORT.has(id));
+    }
+    // Effective per-agent reader default: list membership when the list is set,
+    // otherwise the legacy global boolean.
+    function readerDefaultOn(id) {
+      if (READER_NO_SUPPORT.has(id)) return false;
+      return splitDefaultAgents.length > 0
+        ? splitDefaultAgents.includes(id)
+        : !!GLOBALS.splitLayoutDefaultGlobal;
+    }
     // Mutable copy of the reader display-name map (global 'user' + per-agent AI
     // names). Inputs below patch a key then post the whole object back.
     let readerNames = (GLOBALS.readerNames && typeof GLOBALS.readerNames === 'object') ? { ...GLOBALS.readerNames } : {};
@@ -543,19 +560,19 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           ctgWrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
           ctgWrap.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px;';
           const ctgTitle = document.createElement('span');
-          ctgTitle.textContent = 'Telegram 채널 (Claude 양방향)';
+          ctgTitle.textContent = ${JSON.stringify(t('tgChannelTitle'))};
           ctgTitle.style.cssText = 'font-weight:600;';
           const ctgDesc = document.createElement('span');
           ctgDesc.style.cssText = 'opacity:0.8;font-size:12px;max-width:540px;line-height:1.5;';
-          ctgDesc.textContent = '폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다(Claude Code 네이티브 channels, 연구 미리보기). 마법사가 플러그인 설치·봇 토큰 저장·세션 토글까지 자동 처리하고, 마지막 페어링만 세션 안에서(/telegram:access pair) 합니다. 전제: Claude Code 2.1.80+, Bun, claude.ai/Console 인증. gjc 알림과는 별개입니다. ⚠️ 봇 1개는 한 번에 한 세션만 연결됩니다(텔레그램 제약) — 다른 세션에서 채널을 켜면 이전 세션 연결이 끊깁니다. 여러 세션을 동시에 쓰려면 세션마다 봇을 따로 만드세요.';
+          ctgDesc.textContent = ${JSON.stringify(t('tgChannelDesc'))};
           const ctgBtns = document.createElement('div');
           ctgBtns.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
           const ctgSetup = document.createElement('button');
-          ctgSetup.textContent = '텔레그램 채널 설정 / 켜기…';
+          ctgSetup.textContent = ${JSON.stringify(t('tgChannelSetupBtn'))};
           ctgSetup.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
           ctgSetup.addEventListener('click', () => runCommand('claudeCodeLauncher.claude.telegram.setup'));
           const ctgDisable = document.createElement('button');
-          ctgDisable.textContent = '끄기';
+          ctgDisable.textContent = ${JSON.stringify(t('tgDisableBtn'))};
           ctgDisable.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
           ctgDisable.addEventListener('click', () => runCommand('claudeCodeLauncher.claude.telegram.disable'));
           ctgBtns.appendChild(ctgSetup);
@@ -577,19 +594,19 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           tgWrap.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
           tgWrap.style.cssText = 'flex-direction:column;align-items:flex-start;gap:6px;margin-top:6px;';
           const tgTitle = document.createElement('span');
-          tgTitle.textContent = 'Telegram 알림 (gjc 데몬)';
+          tgTitle.textContent = ${JSON.stringify(t('tgNotifyTitle'))};
           tgTitle.style.cssText = 'font-weight:600;';
           const tgDesc = document.createElement('span');
           tgDesc.style.cssText = 'opacity:0.8;font-size:12px;max-width:540px;line-height:1.5;';
-          tgDesc.textContent = '폰에서 gjc 세션 알림을 받고 답장합니다. 기본 꺼짐. 백그라운드 데몬·단일 인스턴스(토큰당 1개)·유휴 정리는 gjc가 관리합니다. ⚠️ ON/OFF와 봇 토큰은 이 머신의 모든 gjc 세션(런처 밖 터미널 포함)에 영향합니다.';
+          tgDesc.textContent = ${JSON.stringify(t('tgNotifyDesc'))};
           const tgBtns = document.createElement('div');
           tgBtns.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
           const tgSetup = document.createElement('button');
-          tgSetup.textContent = '텔레그램 설정 / 켜기…';
+          tgSetup.textContent = ${JSON.stringify(t('tgNotifySetupBtn'))};
           tgSetup.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
           tgSetup.addEventListener('click', () => runCommand('claudeCodeLauncher.gjc.telegram.setup'));
           const tgDisable = document.createElement('button');
-          tgDisable.textContent = '끄기';
+          tgDisable.textContent = ${JSON.stringify(t('tgDisableBtn'))};
           tgDisable.style.cssText = 'height:26px;padding:0 10px;cursor:pointer;';
           tgDisable.addEventListener('click', () => runCommand('claudeCodeLauncher.gjc.telegram.disable'));
           tgBtns.appendChild(tgSetup);
@@ -814,10 +831,45 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
         sw2.appendChild(cb2);
         sw2.appendChild(sw2Text);
 
+        // Reader-by-default toggle — per agent. Checked = this agent's new tabs
+        // open with the markdown reader pane. Antigravity has no reader, so its
+        // switch is disabled. The list becomes authoritative on first edit; a
+        // legacy global 'on' is seeded across reader-capable agents so it isn't
+        // silently lost when switching to per-agent control.
+        const readerSupported = !READER_NO_SUPPORT.has(a.id);
+        const sw3 = document.createElement('label');
+        sw3.className = 'switch' + (a.installed && readerSupported ? '' : ' disabled');
+        sw3.title = readerSupported
+          ? 'Open this agent’s new tabs with the markdown reader pane by default. Each tab’s 👁 toggle still flips it per tab.'
+          : 'Antigravity has no reader pane yet, so the reader cannot default on for it.';
+        const cb3 = document.createElement('input');
+        cb3.type = 'checkbox';
+        cb3.checked = readerDefaultOn(a.id);
+        cb3.disabled = !a.installed || !readerSupported;
+        cb3.addEventListener('change', () => {
+          // Seed from the effective global default on first per-agent edit so a
+          // legacy global 'on' isn't lost once the list becomes authoritative.
+          if (splitDefaultAgents.length === 0 && GLOBALS.splitLayoutDefaultGlobal) {
+            splitDefaultAgents = readerCapableIds();
+          }
+          if (cb3.checked) {
+            if (!splitDefaultAgents.includes(a.id)) splitDefaultAgents = [...splitDefaultAgents, a.id];
+          } else {
+            splitDefaultAgents = splitDefaultAgents.filter(id => id !== a.id);
+          }
+          vscode.postMessage({ type: 'set-global', key: 'splitLayoutDefaultAgents', value: splitDefaultAgents });
+          render();
+        });
+        const sw3Text = document.createElement('span');
+        sw3Text.textContent = 'Reader by default';
+        sw3.appendChild(cb3);
+        sw3.appendChild(sw3Text);
+
         const controls = document.createElement('div');
         controls.className = 'agent-controls';
         controls.appendChild(sw);
         controls.appendChild(sw2);
+        controls.appendChild(sw3);
 
         row.appendChild(main);
         row.appendChild(controls);
@@ -1044,6 +1096,8 @@ function openGlobalSettings(context) {
     customSlashCommands: cfg.get('customSlashCommands', []),
     fileAssociations: cfg.get('fileAssociations', {}),
     sessionSaveDisabledAgents: cfg.get('sessionSaveDisabledAgents', []),
+    splitLayoutDefaultAgents: cfg.get('splitLayoutDefaultAgents', []),
+    splitLayoutDefaultGlobal: cfg.get('splitLayoutDefault', false),
   };
   panel.webview.html = getHtml(currentAgent, listAgents(), enabledAgents, globals);
 
@@ -1053,6 +1107,7 @@ function openGlobalSettings(context) {
     'agent',
     'enabledAgents',
     'sessionSaveDisabledAgents',
+    'splitLayoutDefaultAgents',
     'terminal.defaultBackend',
     'terminal.multiplexerLifecycle',
     'renamePrefix.enabled',

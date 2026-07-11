@@ -426,9 +426,17 @@ function createPanel(context, extensionPath, session, opts) {
   // antigravity has no reader yet (transcripts are protobuf-in-SQLite), so the
   // split layout would just show an empty/welcome reader pane — force it off so
   // agy tabs open as a plain terminal. The per-tab 👁 toggle can still flip it.
+  //
+  // Per-agent reader default: 'splitLayoutDefaultAgents' (list of agents that
+  // open with the reader pane). When non-empty it is authoritative — reader on
+  // only for listed agents. Empty falls back to the legacy global boolean so
+  // existing setups keep working. antigravity is always off (no reader).
+  const splitDefaultAgents = config.get('splitLayoutDefaultAgents', []);
   const splitLayoutDefault = agent === 'antigravity'
     ? false
-    : config.get('splitLayoutDefault', false);
+    : (Array.isArray(splitDefaultAgents) && splitDefaultAgents.length > 0
+        ? splitDefaultAgents.includes(agent)
+        : config.get('splitLayoutDefault', false));
   const pasteToFileThreshold = config.get('pasteToFileThreshold', 2000);
   const pasteTableAsMarkdown = config.get('pasteTableAsMarkdown', true);
   const defaultBackend = config.get('terminal.defaultBackend', 'webview');

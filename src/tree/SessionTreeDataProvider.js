@@ -37,14 +37,11 @@ const { buildUri: buildSessionDecorationUri, WARN_THRESHOLD: SIZE_WARN, ERROR_TH
 // the warning threshold so the suffix doesn't crowd small-session tooltips.
 function _sizeWarningSuffix(size, trashed) {
   if (typeof size !== 'number' || !isFinite(size) || size <= SIZE_WARN) return '';
-  if (size > SIZE_ERROR) {
-    return trashed
-      ? `\n\n⚠ 매우 큰 세션 (${formatMB(size)} MB) — 휴지통에서도 비우기 권장`
-      : `\n\n⚠ 매우 큰 세션 (${formatMB(size)} MB) — 즉시 새 세션으로 분할 권장`;
-  }
-  return trashed
-    ? `\n\n⚠ 큰 세션 (${formatMB(size)} MB) — 휴지통에서 정리 권장`
-    : `\n\n⚠ 큰 세션 (${formatMB(size)} MB) — 새 세션으로 분할 권장`;
+  const mb = formatMB(size);
+  const key = size > SIZE_ERROR
+    ? (trashed ? 'sizeVeryLargeTrash' : 'sizeVeryLargeSplit')
+    : (trashed ? 'sizeLargeTrash' : 'sizeLargeSplit');
+  return '\n\n' + t(key).replace('{0}', mb);
 }
 
 // Korean/English short relative time. Falls back to a locale date string

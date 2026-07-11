@@ -23,6 +23,7 @@ const chokidar = require('chokidar');
 const vscode = require('vscode');
 const os = require('os');
 const cp = require('child_process');
+const { t } = require('../i18n');
 
 let watcher = null;
 let debounceTimer = null;
@@ -145,7 +146,7 @@ async function ensureDeviceName(force = false) {
 
   const input = await vscode.window.showInputBox({
     title: 'Repo Sync — device name',
-    prompt: 'Shown in auto-commit messages so each device is recognizable. Examples: Mac · 회사 PC · 집 데스크탑',
+    prompt: t('syncDeviceNamePrompt'),
     placeHolder: 'e.g. Mac',
     ignoreFocusOut: true,
     validateInput: (v) => (v && v.trim()) ? null : 'Required',

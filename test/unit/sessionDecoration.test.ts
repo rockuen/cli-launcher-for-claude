@@ -36,14 +36,14 @@ test('under 5 MB returns no decoration (label stays default color)', () => {
   assert.equal(getDecoration(WARN_THRESHOLD - 1, false), null);
 });
 
-test('5+ MB returns warning decoration (yellow + 분할 권장)', () => {
+test('5+ MB returns warning decoration (yellow + split recommendation)', () => {
   const d = getDecoration(WARN_THRESHOLD + 1, false);
   assert.ok(d, 'expected decoration just over 5 MB');
   assert.equal(d.severity, 'warning');
   assert.equal(d.colorId, 'editorWarning.foreground');
-  assert.match(d.tooltip, /큰 세션/);
-  assert.match(d.tooltip, /새 세션으로 분할 권장/);
-  assert.ok(!d.tooltip.includes('매우 큰'), 'warning tooltip should not say 매우 큰');
+  assert.match(d.tooltip, /Large session/);
+  assert.match(d.tooltip, /split into a new session/);
+  assert.ok(!d.tooltip.includes('Very large'), 'warning tooltip should not say Very large');
 });
 
 test('exactly 10 MB still warning (not yet error)', () => {
@@ -52,13 +52,13 @@ test('exactly 10 MB still warning (not yet error)', () => {
   assert.equal(d.severity, 'warning');
 });
 
-test('10+ MB returns error decoration (red + 즉시 분할 권장)', () => {
+test('10+ MB returns error decoration (red + split-now recommendation)', () => {
   const d = getDecoration(ERROR_THRESHOLD + 1, false);
   assert.ok(d, 'expected decoration just over 10 MB');
   assert.equal(d.severity, 'error');
   assert.equal(d.colorId, 'errorForeground');
-  assert.match(d.tooltip, /매우 큰 세션/);
-  assert.match(d.tooltip, /즉시 새 세션으로 분할 권장/);
+  assert.match(d.tooltip, /Very large session/);
+  assert.match(d.tooltip, /split into a new session now/);
 });
 
 test('18 MB (the iloom a00cfa9a case) renders as error', () => {
@@ -70,16 +70,31 @@ test('18 MB (the iloom a00cfa9a case) renders as error', () => {
 
 // Trash flag changes the recommendation wording
 
-test('trash flag swaps the recommendation to 휴지통 정리', () => {
+test('trash flag swaps the recommendation to trash cleanup', () => {
   const live = getDecoration(WARN_THRESHOLD + 1, false);
   const trashed = getDecoration(WARN_THRESHOLD + 1, true);
-  assert.match(live.tooltip, /새 세션으로 분할 권장/);
-  assert.match(trashed.tooltip, /휴지통에서 정리 권장/);
+  assert.match(live.tooltip, /split into a new session/);
+  assert.match(trashed.tooltip, /clean up from trash/);
 });
 
 test('trash + 10+ MB recommends emptying trash', () => {
   const d = getDecoration(ERROR_THRESHOLD + 1, true);
-  assert.match(d.tooltip, /휴지통에서도 비우기 권장/);
+  assert.match(d.tooltip, /empty from trash too/);
+});
+
+// Localization: default wording is English; passing `labels` overrides it and
+// substitutes {0} with the size in MB.
+test('labels override localizes tooltip wording, {0} → MB', () => {
+  const labels = {
+    veryLargeTrash: '매우 큼 ({0} MB) 휴지통',
+    veryLargeSplit: '매우 큼 ({0} MB) 분할',
+    largeTrash: '큼 ({0} MB) 휴지통',
+    largeSplit: '큼 ({0} MB) 분할',
+  };
+  const warn = getDecoration(WARN_THRESHOLD + 1, false, labels);
+  assert.match(warn.tooltip, /^큼 \(5\.0 MB\) 분할$/);
+  const err = getDecoration(18 * 1024 * 1024, true, labels);
+  assert.match(err.tooltip, /^매우 큼 \(18\.0 MB\) 휴지통$/);
 });
 
 // Invalid input

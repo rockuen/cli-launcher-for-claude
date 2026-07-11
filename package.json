@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.19.1",
+  "version": "3.20.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1299,7 +1299,15 @@
         "claudeCodeLauncher.splitLayoutDefault": {
           "type": "boolean",
           "default": false,
-          "description": "Show the markdown reader pane above the terminal by default in new tabs. Each tab also has a 👁 toggle in the toolbar that flips this for that tab only."
+          "description": "Show the markdown reader pane above the terminal by default in new tabs. Each tab also has a 👁 toggle in the toolbar that flips this for that tab only. Used as the fallback default only when 'splitLayoutDefaultAgents' is empty; a non-empty per-agent list takes precedence."
+        },
+        "claudeCodeLauncher.splitLayoutDefaultAgents": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Per-agent list of agents whose new tabs open with the markdown reader pane by default (Claude / Kiro / Codex / Grok / Gajae / Chief). When non-empty this list is authoritative — reader defaults on only for the listed agents — and overrides the global 'splitLayoutDefault'. Antigravity has no reader yet, so it is always off. Edit per agent in CLI Launcher Settings → Agent (the 'Reader by default' switch)."
         },
         "claudeCodeLauncher.repoSync.enabled": {
           "type": "boolean",

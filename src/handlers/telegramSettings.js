@@ -29,6 +29,9 @@ const { resolveGjcCli } = require('../pty/resolveCli');
 let vscode = null;
 try { vscode = require('vscode'); } catch (_) { vscode = null; }
 
+// i18n은 vscode require를 자체 가드하므로 vscode 없이도 로드된다(영어 폴백).
+const { t } = require('../i18n');
+
 // gjc 텔레그램 알림 SDK가 도입된 최소 버전.
 const MIN_GJC_VERSION = [0, 7, 0];
 const TELEGRAM_SUPPORTED_CONTEXT_KEY = 'claudeCodeLauncher.gjc.telegramSupported';
@@ -201,23 +204,23 @@ async function setupTelegram(input = {}) {
 
   const resolved = resolveGjcCli();
   if (!resolved || !resolved.shell) {
-    _showError('Gajae Code CLI(gjc)를 찾을 수 없습니다. 설치: bun add -g gajae-code (Bun ≥ 1.3.14).');
+    _showError(t('tgGjcNotFound'));
     return { ok: false, error: 'gjc-not-found' };
   }
 
   // 사전 가드 1: 텔레그램 지원 버전인지.
   const supported = await detectTelegramSupport({ force: true });
   if (!supported) {
-    _showError('이 gjc 버전은 텔레그램 알림을 지원하지 않습니다. gjc 0.7.0 이상으로 업데이트하세요: bun add -g gajae-code');
+    _showError(t('tgUnsupportedVersion'));
     return { ok: false, error: 'unsupported-version' };
   }
   // 사전 가드 2: 입력 형식.
   if (!isValidBotToken(token)) {
-    _showError('봇 토큰 형식이 올바르지 않습니다. BotFather 토큰 형식 "<숫자>:<영숫자_- 30자 이상>"을 입력하세요.');
+    _showError(t('tgInvalidToken'));
     return { ok: false, error: 'invalid-token' };
   }
   if (!isValidChatId(chatId)) {
-    _showError('Chat ID 형식이 올바르지 않습니다. 숫자(예: 123456789) 또는 @username 을 입력하세요.');
+    _showError(t('tgInvalidChatId'));
     return { ok: false, error: 'invalid-chat-id' };
   }
 
@@ -225,12 +228,12 @@ async function setupTelegram(input = {}) {
   const result = await runGjc(buildNotifySetupArgs(token, chatId, redact), { timeout: 30000 });
   if (!result.ok) {
     await _setLauncherEnabled(false); // OFF 롤백
-    _showError(`텔레그램 설정 실패: ${_redactToken(result.error, token)}. OFF로 되돌렸습니다.`);
+    _showError(t('tgSetupFailed').replace('{0}', _redactToken(result.error, token)));
     return { ok: false, error: 'setup-failed' };
   }
 
   await _setLauncherEnabled(true);
-  _showInfo('gjc 텔레그램 알림이 켜졌습니다. 백그라운드 데몬은 gjc가 관리하며, 이 머신의 모든 gjc 세션(런처 밖 포함)에 적용됩니다.');
+  _showInfo(t('tgEnabled'));
   return { ok: true, error: null };
 }
 
@@ -242,12 +245,12 @@ async function disableTelegram() {
   if (resolved && resolved.shell) {
     const result = await runGjc(['config', 'set', 'notifications.enabled', 'false'], { timeout: 10000 });
     if (!result.ok) {
-      _showError(`텔레그램 OFF 실패: ${result.error}`);
+      _showError(t('tgDisableFailed').replace('{0}', result.error));
       return { ok: false, error: 'disable-failed' };
     }
   }
   await _setLauncherEnabled(false);
-  _showInfo('gjc 텔레그램 알림을 껐습니다. 실행 중인 데몬은 유휴 후(기본 60초) 자동 종료됩니다.');
+  _showInfo(t('tgDisabled'));
   return { ok: true, error: null };
 }
 
@@ -281,26 +284,26 @@ function _redactToken(message, token) {
 async function promptAndSetupTelegram() {
   if (!vscode) return { ok: false, error: 'no-vscode' };
   const token = await vscode.window.showInputBox({
-    title: 'gjc 텔레그램 알림 설정',
-    prompt: 'Telegram 봇 토큰 (BotFather 발급, 예: 123456789:AA...)',
+    title: t('tgSettingsTitle'),
+    prompt: t('tgTokenPrompt'),
     password: true,
     ignoreFocusOut: true,
     placeHolder: '123456789:AA...',
   });
   if (token === undefined) return { ok: false, error: 'cancelled' };
   const chatId = await vscode.window.showInputBox({
-    title: 'gjc 텔레그램 알림 설정',
-    prompt: 'Chat ID (숫자) 또는 @username — 봇과 대화를 시작한 채팅',
+    title: t('tgSettingsTitle'),
+    prompt: t('tgChatIdPrompt'),
     ignoreFocusOut: true,
     placeHolder: '123456789',
   });
   if (chatId === undefined) return { ok: false, error: 'cancelled' };
   const redactPick = await vscode.window.showQuickPick(
     [
-      { label: 'redact 끄기 (전체 내용 전송)', _redact: false },
-      { label: 'redact 켜기 (민감 내용 마스킹)', _redact: true },
+      { label: t('tgRedactOff'), _redact: false },
+      { label: t('tgRedactOn'), _redact: true },
     ],
-    { title: 'gjc 텔레그램: 원격 전송 내용 보호(redact)', placeHolder: '기본: 끄기 (gjc 기본값)' },
+    { title: t('tgRedactTitle'), placeHolder: t('tgRedactPlaceholder') },
   );
   if (!redactPick) return { ok: false, error: 'cancelled' };
   return setupTelegram({ token, chatId, redact: redactPick._redact });

@@ -6,6 +6,8 @@
 // Replacement point: swap buildHandoffNote() with an AI-summarisation call
 // when a smarter context compression step is ready.
 
+const { t } = require('../i18n');
+
 /**
  * Build a markdown handoff note from a list of messages.
  *
@@ -16,17 +18,17 @@
 function buildHandoffNote(messages, meta) {
   const { fromAgent, cwd } = meta;
   const lines = [];
-  lines.push(`# 이전 대화 인계 (from ${fromAgent})`);
-  lines.push(`작업 폴더: ${cwd}`);
+  lines.push(t('handoffNoteHeader').replace('{0}', fromAgent));
+  lines.push(t('handoffNoteCwd').replace('{0}', cwd));
   lines.push('');
-  lines.push('## 대화 내역');
+  lines.push(t('handoffNoteHistory'));
   for (const m of messages) {
-    const label = m.role === 'user' ? '[사용자]' : '[어시스턴트]';
+    const label = m.role === 'user' ? t('handoffNoteUser') : t('handoffNoteAssistant');
     lines.push(`**${label}** ${m.text}`);
     lines.push('');
   }
   lines.push('---');
-  lines.push('위 맥락을 이어서 작업해줘.');
+  lines.push(t('handoffNoteContinue'));
   // Append CR so the PTY treats this as a submitted message.
   return lines.join('\n') + '\r';
 }

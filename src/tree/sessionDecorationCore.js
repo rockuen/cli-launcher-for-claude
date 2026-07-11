@@ -9,6 +9,16 @@ const SCHEME = 'claudeCodeLauncher-session';
 const WARN_THRESHOLD = 5 * 1024 * 1024;   // 5 MB
 const ERROR_THRESHOLD = 10 * 1024 * 1024; // 10 MB
 
+// Default (English) tooltip wording. English is the default; the vscode-runtime
+// caller (SessionDecorationProvider) passes localized labels from i18n so this
+// module stays vscode-free and unit-testable. `{0}` is the size in MB.
+const DEFAULT_SIZE_LABELS = {
+  veryLargeTrash: '⚠ Very large session ({0} MB) — empty from trash too',
+  veryLargeSplit: '⚠ Very large session ({0} MB) — split into a new session now',
+  largeTrash: '⚠ Large session ({0} MB) — clean up from trash',
+  largeSplit: '⚠ Large session ({0} MB) — split into a new session',
+};
+
 function formatMB(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1);
 }
@@ -38,27 +48,27 @@ function encodeSessionPath(sessionId) {
 
 // Pure decision: { colorId, severity, sizeMB, tooltip } for any size > the
 // warning threshold; null otherwise. Trashed flag flips the recommendation
-// wording so the message matches where the session lives.
-function getDecoration(size, trashed) {
+// wording so the message matches where the session lives. `labels` overrides
+// the default (English) wording — the vscode caller passes localized strings;
+// each label uses `{0}` for the size in MB.
+function getDecoration(size, trashed, labels) {
   if (typeof size !== 'number' || !isFinite(size) || size < 0) return null;
+  const L = labels || DEFAULT_SIZE_LABELS;
+  const mb = formatMB(size);
   if (size > ERROR_THRESHOLD) {
     return {
       colorId: 'errorForeground',
       severity: 'error',
-      sizeMB: formatMB(size),
-      tooltip: trashed
-        ? `⚠ 매우 큰 세션 (${formatMB(size)} MB) — 휴지통에서도 비우기 권장`
-        : `⚠ 매우 큰 세션 (${formatMB(size)} MB) — 즉시 새 세션으로 분할 권장`,
+      sizeMB: mb,
+      tooltip: (trashed ? L.veryLargeTrash : L.veryLargeSplit).replace('{0}', mb),
     };
   }
   if (size > WARN_THRESHOLD) {
     return {
       colorId: 'editorWarning.foreground',
       severity: 'warning',
-      sizeMB: formatMB(size),
-      tooltip: trashed
-        ? `⚠ 큰 세션 (${formatMB(size)} MB) — 휴지통에서 정리 권장`
-        : `⚠ 큰 세션 (${formatMB(size)} MB) — 새 세션으로 분할 권장`,
+      sizeMB: mb,
+      tooltip: (trashed ? L.largeTrash : L.largeSplit).replace('{0}', mb),
     };
   }
   return null;
@@ -68,6 +78,7 @@ module.exports = {
   SCHEME,
   WARN_THRESHOLD,
   ERROR_THRESHOLD,
+  DEFAULT_SIZE_LABELS,
   formatMB,
   formatQuery,
   parseQuery,

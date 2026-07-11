@@ -168,4 +168,88 @@ module.exports = {
   slashChiefProvider: 'Chief provider bias 설정',
   slashChiefWeb: 'Chief 공개 웹 데이터 토글',
   slashChiefUpload: 'Chief에 자료 업로드',
+
+  // ── handoff command (activation.js) ─────────────────────────────
+  handoffNoActiveTab: 'CLI Launcher: 핸드오프할 활성 탭이 없습니다.',
+  handoffAgyUnsupported: 'CLI Launcher: Antigravity 세션은 아직 핸드오프 소스(대화 추출)를 지원하지 않습니다 — Claude/Kiro 세션에서 핸드오프하세요.',
+  handoffNoSessionPath: 'CLI Launcher: 세션 파일 경로를 찾을 수 없습니다.',
+  handoffExtractFail: 'CLI Launcher: 대화 추출 실패 — ',
+  handoffNoMessages: 'CLI Launcher: 넘길 대화가 없습니다.',
+  handoffNoOtherAgent: 'CLI Launcher: 핸드오프할 다른 에이전트가 없습니다 — 설정 → Agent에서 다른 에이전트를 켜세요.',
+  nestUnifiedClaudeOnly: 'CLI Launcher: 통합 뷰의 하위 세션 중첩은 Claude 세션만 지원합니다 — 다른 에이전트 세션은 그룹으로 정리하세요.',
+  // handoff note (lib/handoff.js) — {0} = source agent, {1} = cwd
+  handoffNoteHeader: '# 이전 대화 인계 (from {0})',
+  handoffNoteCwd: '작업 폴더: {0}',
+  handoffNoteHistory: '## 대화 내역',
+  handoffNoteUser: '[사용자]',
+  handoffNoteAssistant: '[어시스턴트]',
+  handoffNoteContinue: '위 맥락을 이어서 작업해줘.',
+
+  // ── session size-warning tooltips (tree) — {0} = size in MB ──────
+  sizeVeryLargeTrash: '⚠ 매우 큰 세션 ({0} MB) — 휴지통에서도 비우기 권장',
+  sizeVeryLargeSplit: '⚠ 매우 큰 세션 ({0} MB) — 즉시 새 세션으로 분할 권장',
+  sizeLargeTrash: '⚠ 큰 세션 ({0} MB) — 휴지통에서 정리 권장',
+  sizeLargeSplit: '⚠ 큰 세션 ({0} MB) — 새 세션으로 분할 권장',
+
+  // ── gjc model picker (handlers/gjcModel.js) — {0} = model ───────
+  gjcSetupCredentials: 'gjc: Claude·Codex 구독 로그인을 자동 임포트합니다. Antigravity·Grok 등 다른 구독은 gjc 세션 안에서 /login 으로 추가하세요.',
+  gjcModelSet: 'gjc 기본 모델: {0} — 새 gjc 세션에 적용됩니다(실행 중 세션은 재시작 시 적용).',
+  gjcModelCleared: 'gjc 기본 모델을 초기화했습니다 (gjc 기본값 사용).',
+  gjcModelCurrentSelected: '현재 선택됨',
+  gjcCustomDesc: '직접 입력 (예: provider/model, glm-4.6 …)',
+  gjcClearCurrent: '현재: {0}',
+  gjcClearAlready: '이미 기본값',
+  gjcListDesc: 'gjc --list-models (로그인된 구독 기준)',
+  gjcSetupDesc: 'gjc setup credentials + /login 안내',
+  gjcPickCurrent: '현재 gjc 모델: {0} — 변경하거나 작업을 선택하세요',
+  gjcPickDefault: 'gjc 기본 모델을 선택하세요 (OAuth 구독 기준)',
+  gjcCustomPrompt: 'gjc 모델 (퍼지 매칭: opus, gpt-5.2-codex, gemini-3-pro, grok-code-fast-1, 또는 provider/model)',
+
+  // ── gjc Telegram notifications (handlers/telegramSettings.js) ────
+  tgGjcNotFound: 'Gajae Code CLI(gjc)를 찾을 수 없습니다. 설치: bun add -g gajae-code (Bun ≥ 1.3.14).',
+  tgUnsupportedVersion: '이 gjc 버전은 텔레그램 알림을 지원하지 않습니다. gjc 0.7.0 이상으로 업데이트하세요: bun add -g gajae-code',
+  tgInvalidToken: '봇 토큰 형식이 올바르지 않습니다. BotFather 토큰 형식 "<숫자>:<영숫자_- 30자 이상>"을 입력하세요.',
+  tgInvalidChatId: 'Chat ID 형식이 올바르지 않습니다. 숫자(예: 123456789) 또는 @username 을 입력하세요.',
+  tgSetupFailed: '텔레그램 설정 실패: {0}. OFF로 되돌렸습니다.',
+  tgEnabled: 'gjc 텔레그램 알림이 켜졌습니다. 백그라운드 데몬은 gjc가 관리하며, 이 머신의 모든 gjc 세션(런처 밖 포함)에 적용됩니다.',
+  tgDisableFailed: '텔레그램 OFF 실패: {0}',
+  tgDisabled: 'gjc 텔레그램 알림을 껐습니다. 실행 중인 데몬은 유휴 후(기본 60초) 자동 종료됩니다.',
+  tgSettingsTitle: 'gjc 텔레그램 알림 설정',
+  tgTokenPrompt: 'Telegram 봇 토큰 (BotFather 발급, 예: 123456789:AA...)',
+  tgChatIdPrompt: 'Chat ID (숫자) 또는 @username — 봇과 대화를 시작한 채팅',
+  tgRedactOff: 'redact 끄기 (전체 내용 전송)',
+  tgRedactOn: 'redact 켜기 (민감 내용 마스킹)',
+  tgRedactTitle: 'gjc 텔레그램: 원격 전송 내용 보호(redact)',
+  tgRedactPlaceholder: '기본: 끄기 (gjc 기본값)',
+
+  // ── Claude Telegram channel (handlers/claudeChannelSetup.js) ─────
+  ccClaudeNotFound: 'Claude Code CLI(claude)를 찾을 수 없습니다. 설치: npm install -g @anthropic-ai/claude-code',
+  ccUnsupportedVersion: '채널(channels)은 Claude Code 2.1.80 이상이 필요합니다. 업데이트: npm install -g @anthropic-ai/claude-code',
+  ccVersionUnknown: 'Claude 버전을 확인하지 못했습니다(채널은 2.1.80+ 필요). 계속 진행합니다 — 페어링이 안 되면 `claude --version`으로 확인하세요.',
+  ccInvalidToken: '봇 토큰 형식이 올바르지 않습니다. BotFather 토큰 "<숫자>:<영숫자_- 30자 이상>"을 입력하세요.',
+  ccBunMissing: 'Bun이 감지되지 않았습니다. 텔레그램 채널 플러그인은 Bun으로 실행됩니다. https://bun.sh 에서 설치한 뒤 페어링하세요.',
+  ccPluginInstallWarn: '텔레그램 플러그인 자동 설치가 확인되지 않았습니다(이미 설치돼 있을 수 있음). 문제가 있으면 세션에서 `/plugin marketplace add anthropics/claude-plugins-official` 후 `/plugin install telegram@claude-plugins-official`를 실행하세요. 상세: ',
+  ccTokenWriteFail: '토큰 저장 실패({0}): {1}',
+  ccSetupTitle: 'Claude 텔레그램 채널 설정 (양방향 chat bridge)',
+  ccTokenPrompt: 'Telegram 봇 토큰 (BotFather 발급). 폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다.',
+  ccTokenValidate: '봇 토큰 형식: "<숫자>:<영숫자_- 30자 이상>" (BotFather 발급)',
+  ccOpenNew: '새 Claude 세션 열기',
+  ccLater: '나중에',
+  ccPairingSteps: '마지막 페어링만 폰에서 하세요: (1) 텔레그램에서 봇에게 아무 메시지나 전송 → (2) 봇이 준 코드로 세션에서 /telegram:access pair <코드> → (3) /telegram:access policy allowlist 로 본인만 허용.',
+  ccHeadlinePluginUnconfirmed: '채널을 켰지만 텔레그램 플러그인 자동 설치가 확인되지 않았습니다. 페어링 전에 세션에서 /plugin install telegram@claude-plugins-official 로 설치를 확인하세요. ',
+  ccHeadlineConfigured: 'Claude 텔레그램 채널이 구성됐습니다. 새 Claude 세션은 자동으로 --channels로 연결됩니다. ',
+  ccConcurrencyNote: ' ⚠️ 봇 1개는 한 번에 한 세션만 연결됩니다(텔레그램 제약) — 다른 세션에서 채널을 켜면 이 세션 연결이 끊깁니다. 여러 세션을 동시에 쓰려면 세션마다 봇을 따로 만드세요.',
+  ccDisabled: 'Claude 텔레그램 채널을 껐습니다. 이후 새 Claude 세션은 --channels 없이 시작됩니다. (플러그인·토큰은 유지 — 다시 켜면 바로 사용)',
+
+  // ── repo sync device-name prompt (sync/index.js) ────────────────
+  syncDeviceNamePrompt: 'Shown in auto-commit messages so each device is recognizable. Examples: Mac · 회사 PC · 집 데스크탑',
+
+  // ── global settings panel: Telegram blocks (panel/settingsPanel.js) ─
+  tgChannelTitle: 'Telegram 채널 (Claude 양방향)',
+  tgChannelDesc: '폰 텔레그램에서 Claude 세션을 양방향으로 제어합니다(Claude Code 네이티브 channels, 연구 미리보기). 마법사가 플러그인 설치·봇 토큰 저장·세션 토글까지 자동 처리하고, 마지막 페어링만 세션 안에서(/telegram:access pair) 합니다. 전제: Claude Code 2.1.80+, Bun, claude.ai/Console 인증. gjc 알림과는 별개입니다. ⚠️ 봇 1개는 한 번에 한 세션만 연결됩니다(텔레그램 제약) — 다른 세션에서 채널을 켜면 이전 세션 연결이 끊깁니다. 여러 세션을 동시에 쓰려면 세션마다 봇을 따로 만드세요.',
+  tgChannelSetupBtn: '텔레그램 채널 설정 / 켜기…',
+  tgNotifyTitle: 'Telegram 알림 (gjc 데몬)',
+  tgNotifyDesc: '폰에서 gjc 세션 알림을 받고 답장합니다. 기본 꺼짐. 백그라운드 데몬·단일 인스턴스(토큰당 1개)·유휴 정리는 gjc가 관리합니다. ⚠️ ON/OFF와 봇 토큰은 이 머신의 모든 gjc 세션(런처 밖 터미널 포함)에 영향합니다.',
+  tgNotifySetupBtn: '텔레그램 설정 / 켜기…',
+  tgDisableBtn: '끄기',
 };

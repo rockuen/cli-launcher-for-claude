@@ -140,7 +140,7 @@ function activate(context) {
         if (entry.panel.active) { activeEntry = entry; break; }
       }
       if (!activeEntry) {
-        vscode.window.showInformationMessage('CLI Launcher: 핸드오프할 활성 탭이 없습니다.');
+        vscode.window.showInformationMessage(t('handoffNoActiveTab'));
         return;
       }
 
@@ -151,8 +151,8 @@ function activate(context) {
         // so it can't be a handoff SOURCE yet (extraction needs the .db parser).
         // Handing off TO antigravity works fine — only extracting FROM it doesn't.
         const msg = activeEntry.agent === 'antigravity'
-          ? 'CLI Launcher: Antigravity 세션은 아직 핸드오프 소스(대화 추출)를 지원하지 않습니다 — Claude/Kiro 세션에서 핸드오프하세요.'
-          : 'CLI Launcher: 세션 파일 경로를 찾을 수 없습니다.';
+          ? t('handoffAgyUnsupported')
+          : t('handoffNoSessionPath');
         vscode.window.showInformationMessage(msg);
         return;
       }
@@ -160,11 +160,11 @@ function activate(context) {
       try {
         messages = extractMessages(jsonlPath, activeEntry.agent);
       } catch (e) {
-        vscode.window.showInformationMessage('CLI Launcher: 대화 추출 실패 — ' + e.message);
+        vscode.window.showInformationMessage(t('handoffExtractFail') + e.message);
         return;
       }
       if (!messages || messages.length === 0) {
-        vscode.window.showInformationMessage('CLI Launcher: 넘길 대화가 없습니다.');
+        vscode.window.showInformationMessage(t('handoffNoMessages'));
         return;
       }
 
@@ -183,7 +183,7 @@ function activate(context) {
       );
       if (others.length === 0) {
         vscode.window.showInformationMessage(
-          'CLI Launcher: 핸드오프할 다른 에이전트가 없습니다 — 설정 → Agent에서 다른 에이전트를 켜세요.'
+          t('handoffNoOtherAgent')
         );
         return;
       }
@@ -1161,7 +1161,7 @@ function activate(context) {
       // trash/restore that silently no-op the real foreign file. Block at source.
       if (item._unified && item._agent && item._agent !== 'claude') {
         vscode.window.showInformationMessage(
-          'CLI Launcher: 통합 뷰의 하위 세션 중첩은 Claude 세션만 지원합니다 — 다른 에이전트 세션은 그룹으로 정리하세요.'
+          t('nestUnifiedClaudeOnly')
         );
         return;
       }

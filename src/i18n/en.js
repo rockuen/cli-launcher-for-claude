@@ -169,4 +169,88 @@ module.exports = {
   slashChiefProvider: 'Set Chief provider bias',
   slashChiefWeb: 'Toggle Chief public web data',
   slashChiefUpload: 'Upload an asset to Chief',
+
+  // ── handoff command (activation.js) ─────────────────────────────
+  handoffNoActiveTab: 'CLI Launcher: No active tab to hand off.',
+  handoffAgyUnsupported: 'CLI Launcher: Antigravity sessions cannot be a handoff source yet (conversation extraction) — hand off from a Claude/Kiro session.',
+  handoffNoSessionPath: 'CLI Launcher: Session file path not found.',
+  handoffExtractFail: 'CLI Launcher: Conversation extraction failed — ',
+  handoffNoMessages: 'CLI Launcher: No conversation to hand off.',
+  handoffNoOtherAgent: 'CLI Launcher: No other agent to hand off to — enable another agent in Settings → Agent.',
+  nestUnifiedClaudeOnly: 'CLI Launcher: In the unified view, sub-session nesting is Claude-only — organize other agents\' sessions into groups.',
+  // handoff note (lib/handoff.js) — {0} = source agent, {1} = cwd
+  handoffNoteHeader: '# Handoff from prior conversation (from {0})',
+  handoffNoteCwd: 'Working folder: {0}',
+  handoffNoteHistory: '## Conversation history',
+  handoffNoteUser: '[User]',
+  handoffNoteAssistant: '[Assistant]',
+  handoffNoteContinue: 'Continue working from the context above.',
+
+  // ── session size-warning tooltips (tree) — {0} = size in MB ──────
+  sizeVeryLargeTrash: '⚠ Very large session ({0} MB) — empty from trash too',
+  sizeVeryLargeSplit: '⚠ Very large session ({0} MB) — split into a new session now',
+  sizeLargeTrash: '⚠ Large session ({0} MB) — clean up from trash',
+  sizeLargeSplit: '⚠ Large session ({0} MB) — split into a new session',
+
+  // ── gjc model picker (handlers/gjcModel.js) — {0} = model ───────
+  gjcSetupCredentials: 'gjc: Auto-imports your Claude · Codex subscription logins. Add other subscriptions (Antigravity, Grok, …) with /login inside a gjc session.',
+  gjcModelSet: 'gjc default model: {0} — applies to new gjc sessions (running sessions apply on restart).',
+  gjcModelCleared: 'Cleared the gjc default model (using gjc default).',
+  gjcModelCurrentSelected: 'Currently selected',
+  gjcCustomDesc: 'Type it in (e.g. provider/model, glm-4.6 …)',
+  gjcClearCurrent: 'Current: {0}',
+  gjcClearAlready: 'Already default',
+  gjcListDesc: 'gjc --list-models (based on logged-in subscriptions)',
+  gjcSetupDesc: 'gjc setup credentials + /login guide',
+  gjcPickCurrent: 'Current gjc model: {0} — change it or pick an action',
+  gjcPickDefault: 'Pick the default gjc model (based on OAuth subscriptions)',
+  gjcCustomPrompt: 'gjc model (fuzzy: opus, gpt-5.2-codex, gemini-3-pro, grok-code-fast-1, or provider/model)',
+
+  // ── gjc Telegram notifications (handlers/telegramSettings.js) ────
+  tgGjcNotFound: 'Gajae Code CLI (gjc) not found. Install: bun add -g gajae-code (Bun ≥ 1.3.14).',
+  tgUnsupportedVersion: 'This gjc version does not support Telegram notifications. Update to gjc 0.7.0+: bun add -g gajae-code',
+  tgInvalidToken: 'Invalid bot token format. Enter a BotFather token "<digits>:<30+ alphanumerics/_-/>".',
+  tgInvalidChatId: 'Invalid Chat ID format. Enter a number (e.g. 123456789) or @username.',
+  tgSetupFailed: 'Telegram setup failed: {0}. Reverted to OFF.',
+  tgEnabled: 'gjc Telegram notifications are ON. The background daemon is managed by gjc and applies to every gjc session on this machine (including outside the launcher).',
+  tgDisableFailed: 'Telegram OFF failed: {0}',
+  tgDisabled: 'gjc Telegram notifications are OFF. The running daemon shuts down after it goes idle (default 60s).',
+  tgSettingsTitle: 'gjc Telegram notification settings',
+  tgTokenPrompt: 'Telegram bot token (from BotFather, e.g. 123456789:AA...)',
+  tgChatIdPrompt: 'Chat ID (number) or @username — the chat where you started talking to the bot',
+  tgRedactOff: 'redact off (send full content)',
+  tgRedactOn: 'redact on (mask sensitive content)',
+  tgRedactTitle: 'gjc Telegram: protect remotely sent content (redact)',
+  tgRedactPlaceholder: 'Default: off (gjc default)',
+
+  // ── Claude Telegram channel (handlers/claudeChannelSetup.js) ─────
+  ccClaudeNotFound: 'Claude Code CLI (claude) not found. Install: npm install -g @anthropic-ai/claude-code',
+  ccUnsupportedVersion: 'Channels require Claude Code 2.1.80 or newer. Update: npm install -g @anthropic-ai/claude-code',
+  ccVersionUnknown: 'Could not verify the Claude version (channels need 2.1.80+). Continuing — if pairing fails, check with `claude --version`.',
+  ccInvalidToken: 'Invalid bot token format. Enter a BotFather token "<digits>:<30+ alphanumerics/_-/>".',
+  ccBunMissing: 'Bun was not detected. The Telegram channel plugin runs on Bun. Install it from https://bun.sh, then pair.',
+  ccPluginInstallWarn: 'Automatic Telegram plugin install could not be confirmed (it may already be installed). If there are issues, run `/plugin marketplace add anthropics/claude-plugins-official` then `/plugin install telegram@claude-plugins-official` in the session. Details: ',
+  ccTokenWriteFail: 'Failed to save token ({0}): {1}',
+  ccSetupTitle: 'Claude Telegram channel setup (two-way chat bridge)',
+  ccTokenPrompt: 'Telegram bot token (from BotFather). Control your Claude session two-way from phone Telegram.',
+  ccTokenValidate: 'Bot token format: "<digits>:<30+ alphanumerics/_-/>" (from BotFather)',
+  ccOpenNew: 'Open a new Claude session',
+  ccLater: 'Later',
+  ccPairingSteps: 'Do only the final pairing on your phone: (1) send any message to the bot in Telegram → (2) use the code it returns in the session: /telegram:access pair <code> → (3) restrict to yourself with /telegram:access policy allowlist.',
+  ccHeadlinePluginUnconfirmed: 'The channel is on, but the automatic Telegram plugin install could not be confirmed. Before pairing, confirm the install in the session with /plugin install telegram@claude-plugins-official. ',
+  ccHeadlineConfigured: 'The Claude Telegram channel is configured. New Claude sessions connect automatically with --channels. ',
+  ccConcurrencyNote: ' ⚠️ One bot connects to only one session at a time (Telegram limit) — enabling the channel in another session disconnects this one. To use several sessions at once, make a separate bot per session.',
+  ccDisabled: 'The Claude Telegram channel is off. New Claude sessions start without --channels. (Plugin and token are kept — turn it back on to use immediately.)',
+
+  // ── repo sync device-name prompt (sync/index.js) ────────────────
+  syncDeviceNamePrompt: 'Shown in auto-commit messages so each device is recognizable. Examples: Mac · Work PC · Home desktop',
+
+  // ── global settings panel: Telegram blocks (panel/settingsPanel.js) ─
+  tgChannelTitle: 'Telegram channel (Claude two-way)',
+  tgChannelDesc: 'Control your Claude session two-way from phone Telegram (Claude Code native channels, research preview). The wizard installs the plugin, saves the bot token, and toggles the session automatically — you only do the final pairing inside the session (/telegram:access pair). Requires Claude Code 2.1.80+, Bun, and claude.ai/Console auth. Separate from gjc notifications. ⚠️ One bot connects to only one session at a time (Telegram limit) — enabling the channel in another session disconnects the previous one. To use several sessions at once, make a separate bot per session.',
+  tgChannelSetupBtn: 'Set up / enable Telegram channel…',
+  tgNotifyTitle: 'Telegram notifications (gjc daemon)',
+  tgNotifyDesc: 'Receive gjc session notifications on your phone and reply. Off by default. The background daemon, single instance (one per token), and idle cleanup are managed by gjc. ⚠️ ON/OFF and the bot token affect every gjc session on this machine (including terminals outside the launcher).',
+  tgNotifySetupBtn: 'Set up / enable Telegram…',
+  tgDisableBtn: 'Disable',
 };

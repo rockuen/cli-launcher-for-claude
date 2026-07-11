@@ -1,7 +1,14 @@
 // @module i18n — Runtime locale resolution and translation lookup.
 // Loads per-locale strings from ./en and ./ko. Falls back to English for missing keys.
+//
+// English is the default. Korean strings are used ONLY when the editor display
+// language starts with 'ko'. The vscode require is guarded so this module (and
+// therefore t()) can be required from vscode-free contexts — pure-helper unit
+// tests (node:test) and modules that guard their own vscode import — where it
+// resolves to English rather than throwing.
 
-const vscode = require('vscode');
+let vscode = null;
+try { vscode = require('vscode'); } catch (_) { vscode = null; }
 
 const LOCALES = {
   en: require('./en'),
@@ -9,7 +16,7 @@ const LOCALES = {
 };
 
 function getLocale() {
-  const lang = vscode.env.language || 'en';
+  const lang = (vscode && vscode.env && vscode.env.language) || 'en';
   return lang.startsWith('ko') ? 'ko' : 'en';
 }
 

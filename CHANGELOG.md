@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.20.0] - 2026-07-11
+
+Runtime UI now defaults to **English**, showing Korean only when the editor language is Korean — plus a **per-agent "Reader by default"** setting.
+
+### Changed
+- **English is the default for all runtime UI strings.** Toasts, prompts, tooltips, and settings-panel labels that were hardcoded in Korean now resolve through the i18n layer, so they read English unless the VS Code display language starts with `ko` (`vscode.env.language`). Korean is untouched for Korean users. Newly routed surfaces: session handoff messages + handoff note, the gjc model picker, gjc Telegram-notification setup, the Claude Telegram-channel wizard, the repo-sync device-name prompt, oversized-session warning tooltips, and the global settings panel's Telegram blocks.
+
+### Added
+- **Per-agent "Reader by default" toggle (CLI Launcher Settings → Agent).** A third switch beside each agent's **Enabled** / **Save sessions** toggles controls whether that agent's new tabs open with the markdown reader pane. Antigravity has no reader yet, so its switch is disabled.
+  - **`claudeCodeLauncher.splitLayoutDefaultAgents`** (array, default `[]`) — agent ids whose new tabs open with the reader pane. When non-empty it is authoritative (reader on only for listed agents) and overrides the global `splitLayoutDefault`; empty falls back to that global boolean, so existing setups keep working. Switching to per-agent control seeds from the effective global default so a legacy global "on" isn't lost.
+
+### Implementation
+- `src/i18n/index.js`: guard the `vscode` require so `t()` resolves (to English) in vscode-free contexts — pure-helper unit tests and self-guarded modules — instead of throwing.
+- `src/i18n/en.js` / `ko.js`: +108 keys each (handoff, size warnings, gjc model picker, Telegram settings/channel, sync device name, settings-panel Telegram blocks), kept at parity (281 keys each).
+- `src/activation.js`, `src/lib/handoff.js`, `src/handlers/{gjcModel,telegramSettings,claudeChannelSetup}.js`, `src/sync/index.js`: hardcoded Korean replaced with `t('key')` (with `.replace('{0}', …)` for interpolated values).
+- `src/tree/sessionDecorationCore.js`: `getDecoration(size, trashed, labels)` now takes optional localized labels (English default constant) so the module stays vscode-free; `SessionDecorationProvider` passes `t()`-built labels and `SessionTreeDataProvider._sizeWarningSuffix` uses `t()`. `_relTime` was already locale-guarded.
+- `src/panel/settingsPanel.js`: Telegram blocks localized via `${JSON.stringify(t('key'))}`; new per-agent "Reader by default" switch wired to `splitLayoutDefaultAgents` (added to GLOBALS + `ALLOWED_GLOBAL_KEYS`).
+- `src/panel/createPanel.js`: per-agent reader-default resolution (list authoritative when non-empty, else legacy global; antigravity always off).
+- `package.json`: `claudeCodeLauncher.splitLayoutDefaultAgents` setting; version 3.19.1 → 3.20.0.
+
+### Tests
+- `test/unit/sessionDecoration.test.ts`: assertions updated to the English default + a new test that a `labels` override localizes the tooltip and substitutes `{0}`. Full suite green except the pre-existing, unrelated `chiefPaste` multi-line-newline failure. i18n en/ko parity and English-fallback verified at runtime.
+
 ## [3.19.1] - 2026-07-10
 
 Fix a project-scoped Codex home that was seeded once and then never refreshed, so it drifted away from `~/.codex` until Codex failed to start its MCP servers.
