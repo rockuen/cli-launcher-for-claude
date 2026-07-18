@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.20.1] - 2026-07-18
+
+Reader view no longer strikes through prose containing single tildes.
+
+### Fixed
+- **Single `~` pairs rendered as strikethrough in the reader.** marked's default GFM `del` rule (`(~~?)`) accepts a single tilde as a strikethrough delimiter, so ordinary prose like `3~4개월 … 9월~ … 9~12월` had everything between tilde pairs wrapped in `<del>`. The tokenizer is now narrowed to require the full `~~` delimiter (Obsidian-compatible): single tildes stay literal, intentional `~~strike~~` keeps working.
+
+### Implementation
+- `src/lib/readerRender.js`: `marked.use({ tokenizer: { del } })` override with a double-tilde-only version of the stock rule. The no-match branch returns `undefined`, not `false` — marked treats `false` as "fall back to the original tokenizer", which would silently re-enable single-tilde strikethrough.
+
+### Tests
+- `test/unit/readerStrikethrough.test.ts`: 6 tests through the `renderBlocks` funnel — single-`~` prose stays literal (both roles), trailing-tilde range shorthand (`9월~`), `~~…~~` still strikes, single `~` allowed inside a `~~` span, nested `**bold**` inside `~~` survives. Full suite green except the pre-existing, unrelated `chiefPaste` multi-line-newline failure (fails identically on a clean checkout).
+
 ## [3.20.0] - 2026-07-11
 
 Runtime UI now defaults to **English**, showing Korean only when the editor language is Korean — plus a **per-agent "Reader by default"** setting.
