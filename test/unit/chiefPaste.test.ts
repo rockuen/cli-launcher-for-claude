@@ -62,6 +62,31 @@ test('CRLF / CR inside a paste are normalized to LF on decode', async () => {
   assert.equal(decodePastedLine(out), 'a\nb\nc');
 });
 
+// Regression (v3.20.2): the sentinel must survive readline's keypress parsing.
+// The original U+0000 sentinel was classified as a ctrl-combo (ctrl+`) and
+// silently dropped from the line buffer, so decodePastedLine had nothing to
+// restore and pasted lines arrived glued together. This drives the joiner
+// through a REAL readline Interface in terminal mode — the exact layer that
+// broke — and asserts the multi-line body round-trips.
+test('the sentinel survives readline(terminal:true) and decodes back to newlines', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const readline = require('node:readline');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PassThrough } = require('node:stream');
+
+  const line: string = await new Promise((resolve, reject) => {
+    const joiner = createPasteJoiner();
+    const echo = new PassThrough();
+    echo.resume(); // discard readline's echo/cursor writes
+    const rl = readline.createInterface({ input: joiner, output: echo, terminal: true });
+    const timer = setTimeout(() => reject(new Error('no line event')), 2000);
+    rl.on('line', (l: string) => { clearTimeout(timer); rl.close(); resolve(l); });
+    joiner.write(WRAPPED);
+  });
+
+  assert.equal(decodePastedLine(line), BODY);
+});
+
 // Integration: drive the real chief-repl wrapper under node-pty and confirm a
 // multi-line bracketed paste is recorded as exactly ONE user turn (the bug was
 // one transcript row per physical line). The transcript row is written before

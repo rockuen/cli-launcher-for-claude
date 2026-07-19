@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.20.2] - 2026-07-19
+
+Chief: a multi-line message from the launcher textarea now reaches Chief with real newlines instead of its lines glued into one.
+
+### Fixed
+- **Chief multi-line input flattened to a single line.** The chief-repl paste joiner hid embedded newlines behind a U+0000 (NUL) sentinel so readline would deliver the paste as one line, restoring them on submit. But readline's keypress parser classifies C0 controls as ctrl-combos (NUL → ctrl+backtick) and drops them from the line buffer entirely, so `decodePastedLine` had nothing to restore — the message hit the Chief API and the transcript with its lines concatenated (`…테스트테스트…`). The sentinel is now U+2063 INVISIBLE SEPARATOR: readline self-inserts it like any printable, it is zero-width in both Node's cursor math and xterm.js echo (the paste preview stays clean), and no keyboard produces it. This is also the root cause of the "pre-existing `chiefPaste` multi-line-newline failure" noted in 3.20.1 — that node-pty integration test asserts exactly this round-trip and goes green with the new sentinel.
+
+### Implementation
+- `bin/lib/bracketedPaste.js`: `NL_SENTINEL` `'\x00'` → `'\u2063'`; `encodePasteBody` additionally strips any pre-existing U+2063 from the paste body so decode can't invent newlines the user never typed.
+
+### Tests
+- `test/unit/chiefPaste.test.ts`: new regression test drives the joiner through a real `readline.Interface({ terminal: true })` — the exact layer that dropped the NUL — and asserts the multi-line body round-trips through `decodePastedLine`.
+
 ## [3.20.1] - 2026-07-18
 
 Reader view no longer strikes through prose containing single tildes.

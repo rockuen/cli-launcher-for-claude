@@ -20,10 +20,14 @@ const { Transform } = require('stream');
 
 const PASTE_START = '\x1b[200~';
 const PASTE_END = '\x1b[201~';
-// Newline placeholder carried through readline. U+0000 (NUL) is never produced
-// by a keyboard and xterm.js drops it on echo, so the in-buffer paste preview
-// stays visually clean until it is submitted.
-const NL_SENTINEL = '\x00';
+// Newline placeholder carried through readline. Must be a character readline's
+// keypress parser self-inserts into the line buffer: C0 controls like U+0000
+// are classified as ctrl-combos (NUL → ctrl+`) and silently dropped, which is
+// exactly the "lines glued together" bug. U+2063 INVISIBLE SEPARATOR is a
+// plain printable to readline, zero-width in both Node's cursor math and
+// xterm.js rendering (paste preview stays clean), and never typed by a
+// keyboard.
+const NL_SENTINEL = '\u2063';
 
 // Largest k in [1, marker.length) such that `data` ends with marker.slice(0, k).
 // Lets a marker that is split across two chunks be detected on the next chunk
@@ -37,7 +41,10 @@ function partialTailLen(data, marker) {
 }
 
 function encodePasteBody(body) {
-  return body.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').join(NL_SENTINEL);
+  // Drop any pre-existing sentinel chars so decode can't invent newlines the
+  // user never pasted (U+2063 is invisible, so nothing visible is lost).
+  return body.replace(new RegExp(NL_SENTINEL, 'g'), '')
+    .replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').join(NL_SENTINEL);
 }
 
 // Decode a readline `line` produced through the joiner back into its original
