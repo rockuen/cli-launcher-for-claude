@@ -9,10 +9,13 @@
 const PTY_CHUNK_SIZE = 256;
 const PTY_CHUNK_DELAY = 20;
 
-function writePtyChunked(entry, data) {
+function writePtyChunked(entry, data, opts = {}) {
   if (!entry.pty || !data) return;
   if (!entry._writeQueue) entry._writeQueue = [];
-  entry._writeQueue.push(data);
+  const afterDelayMs = Number.isFinite(opts.afterDelayMs)
+    ? Math.max(0, opts.afterDelayMs)
+    : PTY_CHUNK_DELAY;
+  entry._writeQueue.push({ data, afterDelayMs });
   if (!entry._writing) drainWriteQueue(entry);
 }
 
@@ -22,15 +25,21 @@ function drainWriteQueue(entry) {
     if (entry._writeQueue) entry._writeQueue.length = 0;
     return;
   }
-  const data = entry._writeQueue && entry._writeQueue.shift();
-  if (!data) {
+  const queued = entry._writeQueue && entry._writeQueue.shift();
+  if (!queued) {
     entry._writing = false;
     return;
   }
+  // Accept legacy string items as well so a live extension reload cannot
+  // strand anything that was queued by the previous implementation.
+  const data = typeof queued === 'string' ? queued : queued.data;
+  const afterDelayMs = typeof queued === 'string'
+    ? PTY_CHUNK_DELAY
+    : queued.afterDelayMs;
   entry._writing = true;
   if (data.length <= PTY_CHUNK_SIZE) {
     try { entry.pty.write(data); } catch (_) {}
-    setTimeout(() => drainWriteQueue(entry), PTY_CHUNK_DELAY);
+    setTimeout(() => drainWriteQueue(entry), afterDelayMs);
     return;
   }
   let offset = 0;
@@ -55,7 +64,7 @@ function drainWriteQueue(entry) {
     if (offset < data.length) {
       setTimeout(writeNext, PTY_CHUNK_DELAY);
     } else {
-      setTimeout(() => drainWriteQueue(entry), PTY_CHUNK_DELAY);
+      setTimeout(() => drainWriteQueue(entry), afterDelayMs);
     }
   };
   writeNext();

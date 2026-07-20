@@ -64,6 +64,22 @@ test('editor textarea submits through the submit-input route', () => {
   assert.ok(script.includes("vscode.postMessage({ type: 'submit-input', text });"));
 });
 
+test('standalone Reader input uses the shared agent-aware submit path', () => {
+  const source = fs.readFileSync(
+    path.join(process.cwd(), 'src/panel/readerView.js'),
+    'utf8',
+  );
+  const start = source.indexOf('function handleReaderInput(text)');
+  assert.notEqual(start, -1);
+
+  const end = source.indexOf('\nfunction show(', start);
+  assert.notEqual(end, -1);
+  const block = source.slice(start, end);
+
+  assert.ok(block.includes('writeSubmitInput(currentEntry, submitText, writePtyChunked);'));
+  assert.ok(!block.includes("toSend = text + '\\r'"));
+});
+
 test('gjc panels use the Gajae red/yellow input theme', () => {
   const script = getClientScript({
     T: {},

@@ -28,7 +28,7 @@ const { handleOpenFolder } = require('../handlers/openFolder');
 const readerView = require('./readerView');
 const { handlePasteLargeText } = require('../handlers/pasteLargeText');
 const { restartPty } = require('./restartPty');
-const { buildSubmitInputWrites } = require('../pty/submitInput');
+const { writeSubmitInput } = require('../pty/submitInput');
 
 // Pure cursor-navigation keystrokes (arrows / page / home / end) — the keys
 // used to move WITHIN a menu without answering it. The input handler keeps the
@@ -64,18 +64,7 @@ function routeWebviewMessage(msg, ctx) {
 
     case 'submit-input': {
       if (!entry.pty) return;
-      const writes = buildSubmitInputWrites(msg.text || '', { agent: entry.agent });
-      let delay = 0;
-      for (const w of writes) {
-        delay += w.delayMs || 0;
-        if (delay > 0) {
-          setTimeout(() => {
-            if (entry.pty && !entry._disposed) writePtyChunked(entry, w.data);
-          }, delay);
-        } else {
-          writePtyChunked(entry, w.data);
-        }
-      }
+      writeSubmitInput(entry, msg.text || '', writePtyChunked);
       entry._recentTail = '';
       return;
     }

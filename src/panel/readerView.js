@@ -19,6 +19,7 @@ const path = require('path');
 const crypto = require('crypto');
 const chokidar = require('chokidar');
 const { writePtyChunked } = require('../pty/write');
+const { writeSubmitInput } = require('../pty/submitInput');
 const {
   getSessionJsonlPath,
   extractAiTitle,
@@ -150,11 +151,9 @@ function renderLive() {
   }
 }
 
-// Phase 2: textarea → PTY stdin. Three transport modes by payload size/shape:
-//   - >threshold       → temp file, send "@<path>" so Claude reads it as an attachment
-//   - contains newline → bracketed paste mode (\e[200~ ... \e[201~) so the TUI
-//                        treats it as one paste rather than line-by-line input
-//   - single line      → text + CR
+// Phase 2: textarea → PTY stdin. Two transport modes by payload size:
+//   - >threshold    → temp file, submit "@<path>" so the agent reads the attachment
+//   - regular input → the same agent-aware submit path as the split reader
 // PTY-dead path posts 'reader-input-failed' so the webview can disable the box.
 function handleReaderInput(text) {
   if (!text || !text.trim()) return;
@@ -164,7 +163,7 @@ function handleReaderInput(text) {
   }
   const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
   const threshold = cfg.get('pasteToFileThreshold', 2000);
-  let toSend;
+  let submitText = text;
   if (text.length > threshold) {
     try {
       const tmpDir = path.join(os.tmpdir(), 'claude-launcher-paste');
@@ -172,19 +171,15 @@ function handleReaderInput(text) {
       const fname = 'reader-' + Date.now() + '-' + crypto.randomBytes(3).toString('hex') + '.txt';
       const fullPath = path.join(tmpDir, fname);
       fs.writeFileSync(fullPath, text, 'utf8');
-      toSend = '@' + fullPath.replace(/\\/g, '/') + '\r';
+      submitText = '@' + fullPath.replace(/\\/g, '/');
       console.log('[reader] large paste → ' + fullPath);
     } catch (e) {
       if (activePanel) activePanel.webview.postMessage({ type: 'reader-input-failed', reason: 'paste-to-file failed: ' + e.message });
       return;
     }
-  } else if (text.includes('\n')) {
-    toSend = '\x1b[200~' + text + '\x1b[201~\r';
-  } else {
-    toSend = text + '\r';
   }
   try {
-    writePtyChunked(currentEntry, toSend);
+    writeSubmitInput(currentEntry, submitText, writePtyChunked);
     if (activePanel) activePanel.webview.postMessage({ type: 'typing-start' });
     console.log('[reader] sent ' + text.length + ' chars to PTY ' + currentEntry.sessionId);
   } catch (e) {

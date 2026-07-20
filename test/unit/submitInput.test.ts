@@ -6,6 +6,7 @@ import * as path from 'node:path';
 const {
   buildSubmitInputWrites,
   buildSubmitInputPayload,
+  writeSubmitInput,
   normalizeSubmitText,
   shouldUseBracketedPaste,
 } = require(path.join(process.cwd(), 'src/pty/submitInput'));
@@ -20,8 +21,8 @@ test('Claude, Codex, Kiro, and Grok textarea submits send text, then delayed Ent
     { data: '\r', delayMs: 120 },
   ]);
   assert.deepEqual(buildSubmitInputWrites('hello', { agent: 'codex' }), [
-    { data: 'hello', delayMs: 0 },
-    { data: '\r', delayMs: 120 },
+    { data: '\x1b[200~hello\x1b[201~', delayMs: 0 },
+    { data: '\r', delayMs: 300 },
   ]);
   assert.deepEqual(buildSubmitInputWrites('hello', { agent: 'kiro' }), [
     { data: 'hello', delayMs: 0 },
@@ -43,12 +44,37 @@ test('multi-line submits use bracketed paste for every agent', () => {
   ]);
   assert.deepEqual(buildSubmitInputWrites('a\nb', { agent: 'codex' }), [
     { data: '\x1b[200~a\nb\x1b[201~', delayMs: 0 },
-    { data: '\r', delayMs: 120 },
+    { data: '\r', delayMs: 300 },
   ]);
   assert.deepEqual(buildSubmitInputWrites('a\nb', { agent: 'grok' }), [
     { data: '\x1b[200~a\nb\x1b[201~', delayMs: 0 },
     { data: '\r', delayMs: 120 },
   ]);
+});
+
+test('Codex single-line submits use explicit bracketed paste', () => {
+  assert.equal(shouldUseBracketedPaste('codex', 'hello'), true);
+  assert.equal(shouldUseBracketedPaste('claude', 'hello'), false);
+});
+
+test('Codex Enter is queued behind a post-drain paste delay', () => {
+  const writes: Array<{ data: string, opts?: { afterDelayMs?: number } }> = [];
+  const timers: unknown[] = [];
+  const entry = { agent: 'codex', pty: {}, _disposed: false };
+
+  const sent = writeSubmitInput(
+    entry,
+    'hello',
+    (_entry: unknown, data: string, opts?: { afterDelayMs?: number }) => writes.push({ data, opts }),
+    (...args: unknown[]) => timers.push(args),
+  );
+
+  assert.equal(sent, true);
+  assert.deepEqual(writes, [
+    { data: '\x1b[200~hello\x1b[201~', opts: { afterDelayMs: 300 } },
+    { data: '\r', opts: undefined },
+  ]);
+  assert.equal(timers.length, 0);
 });
 
 test('non-Claude single-line submits keep the legacy raw text plus Enter path', () => {
@@ -63,5 +89,8 @@ test('empty submits return an empty payload', () => {
 });
 
 test('buildSubmitInputPayload is retained for compatibility', () => {
-  assert.equal(buildSubmitInputPayload('hello', { agent: 'codex' }), 'hello\r');
+  assert.equal(
+    buildSubmitInputPayload('hello', { agent: 'codex' }),
+    '\x1b[200~hello\x1b[201~\r',
+  );
 });

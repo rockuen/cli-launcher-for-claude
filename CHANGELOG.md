@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.20.4] - 2026-07-20
+
+Codex prompts sent from the launcher's input boxes now reliably submit instead of only appearing in the CLI composer.
+
+### Fixed
+- **Codex text arrived but Enter was missed.** Launcher submits previously started the Enter timer when prompt delivery began. On a chunked or slow paste, that timer could expire before the final text chunk reached Codex, leaving effectively no settling gap between the paste and Enter. Codex then kept the text in its composer until Enter was pressed manually.
+- The split terminal/reader input and the standalone Reader input now share the same agent-aware submit path, eliminating the standalone Reader's old one-write `text + Enter` behavior.
+
+### Implementation
+- Codex launcher submissions use explicit bracketed-paste boundaries even for a single line, then queue Enter 300 ms after the complete prompt write drains. Claude, Kiro, Grok, and Gajae retain their existing 120 ms timing.
+- `src/pty/write.js` supports a per-item post-write delay while preserving the existing 256-character chunking and 20 ms pacing.
+
+### Tests
+- Added regression coverage for Codex single-line bracketed paste, post-drain Enter ordering across multiple PTY chunks, and both Reader input surfaces. Targeted tests, TypeScript lint, and the production build pass. The full parallel Node run's unrelated Chief PTY temp-file race passes when rerun in isolation.
+
 ## [3.20.3] - 2026-07-20
 
 Reader fenced blocks now have a one-click copy button in their upper-right corner.
