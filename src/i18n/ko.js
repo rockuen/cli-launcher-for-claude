@@ -93,6 +93,7 @@ module.exports = {
   stDone: '종료', stError: '오류',
   queueRunning: '큐 실행 중: ', queueDone: '큐 완료!',
   imagePasting: '이미지 붙여넣는 중...', copied: '복사됨',
+  readerCopyBlock: '블록 복사', readerCopyFailed: '복사 실패',
   clipboardChecking: '클립보드에서 이미지 확인 중...',
   particlesOnToast: '입자 효과 켜짐', particlesOffToast: '입자 효과 꺼짐',
   // fullscreen mode

@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.20.3] - 2026-07-20
+
+Reader fenced blocks now have a one-click copy button in their upper-right corner.
+
+### Added
+- **Copy button for fenced blocks in Reader view.** Commands, configuration, and ready-to-send drafts rendered as fenced Markdown blocks now show a compact copy icon at the upper right. Clicking it copies the block's exact displayed text, briefly changes the icon to a green check, and shows localized success/failure feedback. Inline code stays undecorated so ordinary prose remains uncluttered.
+- The same behavior is available in both the split terminal/reader layout and the standalone Reader panel, including blocks added by live transcript updates.
+
+### Implementation
+- `src/lib/readerRender.js`: wraps rendered `<pre><code>` blocks with the shared copy affordance after linkification, without duplicating large block contents in HTML attributes.
+- `src/panel/webviewClient.js` / `readerView.js`: delegated click handlers copy from the live `<code>` node, so replacing reader HTML during transcript updates does not break the button.
+- `src/panel/webviewStyles.js` / `readerView.js`: upper-right button, keyboard focus state, and copied check-mark styling for dark and light themes.
+- `src/i18n/{en,ko}.js`: localized copy and failure labels.
+
+### Tests
+- `test/unit/readerCodeCopy.test.ts`: fenced/inline distinction, multiple-block rendering, and attribute escaping. Reader regression tests, generated webview syntax, build, lint, and Vitest pass; the full parallel Node run's single Chief PTY temp-file race passes when rerun in isolation.
+
 ## [3.20.2] - 2026-07-19
 
 Chief: a multi-line message from the launcher textarea now reaches Chief with real newlines instead of its lines glued into one.

@@ -32,6 +32,7 @@ const {
   resolveReaderNames,
 } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
+const { t } = require('../i18n');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
@@ -136,7 +137,11 @@ function renderLive() {
     activePanel.webview.postMessage({
       type: 'messages-updated',
       meta: buildMeta(currentEntry, aiTitle, messages),
-      blocksHtml: renderBlocks(messages, { cap: readerCap, names: _readerNamesFor(currentEntry.agent) }),
+      blocksHtml: renderBlocks(messages, {
+        cap: readerCap,
+        names: _readerNamesFor(currentEntry.agent),
+        copyLabel: t('readerCopyBlock'),
+      }),
       lastRole,
     });
     console.log('[reader] posted messages-updated count=' + messages.length + ' lastRole=' + lastRole);
@@ -342,7 +347,11 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   const readerCap = vscode.workspace
     .getConfiguration('claudeCodeLauncher')
     .get('readerMessageCap', 200);
-  const blocks = renderBlocks(messages, { cap: readerCap, names: _readerNamesFor(entry.agent) });
+  const blocks = renderBlocks(messages, {
+    cap: readerCap,
+    names: _readerNamesFor(entry.agent),
+    copyLabel: t('readerCopyBlock'),
+  });
 
   const toggleIcon = theme === 'dark' ? '☀' : '🌙';
   const toggleTitle = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
@@ -470,6 +479,22 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     background: var(--pre-bg); border: 1px solid var(--pre-border);
     border-radius: 6px; padding: 12px; overflow-x: auto;
   }
+  .reader-code-block { position: relative; margin: 0.8em 0; }
+  .reader-code-block pre { margin: 0; padding-top: 36px; }
+  .reader-code-copy {
+    position: absolute; top: 7px; right: 7px; z-index: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 27px; height: 25px; padding: 0;
+    border: 1px solid var(--pre-border); border-radius: 4px;
+    background: var(--code-bg); color: var(--ts);
+    cursor: pointer; opacity: 0.78;
+  }
+  .reader-code-copy:hover, .reader-code-copy:focus-visible { opacity: 1; color: var(--fg); }
+  .reader-code-copy:focus-visible { outline: 1px solid var(--assistant); outline-offset: 1px; }
+  .reader-code-copy svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+  .reader-code-copy.copied { color: #4caf50; border-color: #4caf50; opacity: 1; }
+  .reader-code-copy.copied svg { display: none; }
+  .reader-code-copy.copied::after { content: '\\2713'; font-size: 14px; font-weight: 700; }
   .msg-body pre code { background: transparent; color: var(--fg); padding: 0; font-size: 0.88em; }
   .msg-body table { border-collapse: collapse; margin: 0.8em 0; font-size: 0.95em; }
   .msg-body th, .msg-body td { border: 1px solid var(--border); padding: 4px 10px; }
@@ -523,6 +548,9 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     const inputEl = document.getElementById('reader-input');
     const sendBtn = document.getElementById('reader-send');
     const errorEl = document.getElementById('reader-input-error');
+    const copyLabel = ${JSON.stringify(t('readerCopyBlock'))};
+    const copiedLabel = ${JSON.stringify(t('copied'))};
+    const copyFailedLabel = ${JSON.stringify(t('readerCopyFailed'))};
     let flashTimer = null;
     let errorTimer = null;
     function flashLive() {
@@ -562,6 +590,35 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
       });
     }
     if (sendBtn) sendBtn.addEventListener('click', send);
+
+    if (blocksEl) {
+      // Delegated listener remains active when live updates replace blocksHtml.
+      blocksEl.addEventListener('click', async function(e) {
+        const button = e.target && e.target.closest && e.target.closest('.reader-code-copy');
+        if (!button || !blocksEl.contains(button)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const block = button.closest('.reader-code-block');
+        const code = block && block.querySelector('code');
+        if (!code) return;
+        const text = (code.textContent || '').replace(/\\n$/, '');
+        try {
+          await navigator.clipboard.writeText(text);
+          button.classList.add('copied');
+          button.title = copiedLabel;
+          button.setAttribute('aria-label', copiedLabel);
+          setTimeout(function() {
+            if (!button.isConnected) return;
+            button.classList.remove('copied');
+            button.title = copyLabel;
+            button.setAttribute('aria-label', copyLabel);
+          }, 1600);
+        } catch (_) {
+          button.title = copyFailedLabel;
+          button.setAttribute('aria-label', copyFailedLabel);
+        }
+      });
+    }
 
     window.addEventListener('message', function(e) {
       const m = e.data;

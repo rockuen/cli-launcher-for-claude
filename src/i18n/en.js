@@ -94,6 +94,7 @@ module.exports = {
   stDone: 'Done', stError: 'Error',
   queueRunning: 'Queue: ', queueDone: 'Queue done!',
   imagePasting: 'Pasting image...', copied: 'Copied',
+  readerCopyBlock: 'Copy block', readerCopyFailed: 'Copy failed',
   clipboardChecking: 'Checking clipboard for image...',
   particlesOnToast: 'Particles on', particlesOffToast: 'Particles off',
   // fullscreen mode

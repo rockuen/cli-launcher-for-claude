@@ -474,6 +474,23 @@ function getStyles(ctx) {
       border: 1px solid ${border};
       border-radius: 6px; padding: 10px; overflow-x: auto;
     }
+    #reader-area .reader-code-block { position: relative; margin: 0.6em 0; }
+    #reader-area .reader-code-block pre { margin: 0; padding-top: 34px; }
+    #reader-area .reader-code-copy {
+      position: absolute; top: 6px; right: 6px; z-index: 1;
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 25px; height: 23px; padding: 0;
+      border: 1px solid ${border}; border-radius: 4px;
+      background: ${isDark ? '#252525' : '#eeeeee'}; color: ${statusGray};
+      cursor: pointer; opacity: 0.78;
+    }
+    #reader-area .reader-code-copy:hover,
+    #reader-area .reader-code-copy:focus-visible { opacity: 1; color: ${fg}; }
+    #reader-area .reader-code-copy:focus-visible { outline: 1px solid var(--accent, ${isDark ? '#D97757' : '#C96442'}); outline-offset: 1px; }
+    #reader-area .reader-code-copy svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+    #reader-area .reader-code-copy.copied { color: #4caf50; border-color: #4caf50; opacity: 1; }
+    #reader-area .reader-code-copy.copied svg { display: none; }
+    #reader-area .reader-code-copy.copied::after { content: '\\2713'; font-size: 13px; font-weight: 700; }
     #reader-area .msg-body pre code { background: transparent; color: ${fg}; padding: 0; font-size: 0.85em; }
     #reader-area .msg-body table { border-collapse: collapse; margin: 0.6em 0; font-size: 0.92em; }
     #reader-area .msg-body th, #reader-area .msg-body td { border: 1px solid ${border}; padding: 4px 8px; }

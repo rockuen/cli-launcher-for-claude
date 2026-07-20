@@ -645,6 +645,33 @@ function getClientScript(ctx) {
     }
     const readerEl = document.getElementById('reader-area');
     if (readerEl) {
+      // Fenced code blocks are often ready-to-use commands, drafts, or config.
+      // Event delegation survives live reader updates that replace blocksHtml.
+      readerEl.addEventListener('click', async (e) => {
+        const button = e.target && e.target.closest && e.target.closest('.reader-code-copy');
+        if (!button || !readerEl.contains(button)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const code = button.closest('.reader-code-block')?.querySelector('code');
+        if (!code) return;
+        const text = (code.textContent || '').replace(/\\n$/, '');
+        try {
+          await navigator.clipboard.writeText(text);
+          button.classList.add('copied');
+          button.title = T.copied;
+          button.setAttribute('aria-label', T.copied);
+          showToast(T.copied);
+          setTimeout(() => {
+            if (!button.isConnected) return;
+            button.classList.remove('copied');
+            button.title = T.readerCopyBlock;
+            button.setAttribute('aria-label', T.readerCopyBlock);
+          }, 1600);
+        } catch (_) {
+          showToast(T.readerCopyFailed);
+        }
+      });
+
       readerEl.addEventListener('wheel', (e) => {
         if (!e.ctrlKey) return;
         e.preventDefault();

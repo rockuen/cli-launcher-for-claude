@@ -281,7 +281,11 @@ function startReaderWatch(entry, panel) {
       panel.webview.postMessage({
         type: 'reader-update',
         meta: buildMeta(entry, aiTitle, messages),
-        blocksHtml: renderBlocks(messages, { cap: readerCap, names: readerNames }),
+        blocksHtml: renderBlocks(messages, {
+          cap: readerCap,
+          names: readerNames,
+          copyLabel: t('readerCopyBlock'),
+        }),
         lastRole,
       });
     } catch (_) {}
