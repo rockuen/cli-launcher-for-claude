@@ -79,19 +79,20 @@ function antigravityBaseDir(cwd) {
   return root ? path.join(root, 'antigravity') : path.join(os.homedir(), '.gemini', 'antigravity-cli');
 }
 
-// gjc (Gajae Code) stores sessions under <agentDir>/sessions/<encoded-cwd>/,
-// where agentDir defaults to ~/.gjc/agent and is overridable via the
-// GJC_CODING_AGENT_DIR env var (verified in gjc's CLI help). Project scope puts
-// the agent dir under .agent-sessions/.home/gjc/agent and links its sessions to
-// .agent-sessions/gjc, mirroring the codex/grok layout.
+// gjc (Gajae Code) stores sessions under <agentDir>/sessions/, where agentDir
+// defaults to ~/.gjc/agent and is overridable via the GJC_CODING_AGENT_DIR env
+// var (verified in gjc's CLI help). Project scope puts the agent dir under
+// .agent-sessions/.home/gjc/agent. Unlike codex/grok, the sessions dir stays
+// physically inside the agent dir: gjc's managed-session security (>= 0.11.6)
+// refuses a symlinked/junctioned sessions root ("The sessions root is not a
+// safe directory"), so the old redirect link to .agent-sessions/gjc is dead.
 function gjcAgentDir(cwd) {
   const root = projectSessionRoot(cwd);
   return root ? path.join(root, '.home', 'gjc', 'agent') : path.join(os.homedir(), '.gjc', 'agent');
 }
 
 function gjcSessionsDir(cwd) {
-  const root = projectSessionRoot(cwd);
-  return root ? path.join(root, 'gjc') : path.join(gjcAgentDir(cwd), 'sessions');
+  return path.join(gjcAgentDir(cwd), 'sessions');
 }
 
 function _mkdirp(p) {
@@ -301,13 +302,101 @@ function _prepareGrokHome(cwd) {
   return home;
 }
 
+// gjc's managed-session write protocol (>= 0.11.6) verifies the sessions root
+// is owner-only before creating a session: on Windows a protected DACL whose
+// only ACE is the current user (owner_mismatch otherwise), on POSIX mode 0700
+// (mode_mismatch otherwise). ~/.gjc/agent/sessions gets that shape from gjc
+// itself, but a launcher-created project dir inherits the workspace ACL/umask,
+// so re-assert it here. Verified against gjc 0.11.6's resolve+prepare on a
+// real workspace: junction removal alone still failed with owner_mismatch;
+// with the protected single-ACE DACL, prepare succeeds.
+function _ownerOnlySync(target, recursive) {
+  if (process.platform === 'win32') {
+    // No \\?\ prefix: icacls /reset rejects it (verified — 0 files processed).
+    // Paths beyond MAX_PATH fail per-item and /C skips them; such entries keep
+    // their old (readable) ACLs, which gjc does not verify below the root.
+    const icacls = (args, timeout) => {
+      try {
+        require('child_process').execFileSync('icacls', args, { stdio: 'ignore', windowsHide: true, timeout });
+      } catch (_) {}
+    };
+    // Protect the root: drop inherited ACEs, grant only the current user.
+    icacls([target, '/inheritance:r', '/grant:r', `${os.userInfo().username}:(OI)(CI)F`, '/Q'], 15000);
+    if (recursive) {
+      // Children must NOT get the (OI)(CI) grant directly — icacls applied to
+      // a FILE with those flags leaves it inaccessible (EPERM). /reset makes
+      // the subtree re-inherit from the root's single-ACE DACL instead.
+      // Bounded per entry: normalization is best-effort (moved payload stays
+      // readable either way) and must not stall panel spawn on huge trees.
+      let entries = [];
+      try { entries = fs.readdirSync(target); } catch (_) {}
+      for (const entry of entries) {
+        icacls([path.join(target, entry), '/reset', '/T', '/C', '/Q'], 30000);
+      }
+    }
+    return;
+  }
+  const walk = (p) => {
+    let st;
+    try { st = fs.lstatSync(p); } catch (_) { return; }
+    if (st.isSymbolicLink()) return;
+    try { fs.chmodSync(p, st.isDirectory() ? 0o700 : 0o600); } catch (_) {}
+    if (!recursive || !st.isDirectory()) return;
+    let entries;
+    try { entries = fs.readdirSync(p); } catch (_) { return; }
+    for (const e of entries) walk(path.join(p, e));
+  };
+  walk(target);
+}
+
+// Until v3.20.4 the gjc project layout linked <agentDir>/sessions to
+// .agent-sessions/gjc (like codex/grok). gjc >= 0.11.6 refuses to create
+// sessions behind that link ("The sessions root is not a safe directory"), so
+// it must become a real directory. Drop the link and pull the legacy payload
+// into the real sessions dir so history/resume keep working. Best-effort per
+// entry: anything held open by a live session stays behind and is retried on
+// the next launch. Returns whether any payload moved (callers then normalize
+// the moved tree's security once).
+function _absorbLegacyGjcSessions(cwd, sessionsDir) {
+  const root = projectSessionRoot(cwd);
+  if (!root) return false;
+  try {
+    if (fs.lstatSync(sessionsDir).isSymbolicLink()) {
+      try { fs.rmdirSync(sessionsDir); } catch (_) { fs.unlinkSync(sessionsDir); }
+    }
+  } catch (_) {}
+  const legacyDir = path.join(root, 'gjc');
+  let entries;
+  try {
+    const st = fs.lstatSync(legacyDir);
+    if (!st.isDirectory() || st.isSymbolicLink()) return false;
+    entries = fs.readdirSync(legacyDir);
+  } catch (_) { return false; }
+  _mkdirp(sessionsDir);
+  let clean = true;
+  let moved = false;
+  for (const entry of entries) {
+    try {
+      if (fs.existsSync(path.join(sessionsDir, entry))) { clean = false; continue; }
+      fs.renameSync(path.join(legacyDir, entry), path.join(sessionsDir, entry));
+      moved = true;
+    } catch (_) { clean = false; }
+  }
+  try { if (clean) fs.rmdirSync(legacyDir); } catch (_) {}
+  return moved;
+}
+
 function _prepareGjcHome(cwd) {
   const agentDir = gjcAgentDir(cwd);
   const real = path.join(os.homedir(), '.gjc', 'agent');
   const sessionsDir = gjcSessionsDir(cwd);
   _mkdirp(agentDir);
+  const migrated = _absorbLegacyGjcSessions(cwd, sessionsDir);
   _mkdirp(sessionsDir);
-  _linkDirIfExists(sessionsDir, path.join(agentDir, 'sessions'));
+  // Root every launch (cheap, idempotent — gjc verifies only the root; its own
+  // scope dirs are created with the right security). Recursive only right
+  // after a migration, so absorbed legacy payload is normalized once.
+  _ownerOnlySync(sessionsDir, migrated);
   // gjc honors GJC_CODING_AGENT_DIR directly, so no HOME/USERPROFILE
   // virtualization is needed. Copy gjc's config + auth/state SQLite DBs so the
   // project agent dir runs standalone (credentials can be re-imported if they

@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.20.5] - 2026-07-22
+
+Gajae Code (gjc) sessions launch again after the gjc 0.11.x security update.
+
+### Fixed
+- **gjc launch failed with "Could not resolve managed session scope: The sessions root is not a safe directory."** gjc >= 0.11.6 hardened its managed-session storage and now refuses to create sessions when `<agentDir>/sessions` is a symlink or NTFS junction. The launcher's project-scoped storage redirected exactly that path (`.agent-sessions/.home/gjc/agent/sessions` → `.agent-sessions/gjc`), so every launcher-spawned gjc session died on startup while plain-terminal gjc (real `~/.gjc/agent/sessions`) kept working.
+
+### Changed
+- Project-scoped gjc sessions now live physically at `.agent-sessions/.home/gjc/agent/sessions` (a real directory) instead of behind a junction to `.agent-sessions/gjc`. On the next gjc launch the launcher removes the legacy link and moves any existing `.agent-sessions/gjc` payload into the new location, so history and resume keep working. Session listing/watching already matched by jsonl header `cwd`, not by directory layout, so the reader picks up both migrated legacy files and gjc's new `v2-<digest>` scope directories unchanged.
+- The launcher now asserts owner-only security on the gjc sessions root every launch: gjc's write protocol additionally rejects a root whose DACL is not a protected single-ACE grant to the current user (Windows, `owner_mismatch`) or whose mode is not 0700 (POSIX, `mode_mismatch`). A launcher-created directory inherits the workspace ACL/umask, so `icacls /inheritance:r /grant:r <user>:(OI)(CI)F` (or chmod 0700/0600) is applied — non-recursively per launch, recursively once right after a legacy migration. Verified end-to-end against gjc 0.11.6's `resolveManagedScope` + `prepareManagedSessionScopeForWriteSync` on a real workspace.
+- Note: the new location sits under `.agent-sessions/.home/`, which project setups typically gitignore — gjc transcripts stop being git-tracked. This is intentional: gjc's v2 managed layout pins directory identity (dev/ino) and verifies owner-only security, which does not survive cross-device git sync.
+
+### Tests
+- Project-path expectations updated; new regression test covers junction → real-dir migration including legacy payload absorption and cleanup.
+
 ## [3.20.4] - 2026-07-20
 
 Codex prompts sent from the launcher's input boxes now reliably submit instead of only appearing in the CLI composer.
