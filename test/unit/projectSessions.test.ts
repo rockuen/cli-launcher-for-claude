@@ -89,6 +89,24 @@ test('prepareProjectSessionEnvironment sets per-agent project homes', () => {
     assert.equal(kiro.KEEP, '1');
     assert.equal(kiro.HOME, path.join(cwd, '.agent-sessions', '.home', 'kiro'));
     assert.equal(kiro.USERPROFILE, kiro.HOME);
+    // macOS: kiro-cli >= 2.13 execs $HOME/.local/bin/kiro-cli-chat (no PATH
+    // fallback) and reads auth from $HOME/Library/Application Support/kiro-cli.
+    // Both must resolve under the virtual HOME or `chat` dies with os error 2
+    // (chat binary) / demands a fresh browser login (data dir).
+    if (process.platform === 'darwin') {
+      const realChat = path.join(os.homedir(), '.local', 'bin', 'kiro-cli-chat');
+      if (fs.existsSync(realChat)) {
+        const linkedChat = path.join(kiro.HOME, '.local', 'bin', 'kiro-cli-chat');
+        assert.equal(fs.existsSync(linkedChat), true, 'virtual HOME links kiro-cli-chat');
+        assert.equal(fs.realpathSync(linkedChat), fs.realpathSync(realChat), 'chat binary link resolves to the real binary');
+      }
+      const realData = path.join(os.homedir(), 'Library', 'Application Support', 'kiro-cli');
+      if (fs.existsSync(realData)) {
+        const linkedData = path.join(kiro.HOME, 'Library', 'Application Support', 'kiro-cli');
+        assert.equal(fs.lstatSync(linkedData).isSymbolicLink(), true, 'virtual HOME links the LIVE kiro-cli data dir');
+        assert.equal(fs.realpathSync(linkedData), fs.realpathSync(realData), 'data dir link resolves to the real data dir');
+      }
+    }
 
     const antigravity = mod.prepareProjectSessionEnvironment('antigravity', cwd, { KEEP: '1' });
     assert.equal(antigravity.KEEP, '1');
@@ -179,6 +197,34 @@ test('gjc legacy sessions link is replaced by a real dir and its payload absorbe
         'migrated payload normalized to owner-only'
       );
     }
+
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+});
+
+// A kiro run from before the macOS data-dir link existed may have grown a real
+// isolated dir at <virtual HOME>/Library/Application Support/kiro-cli (fresh
+// login state / partial runtime download). Preparing the kiro env must move it
+// aside and replace it with a live link to the real data dir.
+test('kiro stranded real data dir is backed up and replaced by a live link (macOS)', { skip: process.platform !== 'darwin' }, () => {
+  withProjectSessions('project', (mod) => {
+    const realData = path.join(os.homedir(), 'Library', 'Application Support', 'kiro-cli');
+    if (!fs.existsSync(realData)) return; // machine without kiro — nothing to link
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'kiro-datadir-'));
+    const dataDst = path.join(cwd, '.agent-sessions', '.home', 'kiro', 'Library', 'Application Support', 'kiro-cli');
+    fs.mkdirSync(dataDst, { recursive: true });
+    fs.writeFileSync(path.join(dataDst, 'data.sqlite3'), 'stale isolated auth');
+
+    mod.prepareProjectSessionEnvironment('kiro', cwd, {});
+
+    assert.equal(fs.lstatSync(dataDst).isSymbolicLink(), true, 'stranded dir replaced by a link');
+    assert.equal(fs.realpathSync(dataDst), fs.realpathSync(realData), 'link points at the real data dir');
+    const backups = fs.readdirSync(path.dirname(dataDst)).filter((n) => n.startsWith('kiro-cli.backup.'));
+    assert.equal(backups.length, 1, 'stranded payload moved aside, not deleted');
+    assert.equal(
+      fs.readFileSync(path.join(path.dirname(dataDst), backups[0], 'data.sqlite3'), 'utf8'),
+      'stale isolated auth'
+    );
 
     fs.rmSync(cwd, { recursive: true, force: true });
   });

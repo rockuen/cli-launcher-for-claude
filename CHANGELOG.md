@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.20.6] - 2026-07-23
+
+Kiro sessions launch again on macOS after the kiro-cli 2.13 update.
+
+### Fixed
+- **macOS launcher-spawned Kiro died instantly with `error: No such file or directory (os error 2)`** while plain-terminal kiro kept working. kiro-cli >= 2.13 is a router binary: `kiro-cli chat` execs the chat TUI at `$HOME/.local/bin/kiro-cli-chat` (HOME-derived, no PATH fallback) and keeps auth (the data.sqlite3 secret store) plus its bun/tui runtime under `$HOME/Library/Application Support/kiro-cli`. Neither resolved under the project-scoped virtual HOME. The virtual HOME now live-links the three `~/.local/bin/kiro-cli*` binaries and the real data dir (links only, never copies — a copied data.sqlite3 would strand rotating auth tokens).
+- A stranded REAL `Library/Application Support/kiro-cli` dir inside the virtual HOME (grown by a kiro run from before the link existed — fresh-login state, partial runtime download) is moved aside to `kiro-cli.backup.<timestamp>` so the live link can take over.
+
+### Changed
+- `~/.kiro/agents` (kiro custom agent profiles, used by `--agent`) is now linked into the virtual `.kiro` alongside settings/extensions/powers/skills/steering.
+
 ## [3.20.5] - 2026-07-22
 
 Gajae Code (gjc) sessions launch again after the gjc 0.11.x security update.

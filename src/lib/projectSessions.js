@@ -186,8 +186,10 @@ function _linkDirIfExists(src, dst) {
 }
 
 // Symlink src → dst when src exists and dst is absent. Unlike _linkDirIfExists
-// there is NO copy fallback — used for the macOS Keychains dir, which must be
-// the LIVE keychain (a copy would be stale and would leak secrets). Best-effort.
+// there is NO copy fallback — used for live state that must never fork: the
+// macOS Keychains dir (a copy would be stale and would leak secrets) and the
+// kiro-cli data dir / binaries. Works for file targets too on POSIX, where the
+// symlink type argument is ignored. Best-effort.
 function _symlinkDirNoCopy(src, dst) {
   try {
     if (!fs.existsSync(src) || fs.existsSync(dst)) return;
@@ -259,7 +261,7 @@ function _prepareKiroHome(cwd) {
   _mkdirp(cliDir);
   _mkdirp(path.join(virtualKiro, 'sessions'));
   _linkDirIfExists(cliDir, path.join(virtualKiro, 'sessions', 'cli'));
-  for (const dir of ['settings', 'extensions', 'powers', 'skills', 'steering']) {
+  for (const dir of ['agents', 'settings', 'extensions', 'powers', 'skills', 'steering']) {
     _linkDirIfExists(path.join(realKiro, dir), path.join(virtualKiro, dir));
   }
   _copyFileIfExists(path.join(realKiro, 'argv.json'), path.join(virtualKiro, 'argv.json'));
@@ -267,6 +269,32 @@ function _prepareKiroHome(cwd) {
   if (process.platform === 'win32') {
     const realLocal = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
     _linkDirIfExists(path.join(realLocal, 'kiro-cli'), path.join(home, 'AppData', 'Local', 'kiro-cli'));
+  }
+
+  if (process.platform === 'darwin') {
+    // kiro-cli >= 2.13 is a router: `kiro-cli chat` execs the chat TUI at
+    // $HOME/.local/bin/kiro-cli-chat (HOME-derived, no PATH fallback) and keeps
+    // auth (data.sqlite3 secret store) plus the bun/tui runtime in
+    // $HOME/Library/Application Support/kiro-cli. Neither resolved under the
+    // virtual HOME, so launcher-spawned chat died instantly with "No such file
+    // or directory (os error 2)" while plain-terminal kiro kept working.
+    // Live links only, never copies: a copied data.sqlite3 would strand
+    // rotating auth tokens, and the CLI binaries are ~1GB.
+    const realLocalBin = path.join(os.homedir(), '.local', 'bin');
+    for (const bin of ['kiro-cli', 'kiro-cli-chat', 'kiro-cli-term']) {
+      _symlinkDirNoCopy(path.join(realLocalBin, bin), path.join(home, '.local', 'bin', bin));
+    }
+    const realData = path.join(os.homedir(), 'Library', 'Application Support', 'kiro-cli');
+    const dataDst = path.join(home, 'Library', 'Application Support', 'kiro-cli');
+    // A kiro run from before this link existed may have grown a REAL isolated
+    // data dir here (fresh login state / partial runtime download). Move it
+    // aside so the live link can take over — its auth is junk by definition.
+    try {
+      if (fs.existsSync(realData) && fs.existsSync(dataDst) && !fs.lstatSync(dataDst).isSymbolicLink()) {
+        fs.renameSync(dataDst, dataDst + '.backup.' + Date.now());
+      }
+    } catch (_) {}
+    _symlinkDirNoCopy(realData, dataDst);
   }
   return home;
 }
