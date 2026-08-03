@@ -284,6 +284,7 @@ function startReaderWatch(entry, panel) {
         blocksHtml: renderBlocks(messages, {
           cap: readerCap,
           names: readerNames,
+          agent: entry.agent,
           copyLabel: t('readerCopyBlock'),
         }),
         lastRole,

@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.20.7] - 2026-08-03
+
+Chief responses in Reader now preserve the intentional line breaks shown in the CLI.
+
+### Fixed
+- **Chief response lines were joined into paragraphs in Reader.** The Chief API uses single newlines as intentional visual breaks, and the terminal displayed them correctly, but the shared Reader renderer applied standard Markdown soft-break behavior to assistant messages and collapsed each single newline to a space. Chief assistant messages now render those newlines as `<br>` while all other assistants retain their existing Markdown behavior.
+- Both the split terminal/Reader layout and the standalone Reader panel pass the active agent into the shared renderer, covering initial rendering and live transcript updates.
+
+### Tests
+- Added Reader regression coverage for Chief assistant line breaks, unchanged soft-break behavior for other assistants, and the existing all-agent user-message behavior. Full Node tests (482 passed, 1 platform skip), Vitest (54 passed), TypeScript lint, and the production build pass.
+
 ## [3.20.6] - 2026-07-23
 
 Kiro sessions launch again on macOS after the kiro-cli 2.13 update.

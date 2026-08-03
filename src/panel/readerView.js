@@ -141,6 +141,7 @@ function renderLive() {
       blocksHtml: renderBlocks(messages, {
         cap: readerCap,
         names: _readerNamesFor(currentEntry.agent),
+        agent: currentEntry.agent,
         copyLabel: t('readerCopyBlock'),
       }),
       lastRole,
@@ -345,6 +346,7 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   const blocks = renderBlocks(messages, {
     cap: readerCap,
     names: _readerNamesFor(entry.agent),
+    agent: entry.agent,
     copyLabel: t('readerCopyBlock'),
   });
 
