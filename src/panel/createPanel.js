@@ -35,10 +35,18 @@ const { resolveSessionAgent } = require('../lib/resolveSessionAgent');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
+const { readAgentTurnState } = require('../lib/agentTurnState');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
 const { claudeChannelsArgs } = require('../lib/claudeChannels');
 
 const IDLE_DELAY_MS = 3000;
+
+// Turn-gate tuning (v3.20.9, see lib/agentTurnState.js). RECHECK is how often
+// the transcript is re-read while it reports a turn still in flight; MAX_STALE
+// bounds how long "working" is trusted without the transcript changing, so a
+// session killed mid-turn still settles instead of pulsing 'running' forever.
+const TURN_GATE_RECHECK_MS = 4000;
+const TURN_GATE_MAX_STALE_MS = 10 * 60 * 1000;
 
 // NOTE (selector removal): the inline y/n prompt-bar and numbered choice-bar
 // — plus their byte-stream detectors (detectBinaryPrompt / detectChoicePrompt)
@@ -938,6 +946,13 @@ function createPanel(context, extensionPath, session, opts) {
   // hardly captured the dominant 9–32ms cadence so most chunks still
   // triggered their own parser run; 32ms makes the coalescing actually
   // bite).
+  // Transcript path for the turn gate (see lib/agentTurnState.js). Kiro-only
+  // today, so every other agent short-circuits before any stat/dir scan.
+  function resolveTurnStatePath() {
+    if (entry.agent !== 'kiro') return null;
+    try { return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro'); } catch (_) { return null; }
+  }
+
   function flushPending() {
     if (pendingFlushTimer) { clearTimeout(pendingFlushTimer); pendingFlushTimer = null; }
     if (!pendingPayload || entry._disposed) { pendingPayload = ''; return; }
@@ -990,7 +1005,9 @@ function createPanel(context, extensionPath, session, opts) {
     }
 
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
-    entry.idleTimer = setTimeout(() => {
+    // Named so the Kiro turn gate below can re-arm the same check without
+    // duplicating the body (a named function expression can call itself).
+    entry.idleTimer = setTimeout(function onOutputSettled() {
       if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
       if (entry._disposed || !entry.pty || entry.state === 'done' || entry.state === 'error') return;
 
@@ -1043,6 +1060,24 @@ function createPanel(context, extensionPath, session, opts) {
 
       // Brief outputs (< 3s, never reached 'running') stay as-is
       if (entry.state !== 'running') return;
+
+      // v3.20.9: transcript gate before announcing a finished turn. PTY silence
+      // alone is not "done" for every agent — Kiro's TUI goes quiet while a
+      // tool call runs and while it waits on the model between tool calls, so
+      // this used to fire a completion notification several times inside ONE
+      // turn (and the tab flipped to done → running → done). The session
+      // transcript knows better: a pending toolUse / a fresh ToolResults means
+      // the turn is still in progress, so stay 'running' and re-check instead
+      // of notifying. Bounded by transcript freshness so a session that dies
+      // mid-turn still settles instead of hanging on 'running' forever.
+      const turnGate = readAgentTurnState(entry.agent, resolveTurnStatePath());
+      if (turnGate.state === 'working'
+          && turnGate.mtimeMs != null
+          && (Date.now() - turnGate.mtimeMs) < TURN_GATE_MAX_STALE_MS) {
+        entry.idleTimer = setTimeout(onOutputSettled, TURN_GATE_RECHECK_MS);
+        return;
+      }
+
       const runningDuration = Date.now() - entry.runningStartedAt;
       if (runningDuration >= 7000) {
         entry.state = 'needs-attention';

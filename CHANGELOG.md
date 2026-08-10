@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.20.9] - 2026-08-10
+
+Kiro sessions stop announcing "finished" in the middle of a turn.
+
+### Fixed
+- **Kiro panels fired repeated completion notifications mid-turn.** The panel decided a turn had ended purely from PTY silence — 3s with no bytes after a ≥7s run flipped the tab to needs-attention and sent a desktop notification. Claude Code animates continuously while it works, so silence really does mean "done" there; Kiro's TUI goes quiet while a tool call runs (a long shell command, a big file read) and while it waits on the model between tool calls, so one Kiro turn produced several "done" pings and the tab pulsed done → running → done.
+- The session transcript is now the authority for Kiro. `src/lib/agentTurnState.js` reads the transcript tail and classifies the last record: `Prompt` or `ToolResults` means a model call is in flight, an `AssistantMessage` carrying a `toolUse` means a tool is executing, and an `AssistantMessage` with no `toolUse` is the final answer. While the transcript says a turn is still in flight the panel stays `running`, re-checks every 4s, and does not notify. Verified against live kiro-cli 2.13 transcripts, including that the prompt record is written at submit time and the text-only final message lands at each turn boundary.
+- The gate is bounded by transcript freshness (10 min) so a session killed mid-turn still settles instead of pulsing `running` forever, and it is inert for every other agent and for unreadable / unrecognized transcripts (unknown ≠ done, so existing behavior is preserved).
+- Interactive prompt detection is untouched and still runs first, so Kiro trust/permission prompts notify exactly as before.
+
+### Tests
+- Added `test/unit/agentTurnState.test.ts`: the turn-state matrix (submitted prompt, pending toolUse, fresh tool result, text-only final message, every prefix of a multi-tool turn), unknown-record handling, tail reads including a final record larger than the first tail window, agent/path inertness, and a panel wiring assertion that the gate sits between the running check and the notification. Node tests (500 passed, 1 platform skip), Vitest (54 passed), TypeScript lint, and the production build pass.
+
 ## [3.20.8] - 2026-08-10
 
 Copying from Reader puts the selected text on the clipboard again.
