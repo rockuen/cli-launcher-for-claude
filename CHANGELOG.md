@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.20.8] - 2026-08-10
+
+Copying from Reader puts the selected text on the clipboard again.
+
+### Fixed
+- **Reader copy pasted nothing (most visible with Chief).** The panel's document-level Ctrl+C handler resolved the text as `terminalSelection || cachedTerminalSelection || domSelection`, so (a) a whitespace-only terminal selection — the blank rows a line-based REPL like Chief leaves on screen — is a non-empty string and won, putting `"\n\n"` on the clipboard, and (b) xterm keeps its selection when you click outside `#terminal`, so an earlier terminal selection outranked the Reader text just highlighted. A Ctrl+C outside the terminal now prefers the live DOM selection, and blank-only candidates no longer count as a selection (the new `src/lib/copySelection.js` resolver is inlined into the webview client, so browser and tests share one rule).
+- **"Copied" was shown even when the clipboard write failed.** `navigator.clipboard.writeText` rejects when the webview is not the focused document; the rejection was swallowed while the toast still claimed success. Both copy paths (terminal Ctrl+C, Reader fenced-code button) now fall back to the extension host clipboard (`vscode.env.clipboard`, new `copy-text` message in the split panel and the standalone Reader) and only report success when a write actually landed — otherwise the copy-failed toast/tooltip shows.
+- **Ctrl+C stopped reaching the CLI after a stray blank drag in the terminal.** xterm's key-handler guard used the same truthiness test, so a whitespace-only selection made the panel swallow the interrupt. It now shares the resolver's emptiness rules.
+
+### Tests
+- Added `test/unit/copySelection.test.ts`: selection-priority matrix (blank terminal selection, stale terminal selection vs live Reader selection, terminal-origin priority, indentation preserved), plus wiring assertions that the generated client script inlines the resolver, the old truthiness chain is gone, and both readers route a rejected write to the host clipboard. Node tests (490 passed, 1 platform skip), Vitest (54 passed), and TypeScript lint pass.
+
 ## [3.20.7] - 2026-08-03
 
 Chief responses in Reader now preserve the intentional line breaks shown in the CLI.

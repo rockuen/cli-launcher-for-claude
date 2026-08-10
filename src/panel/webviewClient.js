@@ -2,6 +2,8 @@
 // Phase 3c: extracted from webviewContent.js. Contains ${} interpolation for initial state.
 // v2.6.0 plan: convert to real static client.js with __CLAUDE_INIT__ JSON injection.
 
+const { clientSource: copySelectionClientSource } = require('../lib/copySelection');
+
 function getClientScript(ctx) {
   const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent } = ctx;
   const initialSplitRatio = (splitRatio != null && Number.isFinite(Number(splitRatio))) ? Number(splitRatio) : 0.85;
@@ -286,6 +288,31 @@ function getClientScript(ctx) {
       const sel = term.getSelection();
       if (!sel) return '';
       return sel.split('\\n').map(line => line.replace(/\\s+$/, '')).join('\\n');
+    }
+
+    // Shared with the extension host + unit tests (src/lib/copySelection.js).
+    // Inlined verbatim so the Ctrl+C priority rules can't drift from the tests.
+    ${copySelectionClientSource()}
+
+    // Single clipboard write path for the panel (terminal Ctrl+C, Reader code
+    // blocks). navigator.clipboard is the fast path; when the webview is not
+    // the focused document Chromium rejects it, so fall back to the extension
+    // host (vscode.env.clipboard) instead of silently swallowing the error and
+    // still reporting success — the old behavior left "Copied" on screen with
+    // an untouched clipboard.
+    async function copyTextToClipboard(text) {
+      if (typeof text !== 'string' || !text) return false;
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
+        try {
+          vscode.postMessage({ type: 'copy-text', text: text });
+          return true;
+        } catch (_e) {
+          return false;
+        }
+      }
     }
 
     // v2.5.7: Persistent selection cache. In fullscreen/mouse-reporting mode,
@@ -655,8 +682,12 @@ function getClientScript(ctx) {
         const code = button.closest('.reader-code-block')?.querySelector('code');
         if (!code) return;
         const text = (code.textContent || '').replace(/\\n$/, '');
-        try {
-          await navigator.clipboard.writeText(text);
+        if (!text.trim()) {
+          showToast(T.readerCopyFailed);
+          return;
+        }
+        const ok = await copyTextToClipboard(text);
+        if (ok) {
           button.classList.add('copied');
           button.title = T.copied;
           button.setAttribute('aria-label', T.copied);
@@ -667,7 +698,7 @@ function getClientScript(ctx) {
             button.title = T.readerCopyBlock;
             button.setAttribute('aria-label', T.readerCopyBlock);
           }, 1600);
-        } catch (_) {
+        } else {
           showToast(T.readerCopyFailed);
         }
       });
@@ -1439,6 +1470,12 @@ function getClientScript(ctx) {
     //
     // We also stopImmediatePropagation to make sure no bubble-phase listener
     // (including xterm's own internal hooks) fires ^C forwarding.
+    //
+    // v3.20.8: which selection wins is resolved by resolveCopyText(), keyed on
+    // where the ^C came from. A ^C in the Reader now prefers the live DOM
+    // selection over xterm's (which survives clicks outside #terminal), and a
+    // whitespace-only terminal selection no longer counts as a selection —
+    // both used to hand the clipboard stale or blank text.
     const termContainer = document.getElementById('terminal');
     document.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
@@ -1447,15 +1484,24 @@ function getClientScript(ctx) {
         const tag = (e.target && e.target.tagName) || '';
         if (tag === 'INPUT' || tag === 'TEXTAREA') return; // real user input
       }
-      const sel = getCleanSelection() || lastSelectionCache
-        || (window.getSelection && window.getSelection().toString().trim()) || '';
+      let domSelection = '';
+      try {
+        domSelection = (window.getSelection && window.getSelection().toString()) || '';
+      } catch (_) {}
+      const sel = resolveCopyText({
+        termSelection: getCleanSelection(),
+        cachedTermSelection: lastSelectionCache,
+        domSelection: domSelection,
+        fromTerminal: !!inTerm,
+      });
       if (!sel) return; // no selection → let ^C pass through to xterm → PTY
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      navigator.clipboard.writeText(sel).catch(() => {});
-      showToast(T.copied);
       lastSelectionCache = '';
+      copyTextToClipboard(sel).then((ok) => {
+        showToast(ok ? T.copied : T.readerCopyFailed);
+      });
     }, true);
 
     // Fallback: on Ctrl+V, ask extension to check system clipboard via PowerShell
@@ -1526,7 +1572,15 @@ function getClientScript(ctx) {
       // that's the Claude CLI "Ctrl+C twice to exit" prep behavior the user
       // actually wants.
       if (mod && event.key === 'c') {
-        if (getCleanSelection() || lastSelectionCache) {
+        // Same emptiness rules as the document capture (v3.20.8): a
+        // whitespace-only drag is NOT a selection, so ^C keeps reaching the PTY.
+        const guardSel = resolveCopyText({
+          termSelection: getCleanSelection(),
+          cachedTermSelection: lastSelectionCache,
+          domSelection: '',
+          fromTerminal: true,
+        });
+        if (guardSel) {
           return false;
         }
         return true;

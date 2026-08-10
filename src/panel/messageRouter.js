@@ -2,9 +2,9 @@
 // ctx carries: { entry, panel, context, extensionPath, createPanel, pickAgent, onWebviewReady }.
 // createPanel/pickAgent are injected (callbacks) to avoid circular imports.
 //
-// Message protocol (18 webview→ext):
+// Message protocol (19 webview→ext):
 //   webview-ready, input, submit-input, resize, toolbar, paste-image, check-clipboard-image,
-//   drop-files, open-link, rename-tab, save-setting, export-settings, import-settings,
+//   copy-text, drop-files, open-link, rename-tab, save-setting, export-settings, import-settings,
 //   close-resume, open-file, open-folder, open-reader, restart-session,
 //   request-edit-memo
 
@@ -109,6 +109,14 @@ function routeWebviewMessage(msg, ctx) {
 
     case 'check-clipboard-image':
       if (entry.pty) readClipboardImageFromSystem(entry, panel);
+      return;
+
+    // v3.20.8: clipboard fallback for the webview copy paths (terminal Ctrl+C,
+    // Reader code blocks). navigator.clipboard.writeText rejects when the
+    // webview is not the focused document; the extension host has no such
+    // restriction, so the copy still lands instead of failing silently.
+    case 'copy-text':
+      if (typeof msg.text === 'string' && msg.text) vscode.env.clipboard.writeText(msg.text);
       return;
 
     case 'drop-files':

@@ -242,6 +242,11 @@ function show(entry, context) {
     if (msg.type === 'set-theme') setTheme(msg.theme);
     else if (msg.type === 'save-conversation') saveAsMarkdown();
     else if (msg.type === 'reader-input') handleReaderInput(msg.text || '');
+    // v3.20.8: webview clipboard fallback (see copyTextToClipboard in the
+    // panel client / the code-block copy handler below).
+    else if (msg.type === 'copy-text') {
+      if (typeof msg.text === 'string' && msg.text) vscode.env.clipboard.writeText(msg.text);
+    }
   });
   activePanel.onDidDispose(() => {
     stopLiveWatch();
@@ -599,8 +604,25 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
         const code = block && block.querySelector('code');
         if (!code) return;
         const text = (code.textContent || '').replace(/\\n$/, '');
+        if (!text.trim()) {
+          button.title = copyFailedLabel;
+          button.setAttribute('aria-label', copyFailedLabel);
+          return;
+        }
+        // navigator.clipboard rejects when the webview is not the focused
+        // document; the extension host clipboard has no such restriction, so
+        // fall back to it instead of reporting a copy that never happened.
+        let ok = true;
         try {
           await navigator.clipboard.writeText(text);
+        } catch (_) {
+          ok = false;
+          try {
+            vscode.postMessage({ type: 'copy-text', text: text });
+            ok = true;
+          } catch (_e) {}
+        }
+        if (ok) {
           button.classList.add('copied');
           button.title = copiedLabel;
           button.setAttribute('aria-label', copiedLabel);
@@ -610,7 +632,7 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
             button.title = copyLabel;
             button.setAttribute('aria-label', copyLabel);
           }, 1600);
-        } catch (_) {
+        } else {
           button.title = copyFailedLabel;
           button.setAttribute('aria-label', copyFailedLabel);
         }
