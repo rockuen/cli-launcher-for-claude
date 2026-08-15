@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.20.12] - 2026-08-15
+
+### Fixed
+- **Duplicate delete icons in unified view.** The unified Sessions tree showed two 🗑 buttons for non-Claude agents (one from `trashSession` delegation, one from the agent-specific menu). Removed the duplicate by keeping only `trashSession` in unified view — agent-specific trash commands now appear only in their own dedicated views.
+
 ## [3.20.11] - 2026-08-15
 
 ### Fixed

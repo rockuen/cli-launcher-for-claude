@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.20.11",
+  "version": "3.20.12",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -606,7 +606,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashKiroSession",
-          "when": "(view == claudeCodeLauncher.kiroSessions || view == claudeCodeLauncher.unifiedSessions) && viewItem == kiroSession",
+          "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroSession",
           "group": "inline@2"
         },
         {
@@ -676,7 +676,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "(view == claudeCodeLauncher.antigravitySessions || view == claudeCodeLauncher.unifiedSessions) && viewItem == antigravitySession",
+          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
           "group": "inline@2"
         },
         {
@@ -736,7 +736,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "(view == claudeCodeLauncher.codexSessions || view == claudeCodeLauncher.unifiedSessions) && viewItem == codexSession",
+          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
           "group": "inline@2"
         },
         {
@@ -796,7 +796,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "(view == claudeCodeLauncher.grokSessions || view == claudeCodeLauncher.unifiedSessions) && (viewItem == grokSession || viewItem == subSession)",
+          "when": "view == claudeCodeLauncher.grokSessions && (viewItem == grokSession || viewItem == subSession)",
           "group": "inline@2"
         },
         {
@@ -856,7 +856,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "(view == claudeCodeLauncher.gjcSessions || view == claudeCodeLauncher.unifiedSessions) && viewItem == gjcSession",
+          "when": "view == claudeCodeLauncher.gjcSessions && viewItem == gjcSession",
           "group": "inline@2"
         },
         {
@@ -916,7 +916,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "(view == claudeCodeLauncher.chiefSessions || view == claudeCodeLauncher.unifiedSessions) && (viewItem == chiefSession || viewItem == subSession)",
+          "when": "view == claudeCodeLauncher.chiefSessions && (viewItem == chiefSession || viewItem == subSession)",
           "group": "inline@2"
         },
         {
