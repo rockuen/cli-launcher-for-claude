@@ -606,7 +606,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashKiroSession",
-          "when": "view == claudeCodeLauncher.kiroSessions && viewItem == kiroSession",
+          "when": "(view == claudeCodeLauncher.kiroSessions || view == claudeCodeLauncher.unifiedSessions) && viewItem == kiroSession",
           "group": "inline@2"
         },
         {
