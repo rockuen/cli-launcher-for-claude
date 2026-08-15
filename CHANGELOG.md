@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.21.0] - 2026-08-15
+
+### Removed
+- **Usage status bar.** The launcher's own right-aligned usage item (`$(graph) Usage`, and the model + 5-hour + weekly limits it expanded into) is gone. The official Claude Code extension now publishes the same numbers in its own status bar (`Opus 5 (1M context)  5h:24%  7d:86%`), so ours sat next to it showing duplicate — and frequently just the empty `Usage` placeholder, since it only filled in when a launcher tab was focused and the OAuth usage fetch had landed.
+- Removed with it: the `claudeCodeLauncher.refreshUsage` command, the account-wide OAuth usage fetch/cache (`src/account/usage.ts`), and the focused-session model plumbing that existed only to feed the bar (`setActiveSessionModel`, `refreshActiveSessionModel`, `getSessionModel`) plus its 60s recompute timer. The account status bar (left, `$(account) <email>`) and the account switcher are untouched.
+
 ## [3.20.12] - 2026-08-15
 
 ### Fixed

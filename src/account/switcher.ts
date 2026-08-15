@@ -24,7 +24,6 @@ import {
 } from "./profiles";
 import { parseAccountData } from "./parser";
 import { refreshAccountStatusBar } from "./accountStatusBar";
-import { refreshUsageStatusBar } from "./usageStatusBar";
 
 /**
  * Build the modal body shown before a profile switch. The base
@@ -57,12 +56,6 @@ function refreshActiveProfile(): void {
     refreshAccountStatusBar();
   } catch {
     /* best-effort; never block UI on a status bar redraw */
-  }
-  try {
-    // New account → its usage limits differ; force a fresh fetch.
-    void refreshUsageStatusBar(true);
-  } catch {
-    /* best-effort; never block UI on a usage refresh */
   }
 }
 
