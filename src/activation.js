@@ -1035,11 +1035,14 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.trashSession', async (item) => {
       const sessionId = item?._sessionId;
       if (!sessionId) return;
-      // v3.10: defensive — this trashes a claude project-dir file only. A
-      // foreign (unified) leaf must never reach here (its menu is gated to
-      // claude session/subSession and nesting is blocked above), but guard
-      // anyway so a future menu change can't silently no-op a foreign trash.
-      if (item._unified && item._agent && item._agent !== 'claude') return;
+      // v3.20.10: unified view shows trash for all agents — delegate to
+      // the agent-specific trash command when the item is non-claude.
+      if (item._agent && item._agent === 'kiro') {
+        return vscode.commands.executeCommand('claudeCodeLauncher.trashKiroSession', item);
+      }
+      if (item._agent && item._agent !== 'claude') {
+        return vscode.commands.executeCommand('claudeCodeLauncher.trashAgentSession', item);
+      }
       const projDir = state.sessionTreeProvider._getProjectDir();
       if (!projDir) return;
       const src = path.join(projDir, sessionId + '.jsonl');

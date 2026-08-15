@@ -521,7 +521,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashSession",
-          "when": "(view == claudeCodeLauncher.sessionList || view == claudeCodeLauncher.unifiedSessions) && (viewItem == session || viewItem == subSession)",
+          "when": "(view == claudeCodeLauncher.sessionList || view == claudeCodeLauncher.unifiedSessions) && (viewItem == session || viewItem == subSession || viewItem == kiroSession || viewItem == codexSession || viewItem == grokSession || viewItem == gjcSession || viewItem == antigravitySession || viewItem == chiefSession)",
           "group": "inline@2"
         },
         {
