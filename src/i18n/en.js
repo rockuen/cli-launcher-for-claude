@@ -64,6 +64,7 @@ module.exports = {
   scSearch: 'Search', scZoomIn: 'Zoom in', scZoomOut: 'Zoom out', scZoomReset: 'Reset zoom',
   scPasteImage: 'Paste image', scOpenFile: 'Open file', scHistory: 'Input history',
   scEditorToggle: 'Toggle input panel', scHelp: 'This help',
+  inputStartOpenLabel: 'Input Panel (start open)',
   scContextMenu: 'Context menu', scContextActions: 'Copy / Paste / Reader / Memo / Sound',
   scClose: 'Press ESC or click anywhere to close',
   ctxCopy: 'Copy', ctxOpenFile: 'Open File', ctxOpenFolder: 'Open Folder', ctxOpenLink: 'Open Link', ctxSelectedText: 'Selection',

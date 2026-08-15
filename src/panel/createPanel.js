@@ -502,7 +502,8 @@ function createPanel(context, extensionPath, session, opts) {
   // settings carries splitRatio so the in-panel settings modal slider can
   // read its initial value and re-sync when the user reopens the modal
   // after a drag/keyboard adjustment.
-  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle, splitRatio };
+  const inputStartOpen = config.get('inputStartOpen', true);
+  const settings = { fontFamily, defaultTheme, soundEnabled, particlesEnabled, autoEffortMax, repoSyncEnabled, repoSyncPath, splitLayoutDefault, readerFontSize, terminalMinRows, fileAssociations, pasteToFileThreshold, pasteTableAsMarkdown, defaultBackend, multiplexerLifecycle, splitRatio, inputStartOpen };
   panel.webview.html = getWebviewContent(xtermCssUri, xtermJsUri, fitAddonUri, webLinksAddonUri, searchAddonUri, isDark, fontSize, tabTitle, initialMemo, customButtons, T, settings, customSlashCommands, splitRatio, renderWelcome(), splitLayoutDefault, extraSlashes, agent);
 
   // Spawn CLI — agent-aware (PoC: 'claude' default, 'kiro' opt-in via settings)

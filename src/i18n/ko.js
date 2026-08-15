@@ -63,6 +63,7 @@ module.exports = {
   scSearch: '검색', scZoomIn: '글자 확대', scZoomOut: '글자 축소', scZoomReset: '글자 초기화',
   scPasteImage: '이미지 붙여넣기', scOpenFile: '파일 열기', scHistory: '입력 히스토리',
   scEditorToggle: '입력 패널 토글', scHelp: '이 도움말',
+  inputStartOpenLabel: '입력 패널 (시작시 열기)',
   scContextMenu: '우클릭 메뉴', scContextActions: '복사 / 붙여넣기 / 리더 / 메모 / 알림음',
   scClose: 'ESC 또는 아무 곳 클릭하여 닫기',
   ctxCopy: '복사', ctxOpenFile: '파일 열기', ctxOpenFolder: '폴더 열기', ctxOpenLink: '링크 열기', ctxSelectedText: '선택 텍스트',

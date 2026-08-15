@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.20.10] - 2026-08-15
+
+Input panel toggle setting, Resume Later fix for non-Claude agents, and universal session delete.
+
+### Added
+- **Input panel start-open setting.** The per-panel settings modal (⚙) now has an "Input Panel (start open)" toggle with a `Ctrl+Shift+Enter` shortcut label. When turned off, new tabs open with the input panel collapsed — useful for read-heavy workflows. The setting persists as `claudeCodeLauncher.inputStartOpen`.
+- **Delete button for all agents.** Codex, Grok, GJC, Antigravity, and Chief sessions now show a 🗑 trash icon in the session tree (both their own view and the unified view). The new `trashAgentSession` command moves the session file into a `trash/` subdirectory inside the agent's sessions folder and removes the session from groups and saved lists.
+
+### Fixed
+- **Resume Later items for non-Claude agents (Codex, Grok, GJC, Antigravity, Chief) stayed in the list after clicking to resume.** The `resumeSession` command returned early for non-Claude agents before removing the session from `claudeSavedSessions`. Now a single cleanup runs at the top of the command regardless of agent, so clicking any Resume Later item removes it from the pinned list immediately.
+
 ## [3.20.9] - 2026-08-10
 
 Kiro sessions stop announcing "finished" in the middle of a turn.

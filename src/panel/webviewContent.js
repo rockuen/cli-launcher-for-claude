@@ -193,6 +193,10 @@ ${agent === 'chief' ? `
           <span id="set-reader-fontsize-label" style="font-size:11px;min-width:30px;">${settings.readerFontSize || 12}px</span>
         </div>
       </div>
+      <div class="settings-row">
+        <label title="Start each new tab with the input panel open. Toggle anytime with Ctrl+Shift+Enter.">${T.inputStartOpenLabel} <span style="font-size:9px;opacity:0.6;margin-left:4px;">Ctrl+Shift+Enter</span></label>
+        <div class="settings-toggle ${settings.inputStartOpen !== false ? 'on' : ''}" id="set-input-start-open"></div>
+      </div>
       <div style="border-top:1px solid ${border};margin:12px 0 8px;"></div>
       <details>
         <summary style="font-size:12px;cursor:pointer;margin-bottom:8px;">Custom Buttons</summary>

@@ -18,8 +18,8 @@ const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
 const { buildRenamePrefill } = require('./lib/renamePrefix');
-const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions } = require('./lib/sessionJsonl');
-const { getKiroSessionsDir } = require('./lib/projectSessions');
+const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions, findCodexSessionPath, findGrokSessionPath, findGjcSessionPath, findChiefSessionPath } = require('./lib/sessionJsonl');
+const { getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths, getChiefPaths, getAntigravityBaseDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, deviceLocalSet, migrateFromWorkspaceState } = require('./store/sessionStore');
 const { saveSessions, restoreSessions } = require('./store/sessionManager');
@@ -710,6 +710,15 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeCodeLauncher.resumeSession', (sessionId, opts) => {
+      // Remove from Resume Later list regardless of agent — close-resume saves
+      // all agents into claudeSavedSessions, so resuming must always clean up.
+      const _saved = sessionStoreGet('claudeSavedSessions', []);
+      const _filtered = _saved.filter(s => s.sessionId !== sessionId);
+      if (_filtered.length !== _saved.length) {
+        sessionStoreUpdate('claudeSavedSessions', _filtered);
+        state.refreshSessionTrees();
+      }
+
       // Kiro resume: directory-scoped resume by the real kiro session id.
       // The session MUST spawn in its own cwd (kiro resolves --resume-id
       // relative to the working directory), so opts.cwd is threaded into the
@@ -785,12 +794,6 @@ function activate(context) {
       }
       const titleMap = sessionStoreGet('claudeSessionTitles', {});
       const title = titleMap[sessionId] || undefined;
-      // Remove from saved sessions list when resuming
-      const saved = sessionStoreGet('claudeSavedSessions', []);
-      const filtered = saved.filter(s => s.sessionId !== sessionId);
-      if (filtered.length !== saved.length) {
-        sessionStoreUpdate('claudeSavedSessions', filtered);
-      }
       const backend = (opts && opts.backend) || vscode.workspace
         .getConfiguration('claudeCodeLauncher')
         .get('terminal.defaultBackend', 'webview');
@@ -1132,6 +1135,92 @@ function activate(context) {
       );
       if (confirm !== 'Delete') return;
       for (const f of files) { try { fs.unlinkSync(path.join(trashDir, f)); } catch (_) {} }
+      state.refreshSessionTrees();
+    })
+  );
+
+  // Trash agent session: generic delete for non-claude/non-kiro agents
+  // (codex, grok, gjc, antigravity, chief). Moves the session file to a
+  // trash/ dir inside the agent's sessions folder and removes from groups/saved.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeCodeLauncher.trashAgentSession', async (item) => {
+      const sessionId = item && item._sessionId;
+      if (!sessionId) return;
+      const agent = item._agent;
+      if (!agent || agent === 'claude' || agent === 'kiro') return;
+      const cwd = item._cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+
+      // Attempt to move the session file to a trash subdir
+      try {
+        let sessionFile = null;
+        let sessionsDir = null;
+        if (agent === 'codex') {
+          sessionFile = findCodexSessionPath(sessionId, null, cwd);
+          sessionsDir = getCodexPaths(cwd).sessionsDir;
+        } else if (agent === 'grok') {
+          sessionFile = findGrokSessionPath(sessionId, null, cwd);
+          sessionsDir = getGrokPaths(cwd).sessionsDir;
+        } else if (agent === 'gjc') {
+          sessionFile = findGjcSessionPath(sessionId, null, cwd);
+          sessionsDir = getGjcPaths(cwd).sessionsDir;
+        } else if (agent === 'antigravity') {
+          const baseDir = getAntigravityBaseDir(cwd);
+          const convDir = path.join(baseDir, 'conversations');
+          const dbFile = path.join(convDir, sessionId + '.db');
+          if (fs.existsSync(dbFile)) sessionFile = dbFile;
+          sessionsDir = convDir;
+        } else if (agent === 'chief') {
+          // Chief sessions are directories: sessionsDir/<id>/updates.jsonl
+          sessionsDir = getChiefPaths(cwd).sessionsDir;
+          const sessionDir = path.join(sessionsDir, sessionId);
+          if (fs.existsSync(sessionDir)) {
+            const trashDir = path.join(sessionsDir, 'trash');
+            if (!fs.existsSync(trashDir)) fs.mkdirSync(trashDir, { recursive: true });
+            fs.renameSync(sessionDir, path.join(trashDir, sessionId));
+          }
+        }
+        if (agent !== 'chief' && sessionFile && fs.existsSync(sessionFile)) {
+          const trashDir = path.join(sessionsDir || path.dirname(sessionFile), 'trash');
+          if (!fs.existsSync(trashDir)) fs.mkdirSync(trashDir, { recursive: true });
+          fs.renameSync(sessionFile, path.join(trashDir, path.basename(sessionFile)));
+        }
+      } catch (_) { /* best-effort file move */ }
+
+      // Remove from agent's store keys (groups + saved)
+      const AGENT_KEYS = {
+        codex: { groups: 'codexSessionGroups', saved: 'codexSavedSessions' },
+        grok: { groups: 'grokSessionGroups', saved: 'grokSavedSessions' },
+        gjc: { groups: 'gjcSessionGroups', saved: 'gjcSavedSessions' },
+        antigravity: { groups: 'antigravitySessionGroups', saved: 'antigravitySavedSessions' },
+        chief: { groups: 'chiefSessionGroups', saved: 'chiefSavedSessions' },
+      };
+      const keys = AGENT_KEYS[agent];
+      if (keys) {
+        const groups = sessionStoreGet(keys.groups, {});
+        let changed = false;
+        for (const g of Object.keys(groups)) {
+          const next = groups[g].filter(id => id !== sessionId);
+          if (next.length !== groups[g].length) { groups[g] = next; changed = true; }
+          if (groups[g].length === 0) delete groups[g];
+        }
+        if (changed) sessionStoreUpdate(keys.groups, groups);
+        const saved = sessionStoreGet(keys.saved, []);
+        const filteredSaved = saved.filter(s => s.sessionId !== sessionId);
+        if (filteredSaved.length !== saved.length) sessionStoreUpdate(keys.saved, filteredSaved);
+      }
+      // Also remove from claudeSavedSessions (close-resume stores all agents there)
+      const claudeSaved = sessionStoreGet('claudeSavedSessions', []);
+      const claudeFiltered = claudeSaved.filter(s => s.sessionId !== sessionId);
+      if (claudeFiltered.length !== claudeSaved.length) sessionStoreUpdate('claudeSavedSessions', claudeFiltered);
+      // Remove from unified groups (claude groups store)
+      const uGroups = sessionStoreGet('claudeSessionGroups', {});
+      let uChanged = false;
+      for (const g of Object.keys(uGroups)) {
+        const next = uGroups[g].filter(id => id !== sessionId);
+        if (next.length !== uGroups[g].length) { uGroups[g] = next; uChanged = true; }
+        if (uGroups[g].length === 0) delete uGroups[g];
+      }
+      if (uChanged) sessionStoreUpdate('claudeSessionGroups', uGroups);
       state.refreshSessionTrees();
     })
   );

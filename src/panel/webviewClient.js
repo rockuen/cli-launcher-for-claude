@@ -745,6 +745,16 @@ function getClientScript(ctx) {
       });
     }
 
+    const setInputStartOpen = document.getElementById('set-input-start-open');
+    if (setInputStartOpen) {
+      setInputStartOpen.addEventListener('click', () => {
+        const next = !setInputStartOpen.classList.contains('on');
+        setInputStartOpen.classList.toggle('on', next);
+        SETTINGS.inputStartOpen = next;
+        vscode.postMessage({ type: 'save-setting', key: 'inputStartOpen', value: next });
+      });
+    }
+
     // v3.4.7: settings-modal slider for the default split ratio. Mirrors the
     // splitter drag handle — both write to the same globalState key via
     // 'save-split-ratio'. Live-applies the new ratio to the current panel so
@@ -1785,7 +1795,8 @@ function getClientScript(ctx) {
     // Input panel (bottom fixed)
     const inputPanel = document.getElementById('input-panel');
     const editorTextarea = document.getElementById('editor-textarea');
-    let inputPanelVisible = true;
+    let inputPanelVisible = SETTINGS.inputStartOpen !== false;
+    inputPanel.style.display = inputPanelVisible ? 'block' : 'none';
     inputPanel.style.display = 'block';
 
     function toggleEditor() {
