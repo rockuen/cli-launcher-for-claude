@@ -107,3 +107,24 @@ jobs:
             echo "::endgroup::"
           done
           exit $overall
+      - name: Publish to VS Code Marketplace
+        run: |
+          npm install -g @vscode/vsce
+          set +e
+          overall=0
+          for f in *.vsix; do
+            echo "::group::Publishing $f to VS Code Marketplace"
+            output=$(vsce publish --packagePath "$f" -p ${{ secrets.VSCE_PAT }} 2>&1)
+            rc=$?
+            echo "$output"
+            if [ $rc -ne 0 ]; then
+              if echo "$output" | grep -qiE "already exists|version.*already"; then
+                echo "::notice::$f already on VS Code Marketplace — skipping"
+              else
+                echo "::error::$f failed to publish to VS Code Marketplace (exit $rc)"
+                overall=1
+              fi
+            fi
+            echo "::endgroup::"
+          done
+          exit $overall
