@@ -1,5 +1,10 @@
 # Changelog
 
+## [3.20.11] - 2026-08-15
+
+### Fixed
+- **Delete icon now visible for all agents in the unified Sessions view.** Kiro, Codex, Grok, GJC, Antigravity, and Chief sessions show the 🗑 trash button inline when hovered in the unified tree. Clicking delegates to the appropriate agent-specific trash handler.
+
 ## [3.20.10] - 2026-08-15
 
 Input panel toggle setting, Resume Later fix for non-Claude agents, and universal session delete.
