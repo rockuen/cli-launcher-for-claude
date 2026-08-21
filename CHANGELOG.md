@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.21.1] - 2026-08-21
+
+Grok reader timestamps, completion color, and input text contrast.
+
+### Fixed
+- **Grok reader dates showed `1970-01-22`.** Live Grok `updates.jsonl` stores `timestamp` as unix seconds (`1787278815`). The reader passed that number to `new Date()`, which treats numbers as milliseconds, so every Grok message stamped 21 days after the epoch. Timestamps are now normalized to epoch-ms (preferring `_meta.agentTimestampMs` when present), and `formatStamp` accepts seconds, milliseconds, or ISO strings.
+- **Grok tabs stayed yellow (`Processing…`) after the turn finished.** Grok's TUI keeps redrawing a clock/spinner after `events.jsonl` records `turn_ended`, so PTY silence never arrived and the panel never flipped to green. The turn gate now reads Grok `events.jsonl`; once the last event is `turn_ended`, redraws do not re-arm `running` and the tab settles to done/needs-attention (green).
+- **Grok input text was too dark.** The black Grok input chrome used `#d4d4d4` typed text and `#52525b` placeholder on `#171717`. Typed text is now near-white (`#f4f4f5`) and the placeholder is `#a1a1aa`.
+
+### Tests
+- Grok unix-second timestamp extraction, `formatStamp` 1970 regression, `grokTurnStateFromRecords` (`turn_ended` vs streaming/tool), and Grok input-theme wiring. Node tests, TypeScript lint, and the production build must pass.
+
 ## [3.21.0] - 2026-08-15
 
 ### Removed

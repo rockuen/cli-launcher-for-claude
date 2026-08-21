@@ -708,7 +708,7 @@ function getStyles(ctx) {
       overflow-x: hidden;
       overflow-y: auto;
       background: var(--accent-input-bg, ${isDark ? '#1e1a18' : '#ffffff'});
-      color: ${fg};
+      color: var(--accent-input-fg, ${fg});
       font-size: 12px;
       font-family: "D2Coding", "D2Coding ligature", Consolas, monospace;
       line-height: 1.5;

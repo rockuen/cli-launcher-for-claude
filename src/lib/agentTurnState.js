@@ -10,6 +10,11 @@
 // repeatedly in the middle of a single turn and then went back to running when
 // the next chunk arrived.
 //
+// The transcript is the authority for agents whose TUI cadence disagrees
+// with "PTY silence = done":
+//   kiro — TUI goes quiet WHILE a tool/model call is in flight (false done)
+//   grok — TUI keeps redrawing AFTER the turn ends (false running)
+//
 // The transcript is the authority. kiro-cli appends records as the turn
 // progresses (verified on kiro-cli 2.13 transcripts, ~/.kiro/sessions/cli):
 //
@@ -41,6 +46,24 @@ const TAIL_BYTES_MAX = 4 * 1024 * 1024;
 
 const KIRO_KINDS = { Prompt: 1, AssistantMessage: 1, ToolResults: 1 };
 
+// Grok events.jsonl: turn_ended is the only reliable "done". The TUI keeps
+// redrawing a clock/spinner after the model finishes, so PTY silence never
+// arrives and the tab would stay yellow without this. Phases and tool
+// events mean a turn is still in flight.
+const GROK_WORKING_PHASES = {
+  waiting_for_model: 1,
+  streaming_reasoning: 1,
+  streaming_text: 1,
+  tool_execution: 1,
+  permission_prompt: 1,
+};
+const GROK_WORKING_TYPES = {
+  turn_started: 1,
+  loop_started: 1,
+  first_token: 1,
+  tool_started: 1,
+};
+
 // Pure: given kiro transcript records (oldest → newest), report whether the
 // session is mid-turn. Returns null when the records carry no recognizable
 // kind — the caller then leaves the existing PTY-silence behavior alone rather
@@ -60,6 +83,21 @@ function kiroTurnStateFromRecords(records) {
       if (c && c.kind === 'toolUse') return WORKING; // tool executing
     }
     return COMPLETE;                            // final answer, no pending tool
+  }
+  return null;
+}
+
+// Pure: given grok events.jsonl records (oldest → newest), report whether
+// the session is mid-turn. Returns null when nothing recognizable is in the
+// tail so the caller keeps PTY-silence behavior.
+function grokTurnStateFromRecords(records) {
+  if (!Array.isArray(records)) return null;
+  for (let i = records.length - 1; i >= 0; i--) {
+    const r = records[i];
+    if (!r || !r.type) continue;
+    if (r.type === 'turn_ended') return COMPLETE;
+    if (GROK_WORKING_TYPES[r.type]) return WORKING;
+    if (r.type === 'phase_changed' && GROK_WORKING_PHASES[r.phase]) return WORKING;
   }
   return null;
 }
@@ -102,7 +140,7 @@ const _CACHE_MAX = 20;
 //   { state: 'working' | 'complete' | null, mtimeMs: number|null }
 // state === null means "unknown" (missing/unreadable/unrecognized transcript).
 function readAgentTurnState(agent, filePath) {
-  if (agent !== 'kiro' || !filePath) return { state: null, mtimeMs: null };
+  if ((agent !== 'kiro' && agent !== 'grok') || !filePath) return { state: null, mtimeMs: null };
   let stat;
   try { stat = fs.statSync(filePath); } catch (_) { return { state: null, mtimeMs: null }; }
   if (!stat.isFile || !stat.isFile()) return { state: null, mtimeMs: null };
@@ -114,7 +152,9 @@ function readAgentTurnState(agent, filePath) {
   if (records.length === 0 && stat.size > TAIL_BYTES) {
     records = _parseLines(_readTail(filePath, TAIL_BYTES_MAX, stat.size));
   }
-  const turn = kiroTurnStateFromRecords(records);
+  const turn = agent === 'grok'
+    ? grokTurnStateFromRecords(records)
+    : kiroTurnStateFromRecords(records);
   if (_cache.size >= _CACHE_MAX) {
     const oldest = _cache.keys().next();
     if (!oldest.done) _cache.delete(oldest.value);
@@ -130,6 +170,7 @@ module.exports = {
   COMPLETE,
   TAIL_BYTES,
   kiroTurnStateFromRecords,
+  grokTurnStateFromRecords,
   readAgentTurnState,
   _clearTurnStateCache,
 };

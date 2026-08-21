@@ -5,7 +5,8 @@ const vscode = require('vscode');
 const state = require('../state');
 const { t } = require('../i18n');
 const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli, resolveGrokCli, resolveGjcCli, resolveChiefCli } = require('../pty/resolveCli');
-const { findCodexSessionPath, findGrokSessionPath, findGjcSessionPath } = require('../lib/sessionJsonl');
+const { findCodexSessionPath, findGrokSessionPath, findGrokEventsPath, findGjcSessionPath } = require('../lib/sessionJsonl');
+const { readAgentTurnState } = require('../lib/agentTurnState');
 const { prepareProjectSessionEnvironment } = require('../lib/projectSessions');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
@@ -225,30 +226,60 @@ function restartPty(entry, panel, context, extensionPath) {
         entry._bgShellsAt = Date.now();
       }
 
-      if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+      let grokTurnComplete = false;
+      if (entry.agent === 'grok') {
+        try {
+          grokTurnComplete = readAgentTurnState('grok', findGrokEventsPath(entry.sessionId, null, entry.cwd)).state === 'complete';
+        } catch (_) {}
+      }
+
+      if (!grokTurnComplete && entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
         entry.state = 'running';
         setTabIcon(panel, 'running', extensionPath);
         try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
         updateStatusBar();
       }
 
-      if (entry.idleTimer) clearTimeout(entry.idleTimer);
-      entry.idleTimer = setTimeout(() => {
-        if (entry._disposed) return;
-        if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
-        if (panel.active) {
-          entry.state = 'waiting';
-          setIdleIcon(panel, entry, extensionPath);
-          try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
-        } else {
-          entry.state = 'needs-attention';
-          setTabIcon(panel, 'done', extensionPath);
-          try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
-          try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+      if (grokTurnComplete) {
+        if (entry.state === 'running') {
+          if (entry.idleTimer) clearTimeout(entry.idleTimer);
+          entry.idleTimer = setTimeout(() => {
+            if (entry._disposed) return;
+            if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
+            if (entry.state !== 'running') return;
+            if (panel.active) {
+              entry.state = 'waiting';
+              setIdleIcon(panel, entry, extensionPath);
+              try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+            } else {
+              entry.state = 'needs-attention';
+              setTabIcon(panel, 'done', extensionPath);
+              try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+              try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+            }
+            updateStatusBar();
+            state.refreshSessionTrees();
+          }, 0);
         }
-        updateStatusBar();
-        state.refreshSessionTrees();
-      }, IDLE_DELAY_MS);
+      } else {
+        if (entry.idleTimer) clearTimeout(entry.idleTimer);
+        entry.idleTimer = setTimeout(() => {
+          if (entry._disposed) return;
+          if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
+          if (panel.active) {
+            entry.state = 'waiting';
+            setIdleIcon(panel, entry, extensionPath);
+            try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+          } else {
+            entry.state = 'needs-attention';
+            setTabIcon(panel, 'done', extensionPath);
+            try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+            try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+          }
+          updateStatusBar();
+          state.refreshSessionTrees();
+        }, IDLE_DELAY_MS);
+      }
     });
 
     ptyProcess.onExit(({ exitCode }) => {

@@ -26,7 +26,7 @@ const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { routeWebviewMessage } = require('./messageRouter');
-const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
+const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, findGrokEventsPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths } = require('../lib/projectSessions');
 const { buildMeta, renderBlocks, renderWelcome, resolveReaderNames } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
@@ -947,11 +947,17 @@ function createPanel(context, extensionPath, session, opts) {
   // hardly captured the dominant 9–32ms cadence so most chunks still
   // triggered their own parser run; 32ms makes the coalescing actually
   // bite).
-  // Transcript path for the turn gate (see lib/agentTurnState.js). Kiro-only
-  // today, so every other agent short-circuits before any stat/dir scan.
+  // Transcript path for the turn gate (see lib/agentTurnState.js).
+  // kiro: session jsonl. grok: events.jsonl (turn_started/turn_ended).
+  // Every other agent short-circuits before any stat/dir scan.
   function resolveTurnStatePath() {
-    if (entry.agent !== 'kiro') return null;
-    try { return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro'); } catch (_) { return null; }
+    if (entry.agent === 'kiro') {
+      try { return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro'); } catch (_) { return null; }
+    }
+    if (entry.agent === 'grok') {
+      try { return findGrokEventsPath(entry.sessionId, null, entry.cwd); } catch (_) { return null; }
+    }
+    return null;
   }
 
   function flushPending() {
@@ -988,8 +994,15 @@ function createPanel(context, extensionPath, session, opts) {
     // you" signal now comes from detectPromptAffordance run only when output
     // has SETTLED (in the idle timer below).
 
+    // Grok's TUI keeps redrawing (clock/spinner) after a turn ends, so PTY
+    // bytes are not "still working". If events.jsonl says the turn completed,
+    // do not re-arm running from those redraws — otherwise the tab stays
+    // yellow forever.
+    const grokTurnComplete = entry.agent === 'grok'
+      && readAgentTurnState('grok', resolveTurnStatePath()).state === 'complete';
+
     // Only transition to 'running' if output persists for 3s+
-    if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+    if (!grokTurnComplete && entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
       if (!runningDelayTimer) {
         runningDelayTimer = setTimeout(() => {
           if (entry._disposed) { runningDelayTimer = null; return; }
@@ -1005,10 +1018,9 @@ function createPanel(context, extensionPath, session, opts) {
       }
     }
 
-    if (entry.idleTimer) clearTimeout(entry.idleTimer);
-    // Named so the Kiro turn gate below can re-arm the same check without
+    // Named so the Kiro/Grok turn gate below can re-arm the same check without
     // duplicating the body (a named function expression can call itself).
-    entry.idleTimer = setTimeout(function onOutputSettled() {
+    function onOutputSettled() {
       if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
       if (entry._disposed || !entry.pty || entry.state === 'done' || entry.state === 'error') return;
 
@@ -1096,7 +1108,20 @@ function createPanel(context, extensionPath, session, opts) {
       }
       updateStatusBar();
       state.refreshSessionTrees();
-    }, IDLE_DELAY_MS);
+    }
+
+    if (grokTurnComplete) {
+      // Grok finished the turn but the TUI is still painting. Don't reset the
+      // idle timer on every redraw — settle now so the tab turns green.
+      if (entry.state === 'running') {
+        if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+        if (entry.idleTimer) clearTimeout(entry.idleTimer);
+        entry.idleTimer = setTimeout(onOutputSettled, 0);
+      }
+    } else {
+      if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      entry.idleTimer = setTimeout(onOutputSettled, IDLE_DELAY_MS);
+    }
 
     // postMessage only when active. Inactive panels' chunks are mirrored
     // into `outputBuffer` (see onData below) and shipped on visibility

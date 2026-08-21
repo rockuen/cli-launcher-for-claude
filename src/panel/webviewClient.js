@@ -949,9 +949,9 @@ function getClientScript(ctx) {
         light: { accent: '#475569', accentStrong: '#64748b', accentDeep: '#334155', panelBg: '#f1f5f9', inputBg: '#ffffff', glow: 'rgba(71,85,105,0.2)', glowStrong: 'rgba(71,85,105,0.35)', muted: '#94a3b8' }
       },
       grok: {
-        // Black / near-black tone to match Grok's identity (very dark input + subtle light accents)
-        dark:  { accent: '#e5e5e5', accentStrong: '#f4f4f5', accentDeep: '#a1a1aa', panelBg: '#0a0a0a', inputBg: '#171717', glow: 'rgba(229,229,229,0.18)', glowStrong: 'rgba(229,229,229,0.32)', muted: '#52525b' },
-        light: { accent: '#18181b', accentStrong: '#27272a', accentDeep: '#3f3f46', panelBg: '#f4f4f5', inputBg: '#ffffff', glow: 'rgba(24,24,27,0.12)', glowStrong: 'rgba(24,24,27,0.22)', muted: '#71717a' }
+        // Black / near-black tone to match Grok's identity (very dark input + white typed text)
+        dark:  { accent: '#e5e5e5', accentStrong: '#f4f4f5', accentDeep: '#a1a1aa', panelBg: '#0a0a0a', inputBg: '#171717', inputFg: '#f4f4f5', glow: 'rgba(229,229,229,0.18)', glowStrong: 'rgba(229,229,229,0.32)', muted: '#a1a1aa' },
+        light: { accent: '#18181b', accentStrong: '#27272a', accentDeep: '#3f3f46', panelBg: '#f4f4f5', inputBg: '#ffffff', inputFg: '#18181b', glow: 'rgba(24,24,27,0.12)', glowStrong: 'rgba(24,24,27,0.22)', muted: '#71717a' }
       },
       gjc: {
         // Gajae Code — intense red as the base, with yellow used only as the hot accent.
@@ -990,6 +990,8 @@ function getClientScript(ctx) {
       r.setProperty('--accent-deep', t.accentDeep);
       r.setProperty('--accent-panel-bg', t.panelBg);
       r.setProperty('--accent-input-bg', t.inputBg);
+      if (t.inputFg) r.setProperty('--accent-input-fg', t.inputFg);
+      else r.removeProperty('--accent-input-fg');
       r.setProperty('--accent-glow', t.glow);
       r.setProperty('--accent-glow-strong', t.glowStrong);
       r.setProperty('--accent-muted', t.muted);

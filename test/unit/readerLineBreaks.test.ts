@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { renderBlocks } = require('../../src/lib/readerRender');
+const { renderBlocks, formatStamp } = require('../../src/lib/readerRender');
 
 const message = [{
   role: 'assistant',
@@ -24,6 +24,22 @@ test('other assistants keep standard Markdown soft-line-break behavior', () => {
   const out = renderBlocks(message, { agent: 'claude' });
   assert.doesNotMatch(out, /첫 번째 문장입니다\.<br>두 번째 문장입니다\./);
   assert.match(out, /첫 번째 문장입니다\.\n두 번째 문장입니다\./);
+});
+
+test('formatStamp treats grok unix seconds as 2026, not 1970', () => {
+  const stamp = formatStamp(1787278815);
+  assert.match(stamp, /^2026-/);
+  assert.doesNotMatch(stamp, /^1970-/);
+  assert.equal(stamp, formatStamp(1787278815000));
+});
+
+test('grok reader renders unix-second timestamps as 2026', () => {
+  const out = renderBlocks(
+    [{ role: 'user', text: 'hello', timestamp: 1787278815 }],
+    { agent: 'grok' },
+  );
+  assert.match(out, />2026-/);
+  assert.doesNotMatch(out, /1970-/);
 });
 
 test('user messages preserve single newlines for every agent', () => {

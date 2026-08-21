@@ -15,6 +15,7 @@ const {
   COMPLETE,
   TAIL_BYTES,
   kiroTurnStateFromRecords,
+  grokTurnStateFromRecords,
   readAgentTurnState,
   _clearTurnStateCache,
 } = require(path.join(process.cwd(), 'src/lib/agentTurnState'));
@@ -111,6 +112,37 @@ test('the gate is inert for other agents and for missing transcripts', () => {
   assert.equal(readAgentTurnState('kiro', path.join(os.tmpdir(), 'no-such-kiro-session.jsonl')).state, null);
 });
 
+const grokTurnEnded = () => ({ ts: '2026-08-21T03:02:44.997Z', type: 'turn_ended', outcome: 'completed' });
+const grokTurnStarted = () => ({ ts: '2026-08-21T02:20:12.409Z', type: 'turn_started', turn_number: 0 });
+const grokStreaming = () => ({ ts: '2026-08-21T02:20:15.522Z', type: 'phase_changed', phase: 'streaming_text' });
+const grokTool = () => ({ ts: '2026-08-21T02:20:20.000Z', type: 'tool_started' });
+const grokMcp = () => ({ ts: '2026-08-21T02:20:00.525Z', type: 'mcp_server_connected' });
+
+test('grok turn_ended is complete even if MCP noise follows in reverse scan', () => {
+  assert.equal(grokTurnStateFromRecords([grokTurnStarted(), grokStreaming(), grokTurnEnded()]), COMPLETE);
+  assert.equal(grokTurnStateFromRecords([grokTurnEnded(), grokMcp()]), COMPLETE);
+});
+
+test('grok turn_started / streaming / tool_started are mid-turn', () => {
+  assert.equal(grokTurnStateFromRecords([grokTurnEnded(), grokTurnStarted()]), WORKING);
+  assert.equal(grokTurnStateFromRecords([grokTurnStarted(), grokStreaming()]), WORKING);
+  assert.equal(grokTurnStateFromRecords([grokTurnStarted(), grokTool()]), WORKING);
+});
+
+test('grok unrecognized tails are unknown, not done', () => {
+  assert.equal(grokTurnStateFromRecords([grokMcp()]), null);
+  assert.equal(grokTurnStateFromRecords([]), null);
+  assert.equal(grokTurnStateFromRecords(null), null);
+});
+
+test('readAgentTurnState(grok) reads events.jsonl tails', () => {
+  _clearTurnStateCache();
+  const file = writeTranscript([grokTurnStarted(), grokStreaming()]);
+  assert.equal(readAgentTurnState('grok', file).state, WORKING);
+  fs.appendFileSync(file, JSON.stringify(grokTurnEnded()) + '\n', 'utf8');
+  assert.equal(readAgentTurnState('grok', file).state, COMPLETE);
+});
+
 test('the panel gates its completion notification on the transcript', () => {
   const source = fs.readFileSync(path.join(process.cwd(), 'src/panel/createPanel.js'), 'utf8');
   const start = source.indexOf("if (entry.state !== 'running') return;");
@@ -124,6 +156,8 @@ test('the panel gates its completion notification on the transcript', () => {
   assert.ok(block.includes("turnGate.state === 'working'"));
   assert.ok(block.includes('TURN_GATE_MAX_STALE_MS'));
   assert.ok(block.includes('setTimeout(onOutputSettled, TURN_GATE_RECHECK_MS)'));
-  // Kiro-only resolution keeps other agents off the stat/scan path.
-  assert.ok(source.includes("if (entry.agent !== 'kiro') return null;"));
+  // kiro + grok are the only agents that hit the transcript path.
+  assert.ok(source.includes("entry.agent === 'kiro'"));
+  assert.ok(source.includes('findGrokEventsPath'));
+  assert.ok(source.includes('grokTurnComplete'));
 });

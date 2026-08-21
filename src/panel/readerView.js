@@ -329,7 +329,7 @@ function serializeMarkdown(entry, aiTitle, messages) {
   lines.push('---');
   lines.push('');
   for (const m of messages) {
-    const ts = m.timestamp ? formatStamp(new Date(m.timestamp).getTime()) : '';
+    const ts = m.timestamp ? formatStamp(m.timestamp) : '';
     lines.push(`## ${m.role}${ts ? ` — ${ts}` : ''}`);
     lines.push('');
     lines.push(m.text || '');

@@ -36,9 +36,10 @@ ${agent === 'grok' ? `
   --accent-deep: #a1a1aa !important;
   --accent-panel-bg: #0a0a0a !important;
   --accent-input-bg: #171717 !important;
+  --accent-input-fg: #f4f4f5 !important;
   --accent-glow: rgba(229,229,229,0.18) !important;
   --accent-glow-strong: rgba(229,229,229,0.32) !important;
-  --accent-muted: #52525b !important;
+  --accent-muted: #a1a1aa !important;
 }
 #input-panel { border-top-color: #333 !important; }
 #editor-send { background: #2a2a2a !important; color: #ddd !important; border: 1px solid #444 !important; }

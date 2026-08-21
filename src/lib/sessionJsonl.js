@@ -68,16 +68,27 @@ function listKiroSessions(cwd, _dir) {
   return out;
 }
 
-// Normalise an Antigravity history timestamp to epoch-ms. The history.jsonl
-// `timestamp` field could be an ISO-8601 string, epoch-seconds, or epoch-ms
-// depending on the agy build, so accept all three. Numbers below 1e12 are read
-// as seconds (epoch-ms for 2001+ is already ≥1e12), strings go through
-// Date.parse. Returns 0 when unparseable so callers can sort/format defensively.
-function _antigravityTs(v) {
-  if (v == null) return 0;
+// Normalise a timestamp to epoch-ms. Agent transcripts mix ISO-8601 strings,
+// unix seconds, and unix milliseconds depending on the CLI/build:
+//   grok updates.jsonl `timestamp` = unix seconds (1787278815 → 2026-08-21)
+//   grok `_meta.agentTimestampMs`  = unix milliseconds
+//   antigravity history.jsonl      = any of the three
+// Numbers below 1e12 are seconds (epoch-ms for 2001+ is already ≥1e12).
+// Returns 0 when unparseable so callers can sort/format defensively.
+function _toEpochMs(v) {
+  if (v == null || v === '') return 0;
   if (typeof v === 'number' && isFinite(v)) return v >= 1e12 ? v : v * 1000;
+  const n = Number(v);
+  if (typeof v !== 'object' && isFinite(n) && String(v).trim() !== '') {
+    if (n >= 1e12) return n;
+    if (n >= 1e9) return n * 1000; // unix seconds as numeric string
+  }
   const p = Date.parse(String(v));
   return Number.isNaN(p) ? 0 : p;
+}
+
+function _antigravityTs(v) {
+  return _toEpochMs(v);
 }
 
 // Windows-safe path equality: agy may store the workspace path with a different
@@ -413,6 +424,16 @@ function findGrokSessionPath(sessionId, _dir, cwd) {
     return fs.existsSync(updatesPath) ? updatesPath : null;
   }
   return null;
+}
+
+// Sibling of updates.jsonl. Grok's events.jsonl is the turn-state authority
+// (`turn_started` / `turn_ended` / phase_changed); the TUI keeps redrawing
+// after a turn ends so PTY silence is not a reliable "done" signal.
+function findGrokEventsPath(sessionId, _dir, cwd) {
+  const updates = findGrokSessionPath(sessionId, _dir, cwd);
+  if (!updates) return null;
+  const events = path.join(path.dirname(updates), 'events.jsonl');
+  return fs.existsSync(events) ? events : null;
 }
 
 function listGrokSessions(cwd, _dir) {
@@ -874,7 +895,11 @@ function _extractGrokMessages(lines) {
     if (currentRole && currentRole !== role) flush();
     if (!currentRole) {
       currentRole = role;
-      currentTs = d.timestamp || update.timestamp || update.created_at || null;
+      const meta = (d.params && d.params._meta) || d._meta || update._meta || {};
+      currentTs = meta.agentTimestampMs
+        || _toEpochMs(d.timestamp || update.timestamp || update.created_at)
+        || null;
+      if (currentTs === 0) currentTs = null;
     }
     currentText += text;
   }
@@ -1059,6 +1084,8 @@ module.exports = {
   findCodexSessionPath,
   listGrokSessions,
   findGrokSessionPath,
+  findGrokEventsPath,
+  _toEpochMs,
   listGjcSessions,
   findGjcSessionPath,
   listChiefSessions,

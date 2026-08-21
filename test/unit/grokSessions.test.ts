@@ -13,9 +13,11 @@ import * as path from 'node:path';
 const {
   listGrokSessions,
   findGrokSessionPath,
+  findGrokEventsPath,
   extractMessages,
   extractMessageCount,
   extractAiTitle,
+  _toEpochMs,
   _clearLineCache,
 } = require(path.join(process.cwd(), 'src/lib/sessionJsonl'));
 
@@ -132,4 +134,59 @@ test('extractMessageCount(grok): matches extractMessages length', () => {
 
 test('extractAiTitle(grok): null — titles come from summary.json', () => {
   assert.equal(extractAiTitle(pathA, 'grok'), null);
+});
+
+test('_toEpochMs: grok unix seconds do not become 1970', () => {
+  // Live grok updates.jsonl `timestamp` for 2026-08-21 02:20:15 UTC.
+  const sec = 1787278815;
+  const ms = _toEpochMs(sec);
+  assert.equal(ms, 1787278815000);
+  const d = new Date(ms);
+  assert.equal(d.getUTCFullYear(), 2026);
+  assert.equal(d.getUTCMonth(), 7);
+  assert.equal(d.getUTCDate(), 21);
+  assert.equal(_toEpochMs(1787278812409), 1787278812409, 'already-ms left alone');
+  assert.ok(_toEpochMs('2026-08-21T02:20:15Z') >= 1e12);
+});
+
+test('extractMessages(grok): unix-second timestamp + agentTimestampMs', () => {
+  const id = '01a0221e-3016-7460-9c2a-e48cf50b5491';
+  const dir = path.join(sessionsDir, encodeURIComponent(wsDir), id);
+  fs.mkdirSync(dir, { recursive: true });
+  const sec = 1787278815;
+  const ms = 1787278812409;
+  fs.writeFileSync(path.join(dir, 'updates.jsonl'), [
+    JSON.stringify({
+      timestamp: sec,
+      method: 'session/update',
+      params: {
+        update: { sessionUpdate: 'user_message_chunk', content: { text: 'hello' } },
+        _meta: { agentTimestampMs: ms },
+      },
+    }),
+    JSON.stringify({
+      timestamp: sec + 3,
+      method: 'session/update',
+      params: { update: { sessionUpdate: 'agent_message_chunk', content: { text: 'hi' } } },
+    }),
+  ].join('\n') + '\n');
+  _clearLineCache();
+  const msgs = extractMessages(path.join(dir, 'updates.jsonl'), 'grok');
+  assert.equal(msgs.length, 2);
+  assert.equal(msgs[0].timestamp, ms, 'prefers agentTimestampMs (already ms)');
+  assert.equal(msgs[1].timestamp, (sec + 3) * 1000, 'unix seconds scaled to ms');
+  assert.equal(new Date(msgs[0].timestamp).getUTCFullYear(), 2026);
+  assert.equal(findGrokEventsPath(id, sessionsDir, wsDir), null, 'no events.jsonl yet');
+});
+
+test('grok input theme uses near-white typed text, not dark gray', () => {
+  const client = fs.readFileSync(path.join(process.cwd(), 'src/panel/webviewClient.js'), 'utf8');
+  const grokDark = client.slice(client.indexOf('grok:'), client.indexOf('gjc:'));
+  assert.match(grokDark, /inputFg:\s*'#f4f4f5'/);
+  assert.match(grokDark, /muted:\s*'#a1a1aa'/);
+  assert.doesNotMatch(grokDark, /muted:\s*'#52525b'/);
+  const styles = fs.readFileSync(path.join(process.cwd(), 'src/panel/webviewStyles.js'), 'utf8');
+  assert.match(styles, /--accent-input-fg/);
+  const html = fs.readFileSync(path.join(process.cwd(), 'src/panel/webviewContent.js'), 'utf8');
+  assert.match(html, /--accent-input-fg:\s*#f4f4f5/);
 });
