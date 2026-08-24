@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.21.2] - 2026-08-24
+
+Codex Reader compatibility with the current rollout event format.
+
+### Fixed
+- **Codex Reader stayed empty in current Codex App sessions.** New rollouts no longer emit the legacy `event_msg.user_message` / `event_msg.agent_message` records. Visible turns now arrive as `event_msg.item_completed` records containing `UserMessage` or `AgentMessage` items, so the old parser returned zero messages even though the session file was updating normally.
+- The Reader now prefers the current `item_completed` conversation events and falls back to the legacy event shape for older rollouts. Raw `response_item` messages remain excluded because their user records can contain injected AGENTS.md and environment context. Transitional rollouts containing both event shapes render each turn only once; reasoning, tool execution, and system context remain hidden.
+
+### Tests
+- Added current-format Codex rollout coverage alongside the legacy fixture, including injection filtering and mixed-format deduplication. Full Node tests (493 passed, 1 platform skip), Vitest (54 passed), the production build, and live extraction from both current and legacy rollout files pass.
+
 ## [3.21.1] - 2026-08-21
 
 Grok reader timestamps, completion color, and input text contrast.

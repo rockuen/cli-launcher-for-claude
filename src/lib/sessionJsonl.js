@@ -836,22 +836,60 @@ function _extractKiroMessages(lines) {
 }
 
 // Codex JSONL parser helper. Rollout records are { timestamp, type, payload }.
-// The conversation surfaces TWICE in a rollout: response_item carries the raw
-// model items (role=user lines include <environment_context> injections, and
-// role=assistant texts duplicate the agent_message events), while event_msg
-// carries the clean TUI-level turn events. We read event_msg ONLY —
-// user_message ↔ agent_message are exactly the visible dialogue turns
-// (verified on codex-cli 0.137 rollouts; identical shape back to 2026-03).
+// The conversation also surfaces as response_item records, but role=user there
+// includes injected AGENTS.md / environment context, so the reader intentionally
+// consumes only clean event_msg turns.
+//
+// Codex App builds switched the clean event shape in August 2026:
+//   legacy: payload.type = user_message | agent_message, payload.message
+//   current: payload.type = item_completed, payload.item.type =
+//            UserMessage | AgentMessage, payload.item.content[]
+// Prefer the current shape whenever conversational completed items are present;
+// this prevents duplicate turns in transitional rollouts that contain both.
+function _codexCompletedItemText(item) {
+  if (!item) return '';
+  const content = Array.isArray(item.content) ? item.content : [item.content];
+  const parts = [];
+  for (const c of content) {
+    if (typeof c === 'string' && c.trim()) {
+      parts.push(c);
+    } else if (c && typeof c.text === 'string' && c.text.trim()) {
+      parts.push(c.text);
+    }
+  }
+  return parts.join('\n\n');
+}
+
 function _extractCodexMessages(lines) {
   const out = [];
+  const hasCompletedTurns = lines.some((d) => {
+    const item = d && d.type === 'event_msg' && d.payload
+      && d.payload.type === 'item_completed' && d.payload.item;
+    return item && (item.type === 'UserMessage' || item.type === 'AgentMessage');
+  });
+
   for (const d of lines) {
     if (!d || d.type !== 'event_msg' || !d.payload) continue;
-    const pt = d.payload.type;
-    if (pt !== 'user_message' && pt !== 'agent_message') continue;
-    const text = typeof d.payload.message === 'string' ? d.payload.message : '';
+    let role = null;
+    let text = '';
+
+    if (hasCompletedTurns) {
+      if (d.payload.type !== 'item_completed' || !d.payload.item) continue;
+      const item = d.payload.item;
+      if (item.type === 'UserMessage') role = 'user';
+      else if (item.type === 'AgentMessage') role = 'assistant';
+      else continue;
+      text = _codexCompletedItemText(item);
+    } else {
+      const pt = d.payload.type;
+      if (pt !== 'user_message' && pt !== 'agent_message') continue;
+      role = pt === 'user_message' ? 'user' : 'assistant';
+      text = typeof d.payload.message === 'string' ? d.payload.message : '';
+    }
+
     if (!text.trim()) continue;
     out.push({
-      role: pt === 'user_message' ? 'user' : 'assistant',
+      role,
       text,
       timestamp: d.timestamp || null,
     });

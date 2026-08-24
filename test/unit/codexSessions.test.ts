@@ -7,7 +7,9 @@
 // ~/.codex/session_index.jsonl ({ id, thread_name }). The conversation appears
 // TWICE per rollout — response_item (raw model items, includes
 // <environment_context> injections + duplicate assistant texts) and event_msg
-// (clean TUI turns) — extraction reads event_msg ONLY.
+// (clean TUI turns) — extraction reads event_msg ONLY. Current Codex App builds
+// wrap those clean turns as item_completed UserMessage / AgentMessage records;
+// legacy CLI builds use user_message / agent_message directly.
 //
 // Fixtures mirror the real on-disk format captured from codex-cli 0.137
 // (shape verified identical back to the 2026-03 builds).
@@ -106,6 +108,56 @@ const pathA = writeRollout('05', ID_A, wsDir, T0 - 1000, [
   { user: 'pencil mcp 정리해줘', agent: '전역 config.toml에서 pencil 블록을 제거했습니다.' },
   { user: '확인해줘', agent: '남은 MCP 서버 목록입니다.' },
 ]);
+
+const currentPath = path.join(tmpRoot, 'current-rollout.jsonl');
+fs.writeFileSync(currentPath, [
+  JSON.stringify({
+    timestamp: new Date(T0).toISOString(),
+    type: 'response_item',
+    payload: {
+      type: 'message', role: 'user',
+      content: [{ type: 'input_text', text: '# AGENTS.md instructions\nsecret system context' }],
+    },
+  }),
+  JSON.stringify({
+    timestamp: new Date(T0 + 1).toISOString(),
+    type: 'event_msg',
+    payload: {
+      type: 'item_completed',
+      item: { id: '1', type: 'UserMessage', content: [{ type: 'text', text: '리더뷰 고쳐줘' }] },
+    },
+  }),
+  JSON.stringify({
+    timestamp: new Date(T0 + 2).toISOString(),
+    type: 'response_item',
+    payload: {
+      type: 'message', role: 'assistant',
+      content: [{ type: 'output_text', text: '수정하겠습니다.' }],
+    },
+  }),
+  JSON.stringify({
+    timestamp: new Date(T0 + 3).toISOString(),
+    type: 'event_msg',
+    payload: {
+      type: 'item_completed',
+      item: { id: '2', type: 'Reasoning', summary_text: ['internal reasoning'] },
+    },
+  }),
+  JSON.stringify({
+    timestamp: new Date(T0 + 4).toISOString(),
+    type: 'event_msg',
+    payload: {
+      type: 'item_completed',
+      item: { id: '3', type: 'AgentMessage', content: [{ type: 'Text', text: '수정하겠습니다.' }] },
+    },
+  }),
+  // A legacy duplicate in a transitional rollout must not render twice.
+  JSON.stringify({
+    timestamp: new Date(T0 + 5).toISOString(),
+    type: 'event_msg',
+    payload: { type: 'agent_message', message: '수정하겠습니다.' },
+  }),
+].join('\n') + '\n');
 writeRollout('04', ID_B, wsDir, T0 - 2000, [
   { user: 'mcp 설정 어떻게 되어있어?', agent: '설정 파일을 확인하겠습니다.' },
 ]);
@@ -176,6 +228,17 @@ test('extractMessages(codex): event_msg turns only — no env-context, no duplic
   assert.equal(msgs[1].text, '전역 config.toml에서 pencil 블록을 제거했습니다.');
   assert.ok(!msgs.some((m: any) => m.text.includes('<environment_context>')));
   assert.ok(msgs[0].timestamp, 'event timestamp carried through');
+});
+
+test('extractMessages(codex): current item_completed turns only — no injections or transitional duplicates', () => {
+  _clearLineCache();
+  const msgs = extractMessages(currentPath, 'codex');
+  assert.deepEqual(msgs.map((m: any) => [m.role, m.text]), [
+    ['user', '리더뷰 고쳐줘'],
+    ['assistant', '수정하겠습니다.'],
+  ]);
+  assert.ok(!msgs.some((m: any) => m.text.includes('AGENTS.md')));
+  assert.ok(msgs.every((m: any) => m.timestamp));
 });
 
 test('extractMessageCount(codex): matches extractMessages length', () => {
