@@ -655,10 +655,18 @@ function getClientScript(ctx) {
     // stopping anything, so normal wheel scroll remains untouched.
     const READER_FONT_MIN = 10;
     const READER_FONT_MAX = 24;
+    const readerAreaEl = document.getElementById('reader-area');
     const termWrapEl = document.getElementById('terminal-wrapper');
     if (termWrapEl) {
       termWrapEl.addEventListener('wheel', (e) => {
         if (!e.ctrlKey) return;
+        // v3.21.4: #reader-area lives INSIDE #terminal-wrapper, and both wheel
+        // handlers run in CAPTURE phase — so the wrapper (the ancestor) fired
+        // first and stopPropagation'd, and Ctrl+Wheel anywhere over the reader
+        // resized the TERMINAL font while the reader's own handler never ran.
+        // Hand those events back to the reader by bailing out here.
+        const overReader = readerAreaEl && e.target && readerAreaEl.contains(e.target);
+        if (overReader) return;
         e.preventDefault();
         e.stopPropagation();
         const delta = e.deltaY < 0 ? FONT_STEP : -FONT_STEP;
@@ -670,7 +678,7 @@ function getClientScript(ctx) {
         vscode.postMessage({ type: 'save-setting', key: 'defaultFontSize', value: next });
       }, { passive: false, capture: true });
     }
-    const readerEl = document.getElementById('reader-area');
+    const readerEl = readerAreaEl;
     if (readerEl) {
       // Fenced code blocks are often ready-to-use commands, drafts, or config.
       // Event delegation survives live reader updates that replace blocksHtml.

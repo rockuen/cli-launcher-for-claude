@@ -249,3 +249,121 @@ test('extractMessageCount(codex): matches extractMessages length', () => {
 test('extractAiTitle(codex): null — titles come from session_index.jsonl', () => {
   assert.equal(extractAiTitle(pathA, 'codex'), null);
 });
+
+// ─── v3.21.4: auto-title from the first user turn ──────────────────────────
+// listCodexSessions falls back to the rollout's first user message when
+// session_index.jsonl has no thread_name — and under project-scoped storage
+// there IS no index file, so this is the only auto-title source. Two defects
+// made it return '' for every real session: it only understood the legacy
+// `event_msg.user_message` shape (current Codex emits `item_completed` with a
+// `UserMessage` item), and it scanned a fixed 64 KB head while `session_meta`
+// alone runs 18-40 KB. Un-renamed sessions all collapsed to an 8-char id.
+
+const bigTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-title-'));
+const bigSessions = path.join(bigTmp, 'sessions');
+const bigWs = path.join(bigTmp, 'ws');
+fs.mkdirSync(bigWs, { recursive: true });
+
+// Writes a rollout whose session_meta carries `padKb` KB of base_instructions,
+// mirroring current Codex builds, with the first user turn in `shape`.
+function writeTitleRollout(id: string, padKb: number, shape: 'item_completed' | 'legacy', text: string, devPadKb = 0) {
+  const dir = path.join(bigSessions, '2026', '08', '26');
+  fs.mkdirSync(dir, { recursive: true });
+  const meta = JSON.stringify({
+    timestamp: '2026-08-26T01:46:40.000Z',
+    type: 'session_meta',
+    payload: {
+      id, cwd: bigWs, originator: 'codex-tui', cli_version: '0.148.0-alpha.15',
+      base_instructions: { text: 'x'.repeat(padKb * 1024) },
+    },
+  });
+  const userLine = shape === 'item_completed'
+    ? JSON.stringify({
+        timestamp: '2026-08-26T01:46:46.285Z',
+        type: 'event_msg',
+        payload: { type: 'item_completed', item: { type: 'UserMessage', content: [{ type: 'input_text', text }] } },
+      })
+    : JSON.stringify({
+        timestamp: '2026-08-26T01:46:46.285Z',
+        type: 'event_msg',
+        payload: { type: 'user_message', message: text },
+      });
+  const p = path.join(dir, `rollout-2026-08-26T10-46-40-${id}.jsonl`);
+  // Current Codex writes the developer/system instructions as response_item
+  // records between session_meta and the first visible turn; on real rollouts
+  // those are what push the user turn past a 64 KB head read.
+  const devLines: string[] = [];
+  for (let i = 0; i < devPadKb; i++) {
+    devLines.push(JSON.stringify({
+      timestamp: '2026-08-26T01:46:41.000Z',
+      type: 'response_item',
+      payload: { type: 'message', role: 'developer', content: [{ type: 'input_text', text: 'd'.repeat(1024) }] },
+    }));
+  }
+  fs.writeFileSync(p, [meta, ...devLines, userLine].join('\n') + '\n');
+  return p;
+}
+
+const TITLE_ID_NEW = '01a03bbf-7db1-7431-ba26-74b8ee9944e7';
+const TITLE_ID_FAR = '01a03bbf-7db1-7431-ba26-74b8ee9944e8';
+const TITLE_ID_OLD = '01a03bbf-7db1-7431-ba26-74b8ee9944e9';
+
+test('v3.21.4: title comes from a current item_completed UserMessage', () => {
+  writeTitleRollout(TITLE_ID_NEW, 20, 'item_completed', '코덱스 리더뷰 테스트 아무 답이나 해줘');
+  const found = listCodexSessions(bigWs, bigSessions, path.join(bigTmp, 'no-index.jsonl'))
+    .find((s: any) => s.sessionId === TITLE_ID_NEW);
+  assert.ok(found, 'rollout should be listed');
+  assert.equal(found.title, '코덱스 리더뷰 테스트 아무 답이나 해줘');
+});
+
+test('v3.21.4: title is still found past the 64 KB head window', () => {
+  // Realistic shape: a 40 KB session_meta (the largest seen in the wild)
+  // followed by ~120 KB of developer-instruction response_items, which puts
+  // the first user turn past the old fixed CODEX_META_CHUNK read. That is what
+  // silently blanked 28% of real rollouts, legacy record shape included.
+  writeTitleRollout(TITLE_ID_FAR, 40, 'item_completed', '먼 오프셋 제목', 120);
+  const found = listCodexSessions(bigWs, bigSessions, path.join(bigTmp, 'no-index.jsonl'))
+    .find((s: any) => s.sessionId === TITLE_ID_FAR);
+  assert.ok(found);
+  assert.equal(found.title, '먼 오프셋 제목');
+});
+
+test('v3.21.4: legacy user_message rollouts keep their title', () => {
+  writeTitleRollout(TITLE_ID_OLD, 20, 'legacy', '구 포맷 제목');
+  const found = listCodexSessions(bigWs, bigSessions, path.join(bigTmp, 'no-index.jsonl'))
+    .find((s: any) => s.sessionId === TITLE_ID_OLD);
+  assert.ok(found);
+  assert.equal(found.title, '구 포맷 제목');
+});
+
+test('v3.21.4: only the FIRST line of a multi-line prompt becomes the title', () => {
+  const id = '01a03bbf-7db1-7431-ba26-74b8ee994500';
+  writeTitleRollout(id, 20, 'item_completed', '첫 줄만 제목\n둘째 줄은 버림');
+  const found = listCodexSessions(bigWs, bigSessions, path.join(bigTmp, 'no-index.jsonl'))
+    .find((s: any) => s.sessionId === id);
+  assert.ok(found);
+  assert.equal(found.title, '첫 줄만 제목');
+});
+
+test('v3.21.4: an indexed thread_name still outranks the derived title', () => {
+  const id = '01a03bbf-7db1-7431-ba26-74b8ee994501';
+  writeTitleRollout(id, 20, 'item_completed', '파생 제목');
+  const idx = path.join(bigTmp, 'with-index.jsonl');
+  fs.writeFileSync(idx, JSON.stringify({ id, thread_name: '사용자 지정 제목' }) + '\n');
+  const found = listCodexSessions(bigWs, bigSessions, idx).find((s: any) => s.sessionId === id);
+  assert.ok(found);
+  assert.equal(found.title, '사용자 지정 제목');
+});
+
+test('v3.21.4: an oversized session_meta line no longer drops the session', () => {
+  // session_meta inlines the entire base_instructions prompt and keeps growing.
+  // Once that single line outruns the head read it fails JSON.parse, cwd comes
+  // back empty, and the cwd filter removes the rollout — the session vanishes
+  // from the tree completely, which is far worse than losing its title.
+  const id = '01a03bbf-7db1-7431-ba26-74b8ee994502';
+  writeTitleRollout(id, 200, 'item_completed', '거대 메타 세션');
+  const found = listCodexSessions(bigWs, bigSessions, path.join(bigTmp, 'no-index.jsonl'))
+    .find((s: any) => s.sessionId === id);
+  assert.ok(found, 'a rollout with a >64 KB session_meta must still be listed');
+  assert.equal(found.title, '거대 메타 세션');
+});

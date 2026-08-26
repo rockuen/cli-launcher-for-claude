@@ -1198,12 +1198,22 @@ function createPanel(context, extensionPath, session, opts) {
       for (const chunk of drained) {
         sendPtyChunkPaced(panel, chunk, entry);
       }
-      // v3.5.7: reader is paused on hidden panels too; trigger a catch-up
-      // render so the in-pane transcript reflects all the turns that fired
-      // while the user was looking at another tab.
-      if (typeof entry._readerCatchUp === 'function') {
-        try { entry._readerCatchUp(); } catch (_) {}
-      }
+    }
+    // v3.5.7: the reader is paused on hidden panels too, so returning to a tab
+    // must flush whatever turns landed while it was in the background.
+    //
+    // v3.21.4: this used to live INSIDE the buffered-output branch above, so a
+    // pending reader render was only flushed when the panel also happened to
+    // have PTY bytes waiting. Codex made the miss obvious: it writes its rollout
+    // only at item completion — a couple of discrete events per turn — so when
+    // the panel lost focus during the agent's reply, the single watcher event
+    // carrying that reply hit `!panel.active`, set pendingRender, and nothing
+    // ever fired again (the turn was over; the file stopped changing). The
+    // reader sat on the user's prompt with no answer under it, permanently.
+    // Claude Code masked the same bug by flushing its jsonl far more often, so
+    // the next write covered for the dropped catch-up.
+    if (e.webviewPanel.active && typeof entry._readerCatchUp === 'function') {
+      try { entry._readerCatchUp(); } catch (_) {}
     }
     if (panel.viewColumn !== lastViewColumn) {
       lastViewColumn = panel.viewColumn;

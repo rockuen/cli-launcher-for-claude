@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.21.4] - 2026-08-26
+
+Codex Reader answers, Codex session titles, and per-pane Ctrl+Wheel zoom.
+
+### Fixed
+- **The Reader showed the prompt but never the answer.** A reader render that lands while its panel is hidden only marks itself pending; the flush happens when the panel comes back. That flush sat inside the "drain buffered PTY output" branch, so it ran only when the panel *also* had bytes waiting. Codex exposed it: it writes its rollout twice per turn (once when the user's message completes, once when the agent's does), so losing focus during a reply dropped the single event carrying it and nothing fired again — the turn was over and the file stopped changing. The Reader sat on the prompt with no answer under it, permanently. Claude Code masked the same bug by flushing its jsonl far more often. Refocusing a panel now always flushes a pending reader render.
+- **Every un-renamed Codex session showed as an 8-character id.** The tree falls back to the rollout's first user message when `session_index.jsonl` has no name for it — and under project-scoped storage there is no index file at all, so that fallback is the only auto-title source. It was still reading the legacy `event_msg.user_message` record that current Codex no longer emits, and it scanned a fixed 64 KB head while `session_meta` alone runs 18-40 KB, which pushes the first user turn out of range in 28% of real rollouts. 34 of 34 sessions measured across two vaults had no derived title; both now resolve (34/34 and 69/73).
+- **A rollout whose `session_meta` line outgrew the head read vanished from the tree entirely.** Codex inlines the full `base_instructions` prompt into that first line and it keeps growing. Past the read budget the line truncates, JSON parsing fails, `cwd` comes back empty, and the cwd filter drops the session — worse than losing a title. Both the metadata and title reads now widen progressively, and derived titles are memoized so the wider window is paid once per rollout rather than on every tree refresh.
+- **Ctrl+Wheel over the Reader resized the terminal font.** `#reader-area` is a descendant of `#terminal-wrapper` and both wheel listeners are registered with `capture: true`, so the wrapper — the ancestor — handled every event first and stopped propagation; the Reader's own zoom handler never ran. The terminal handler now yields events originating inside the Reader. Each pane zooms itself, and plain (no-Ctrl) wheel still scrolls in both.
+
+### Tests
+- Added Codex title coverage (current `item_completed` shape, legacy shape, first-line-only, index name precedence, past-64 KB offset, oversized `session_meta`) and source invariants for the refocus flush and the wheel-zoom hand-off. Full Node tests (513 passed, 1 platform skip) and Vitest (54 passed) pass.
+
 ## [3.21.3] - 2026-08-26
 
 The session tree no longer freezes the launcher while it reads titles.

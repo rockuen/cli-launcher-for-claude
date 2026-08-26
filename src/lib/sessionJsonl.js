@@ -283,6 +283,84 @@ function findCodexSessionPath(sessionId, _dir, cwd) {
 // no thread_name for the id. Entry shape matches the other agent lists:
 // { sessionId, title, cwd, mtime }. The `_dir` / `_indexFile` args are
 // test-only injection; production callers pass cwd alone.
+// v3.21.4: first user message — the tree label when session_index.jsonl has no
+// thread_name for the rollout. Project-scoped storage has no index file at all,
+// so this is the ONLY auto-title source there.
+//
+// Two things were wrong before. The record shape: v3.21.2 taught the Reader
+// about current Codex rollouts, where visible turns arrive as
+// `event_msg.item_completed` carrying a `UserMessage` item, but this lookup was
+// left on the legacy `event_msg.user_message` shape that current Codex never
+// emits. And the window: it read a fixed 64 KB head, while `session_meta` alone
+// is 18-40 KB and the developer-instruction `response_item` records after it
+// push the first user turn past 64 KB in 28% of real rollouts (median 11.6 KB,
+// p90 98.6 KB). Between them every un-renamed Codex session fell back to an
+// 8-char id in the tree — 34 of 34 measured across both vaults.
+//
+// The window now widens progressively, and results are memoized: a session's
+// FIRST user message never changes, so a hit is cached for the process and a
+// miss is rechecked only once the file has grown. Without that,
+// listCodexSessions — which runs on every tree refresh and on every reader poll
+// while a fresh session is being discovered — would re-read up to 256 KB per
+// rollout every time.
+// v3.21.4: session_meta { cwd, id } read with a widening window. The record is
+// always the rollout's first line, but it is not small — current Codex inlines
+// the whole base_instructions prompt there (18-40 KB in the wild, and growing
+// with every prompt revision). At a fixed 64 KB read, a session_meta line past
+// that budget is truncated, fails JSON.parse, leaves cwd empty, and the session
+// is then dropped by the cwd filter — the rollout disappears from the tree
+// entirely rather than merely losing its title.
+function _codexSessionMeta(filePath, size) {
+  for (const bytes of CODEX_TITLE_WINDOWS) {
+    let head;
+    try { head = _splitJsonLines(_readChunk(filePath, Math.min(bytes, size))); } catch { return {}; }
+    for (const d of head) {
+      if (d && d.type === 'session_meta' && d.payload) {
+        return { cwd: d.payload.cwd || '', id: d.payload.id || '' };
+      }
+    }
+    if (size <= bytes) break;
+  }
+  return {};
+}
+
+const CODEX_TITLE_WINDOWS = [CODEX_META_CHUNK, 256 * 1024];
+const _codexTitleCache = new Map(); // path -> { size, title }
+
+function _codexFirstUserMessageAt(filePath, bytes) {
+  for (const d of _splitJsonLines(_readChunk(filePath, bytes))) {
+    if (!d || d.type !== 'event_msg' || !d.payload) continue;
+    let text = '';
+    if (d.payload.type === 'item_completed' && d.payload.item
+        && d.payload.item.type === 'UserMessage') {
+      text = _codexCompletedItemText(d.payload.item);
+    } else if (d.payload.type === 'user_message' && typeof d.payload.message === 'string') {
+      text = d.payload.message;
+    } else {
+      continue;
+    }
+    const line = text.trim().split('\n')[0].trim();
+    if (line) return line;
+  }
+  return '';
+}
+
+function _codexFirstUserMessage(filePath, size) {
+  const cached = _codexTitleCache.get(filePath);
+  // A found title is immutable; an empty one only needs rechecking once the
+  // rollout has grown past the window we already scanned.
+  if (cached && (cached.title || cached.size === size)) return cached.title;
+  let title = '';
+  try {
+    for (const bytes of CODEX_TITLE_WINDOWS) {
+      title = _codexFirstUserMessageAt(filePath, Math.min(bytes, size));
+      if (title || size <= bytes) break;
+    }
+  } catch { return ''; }
+  _codexTitleCache.set(filePath, { size, title });
+  return title;
+}
+
 function listCodexSessions(cwd, _dir, _indexFile) {
   const codexPaths = getCodexPaths(cwd);
   const dir = _dir || codexPaths.sessionsDir;
@@ -309,21 +387,10 @@ function listCodexSessions(cwd, _dir, _indexFile) {
     if (!m) continue;
     let stat;
     try { stat = fs.statSync(p); } catch { continue; }
-    let metaCwd = '';
-    let metaId = m[1];
-    let firstMsg = '';
-    try {
-      const head = _splitJsonLines(_readChunk(p, CODEX_META_CHUNK));
-      for (const d of head) {
-        if (d && d.type === 'session_meta' && d.payload) {
-          if (d.payload.cwd) metaCwd = d.payload.cwd;
-          if (d.payload.id) metaId = d.payload.id;
-        } else if (!firstMsg && d && d.type === 'event_msg' && d.payload
-                   && d.payload.type === 'user_message' && typeof d.payload.message === 'string') {
-          firstMsg = d.payload.message.trim().split('\n')[0].trim();
-        }
-      }
-    } catch { continue; }
+    const meta = _codexSessionMeta(p, stat.size);
+    const metaCwd = meta.cwd;
+    const metaId = meta.id || m[1];
+    const firstMsg = _codexFirstUserMessage(p, stat.size);
     out.push({
       sessionId: metaId,
       title: titles.get(String(metaId).toLowerCase()) || firstMsg || '',
