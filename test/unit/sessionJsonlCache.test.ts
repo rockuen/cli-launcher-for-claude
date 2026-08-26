@@ -194,3 +194,85 @@ test('LRU eviction: cache size stays bounded under many distinct paths', () => {
     for (const p of paths) cleanup(p);
   }
 });
+
+// ─── v3.21.3: windowed title extraction ────────────────────────────────────
+// extractAiTitle reads a 64 KB head + 64 KB tail instead of the whole jsonl.
+// _loadSessions calls it on up to 130 files per refresh, synchronously, on the
+// extension host thread; at whole-file scan that measured 4.5 s on a 259 MB
+// working set, which stalls PTY output and freezes the launcher UI. These
+// tests pin the window's two edges and the boundary the window deliberately
+// does not cover.
+
+const PAD_LINE = 'z'.repeat(4096); // unparseable filler, dropped by _splitJsonLines
+const PAD_COUNT = 64; // 64 x 4 KB = 256 KB, comfortably past head + tail
+
+test('v3.21.3: title at EOF is found on a file far larger than the window', () => {
+  _clearLineCache();
+  const lines: string[] = [];
+  for (let i = 0; i < PAD_COUNT; i++) lines.push(PAD_LINE);
+  lines.push('{"type":"ai-title","aiTitle":"at-the-end"}');
+  const p = makeJsonl(lines);
+  try {
+    assert.ok(fs.statSync(p).size > 128 * 1024);
+    assert.equal(extractAiTitle(p), 'at-the-end');
+  } finally { cleanup(p); }
+});
+
+test('v3.21.3: title on line 1 is found on a file far larger than the window', () => {
+  // Covers a session titled early that then grew without ever being retitled,
+  // and gjc's `type:"session"` header, which is always the first line.
+  _clearLineCache();
+  const lines: string[] = ['{"type":"ai-title","aiTitle":"at-the-start"}'];
+  for (let i = 0; i < PAD_COUNT; i++) lines.push(PAD_LINE);
+  const p = makeJsonl(lines);
+  try {
+    assert.ok(fs.statSync(p).size > 128 * 1024);
+    assert.equal(extractAiTitle(p), 'at-the-start');
+  } finally { cleanup(p); }
+});
+
+test('v3.21.3: latest title still wins when head and tail both carry one', () => {
+  _clearLineCache();
+  const lines: string[] = ['{"type":"ai-title","aiTitle":"stale"}'];
+  for (let i = 0; i < PAD_COUNT; i++) lines.push(PAD_LINE);
+  lines.push('{"type":"ai-title","aiTitle":"current"}');
+  const p = makeJsonl(lines);
+  try {
+    assert.equal(extractAiTitle(p), 'current');
+  } finally { cleanup(p); }
+});
+
+test('v3.21.3: a title buried mid-file outside the window is not read', () => {
+  // Documents the deliberate boundary rather than a bug. Claude Code appends
+  // each rewritten ai-title, so the winning one is always near EOF; across 663
+  // real sessions in two vaults the windowed read matched the whole-file scan
+  // exactly. A title that is *only* mid-file would need a full scan to find,
+  // which is the cost this change exists to remove.
+  _clearLineCache();
+  const lines: string[] = [];
+  for (let i = 0; i < PAD_COUNT; i++) lines.push(PAD_LINE);
+  lines.push('{"type":"ai-title","aiTitle":"buried"}');
+  for (let i = 0; i < PAD_COUNT; i++) lines.push(PAD_LINE);
+  const p = makeJsonl(lines);
+  try {
+    assert.equal(extractAiTitle(p), null);
+  } finally { cleanup(p); }
+});
+
+test('v3.21.3: a resident line-cache snapshot is reused instead of re-reading', () => {
+  // The reader panels parse the whole file via extractMessages; extractAiTitle
+  // must ride that snapshot rather than paying a second (windowed) read.
+  _clearLineCache();
+  const lines: string[] = ['{"type":"ai-title","aiTitle":"cached-title"}'];
+  for (let i = 0; i < 4; i++) {
+    lines.push('{"type":"user","message":{"role":"user","content":"q"}}');
+  }
+  const p = makeJsonl(lines);
+  try {
+    assert.equal(extractMessages(p).length, 4); // populates the line cache
+    assert.equal(extractAiTitle(p), 'cached-title');
+    // And it must still invalidate on a real content change.
+    fs.writeFileSync(p, '{"type":"ai-title","aiTitle":"rewritten-and-longer"}');
+    assert.equal(extractAiTitle(p), 'rewritten-and-longer');
+  } finally { cleanup(p); }
+});

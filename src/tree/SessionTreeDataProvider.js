@@ -228,11 +228,18 @@ class SessionTreeDataProvider {
     // Tree refresh used to call both on each of the top 30 jsonls every time;
     // extractAiTitle parses the whole file (no per-line cap), which compounds
     // hard with the iloom pattern (multiple 13-48 MB scm-pdca sessions in the
-    // top 30). Cache key is {mtime, size}; an LRU cap of 100 entries keeps
-    // memory bounded while comfortably covering the 30 top recent + tree
-    // children across normal usage.
+    // top 30). Cache key is {mtime, size}.
+    //
+    // v3.21.3: the cap was 100, but one refresh touches TOP_RECENT (30) +
+    // PROTECTED_CAP (100) = up to 130 distinct files, always in the same
+    // mtime-DESC order. A 100-entry LRU walked sequentially over 130 keys is
+    // the textbook thrash case: every lookup evicts the entry the *next* pass
+    // will ask for, so the hit rate collapses to 0% and each refresh re-paid
+    // the full extract. Sizing the cap above the worst-case working set is
+    // what actually makes it a cache. Entries hold two short strings, so the
+    // extra headroom costs nothing.
     this._fileMetaCache = new Map();
-    this._FILE_META_CACHE_MAX = 100;
+    this._FILE_META_CACHE_MAX = 200;
 
     // TreeDragAndDropController interface (read by createTreeView(options)).
     // MIME pair is agent-scoped so a drag in one view can't drop in another.

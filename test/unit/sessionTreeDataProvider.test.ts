@@ -138,6 +138,34 @@ test('v3.5.9: _getFileMeta caches extractAiTitle + extractFirstUserMessage by {m
   assert.match(treeSrc, /aiTitle:\s*extractAiTitle\(filePath\),\s*firstMsg:\s*extractFirstUserMessage\(filePath\)/);
 });
 
+test('v3.21.3: the file-meta LRU is larger than one refresh working set', () => {
+  // One refresh touches TOP_RECENT (30) + PROTECTED_CAP (100) distinct files in
+  // a stable mtime-DESC order. A cap at or below 130 makes every lookup evict
+  // the entry the next pass needs — sequential LRU thrash, 0% hit rate — so the
+  // cache silently stopped caching. The cap must stay above the working set.
+  const cap = Number(/this\._FILE_META_CACHE_MAX\s*=\s*(\d+)/.exec(treeSrc)?.[1]);
+  const protectedCap = Number(/const PROTECTED_CAP\s*=\s*(\d+)/.exec(treeSrc)?.[1]);
+  const topRecent = Number(/const TOP_RECENT\s*=\s*(\d+)/.exec(treeSrc)?.[1]);
+  assert.ok(Number.isFinite(cap) && Number.isFinite(protectedCap) && Number.isFinite(topRecent));
+  assert.ok(
+    cap > topRecent + protectedCap,
+    `_FILE_META_CACHE_MAX (${cap}) must exceed TOP_RECENT + PROTECTED_CAP (${topRecent + protectedCap})`,
+  );
+});
+
+test('v3.21.3: extractAiTitle reads a bounded head + tail window, not the file', () => {
+  // The tree's hot path must never fs.readFileSync a whole multi-MB jsonl just
+  // to read a title. Both window constants and the windowed reader must exist,
+  // and extractAiTitle must route through them.
+  assert.match(jsonlSrc, /const TITLE_HEAD_BYTES\s*=\s*64 \* 1024/);
+  assert.match(jsonlSrc, /const TITLE_TAIL_BYTES\s*=\s*64 \* 1024/);
+  assert.match(jsonlSrc, /function _readHeadTail\(filePath, size, headBytes, tailBytes\)/);
+  assert.match(
+    jsonlSrc,
+    /function extractAiTitle\([\s\S]*?_readHeadTail\(filePath, stat\.size, TITLE_HEAD_BYTES, TITLE_TAIL_BYTES\)/,
+  );
+});
+
 test('v3.5.9: sub-sessions attach to _subSessions (not _children)', () => {
   // The lazy getChildren composes [metaRow, ...subSessions]; mixing them
   // into _children would conflate metadata with siblings and break the

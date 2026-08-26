@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.21.3] - 2026-08-26
+
+The session tree no longer freezes the launcher while it reads titles.
+
+### Fixed
+- **The whole launcher stalled for seconds at a time on vaults with a long session history.** Every tree refresh called `extractAiTitle` on up to 130 session files, and that function read and `JSON.parse`d each file in full. On `iloom-workspace` (381 sessions, 717 MB) one refresh read 259 MB and took 2.4-4.5 s. It runs synchronously on the extension host thread, which is the same thread that pumps PTY output, so terminals went silent and the UI stopped responding for the duration - the launcher looked hung, not slow.
+- `extractAiTitle` now reads a 64 KB head plus a 64 KB tail instead of the whole file. Claude Code appends each rewritten `ai-title`, so the winning title sits near EOF: across 504 real titled sessions the last one is a median 4.3 KB from the end and 29.7 KB at p95. The head window covers a session titled early that then grew without being retitled, and gjc's `type:"session"` header on line 1. Verified to return identical titles to the old full scan on all 663 sessions across both vaults, at 210 ms instead of 2418 ms for 130 files.
+- **The tree's file-metadata cache had stopped caching.** Its LRU cap was 100 while one refresh walks up to 130 distinct files in a stable mtime-DESC order - sequential thrash, where each lookup evicts the entry the next pass asks for, driving the hit rate to 0%. The cap is now 200, above the worst-case working set. Entries hold two short strings, so the headroom is free.
+
+### Tests
+- Added window-boundary coverage (title at EOF, title on line 1, latest-wins across both windows, the deliberate mid-file gap, and line-cache reuse) plus source invariants pinning the cache cap above `TOP_RECENT + PROTECTED_CAP`. Full Node tests (500 passed, 1 platform skip), Vitest (54 passed), and real-data equivalence over 663 session files pass.
+
 ## [3.21.2] - 2026-08-24
 
 Codex Reader compatibility with the current rollout event format.
