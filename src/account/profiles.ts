@@ -439,20 +439,46 @@ export function getActiveProfileSlug(): string | null {
 
   // Stage 3: userID + email cross-check for legacy snapshots that
   // predate accountUuid storage. The `userID` field in `.claude.json`
-  // is device-stable (same value across accounts on one machine), so
-  // matching on it alone would collide accounts; the email cross-
-  // check disambiguates.
+  // is device-stable — every account on one machine carries the SAME
+  // value (verified on a real install: two saved accounts, byte-
+  // identical userID, differing only by accountUuid and email). So it
+  // can only ever confirm a match the email has already made; it can
+  // never make one on its own.
+  //
+  // v3.21.5: this used to fall through to `return true` whenever either
+  // side lacked an email, which turned the device-stable userID into
+  // the sole matcher. With two legacy slots that is not a near-miss —
+  // it matches BOTH, sorts by savedAt, and hands back whichever was
+  // saved last. syncActiveProfile then re-snapshots the live tokens
+  // into that slot, and because updateProfile rewrites identity too,
+  // the other account's slot silently became a duplicate of the live
+  // one. Its tokens were gone for good. An unmatched active account is
+  // merely inconvenient (the slot goes stale and can be re-saved); a
+  // mismatched one is unrecoverable, so ambiguity must resolve to "no
+  // match".
   if (liveIdentity.userID) {
     const emailLower = liveIdentity.email.toLowerCase();
-    const candidates = profiles
-      .filter((p) => {
-        if (!p.userID || p.userID !== liveIdentity.userID) return false;
-        if (p.accountUuid) return false; // would already have matched at stage 2
-        if (!p.email || !emailLower) return true;
-        return p.email.toLowerCase() === emailLower;
-      })
-      .sort(freshestFirst);
-    if (candidates[0]) return candidates[0].slug;
+    const sameUserId = profiles.filter(
+      (p) => p.userID && p.userID === liveIdentity.userID && !p.accountUuid,
+    );
+    if (emailLower) {
+      const confirmed = sameUserId
+        .filter((p) => p.email && p.email.toLowerCase() === emailLower)
+        .sort(freshestFirst);
+      if (confirmed[0]) return confirmed[0].slug;
+    } else {
+      // No live email to cross-check against. Duplicate slots for ONE
+      // account (legacy pre-dedupe state) are still safe to resolve —
+      // every candidate is the same account, so the tie-break only
+      // picks which copy to name. Candidates that disagree are a
+      // different matter: userID cannot tell them apart, so answering
+      // at all would be a guess.
+      const accounts = new Set(sameUserId.map((p) => (p.email || "").toLowerCase()));
+      if (accounts.size === 1) {
+        const [best] = [...sameUserId].sort(freshestFirst);
+        if (best) return best.slug;
+      }
+    }
   }
 
   // Stage 4: email-only match (snapshots saved before any id storage,
@@ -475,7 +501,8 @@ export type ProfileError =
   | "slot-missing"
   | "copy-failed"
   | "unreadable-source"
-  | "already-saved";
+  | "already-saved"
+  | "identity-mismatch";
 
 export type ProfileResult<T> = { ok: true; data: T } | { ok: false; error: ProfileError; detail?: string };
 
@@ -610,6 +637,43 @@ export function saveProfile(label: string): ProfileResult<SavedProfile> {
  * when Claude CLI has refreshed tokens and the user wants to re-sync
  * the saved snapshot. Fails if the slot doesn't exist.
  */
+/**
+ * Describe how a live identity contradicts a slot's stored identity, or
+ * null when they agree (or when there is not enough on both sides to
+ * tell). `accountUuid` is the authoritative per-account id; email is
+ * the fallback for snapshots taken before it was stored. `userID` is
+ * deliberately NOT consulted — it is device-stable, so it agrees across
+ * every account on the machine and would only mask a real conflict.
+ */
+/**
+ * True when the live identity positively names this slot's account.
+ * Absence of evidence is NOT confirmation: an empty live accountUuid
+ * and email confirm nothing, and `userID` is device-stable so it never
+ * distinguishes accounts. Used to gate unattended overwrites.
+ */
+function confirmsAccount(
+  live: LiveIdentity | null,
+  slot: Pick<SavedProfile, "accountUuid" | "email">,
+): boolean {
+  if (!live) return false;
+  if (live.accountUuid && slot.accountUuid) return live.accountUuid === slot.accountUuid;
+  if (live.email && slot.email) return live.email.toLowerCase() === slot.email.toLowerCase();
+  return false;
+}
+
+function identityConflict(
+  live: LiveIdentity,
+  slot: Partial<SavedProfile>,
+): string | null {
+  if (live.accountUuid && slot.accountUuid && live.accountUuid !== slot.accountUuid) {
+    return `live account ${live.accountUuid} does not match this profile (${slot.accountUuid})`;
+  }
+  if (live.email && slot.email && live.email.toLowerCase() !== slot.email.toLowerCase()) {
+    return `live account ${live.email} does not match this profile (${slot.email})`;
+  }
+  return null;
+}
+
 export function updateProfile(slug: string): ProfileResult<SavedProfile> {
   const slotDir = path.join(PROFILES_DIR, slug);
   if (!fs.existsSync(slotDir)) {
@@ -628,6 +692,23 @@ export function updateProfile(slug: string): ProfileResult<SavedProfile> {
     userID: tokenIdentity?.userID || jsonIdentity.userID,
     email: tokenIdentity?.email || jsonIdentity.email,
   };
+
+  // v3.21.5: never let one account's tokens land in another account's slot.
+  // This write replaces the slot's credentials AND its stored identity, so a
+  // single wrong slug turns a saved account into a duplicate of the live one
+  // and its tokens are unrecoverable. Anthropic's access tokens are opaque
+  // (`sk-ant-oat01-…`, no JWT claims to read), so the only identity we have is
+  // `.claude.json` — and during Claude CLI's `/login` window that file still
+  // names the PREVIOUS account while `.credentials.json` already holds the new
+  // one. Comparing the slot we are about to overwrite against the live identity
+  // catches exactly that: refuse when the two positively name different
+  // accounts, and only then (unknown-vs-known stays allowed, so first-time
+  // legacy slots without stored ids can still be refreshed).
+  const slotMeta = readSnapshotMeta(slotDir);
+  const conflict = identityConflict(identity, slotMeta);
+  if (conflict) {
+    return { ok: false, error: "identity-mismatch", detail: conflict };
+  }
 
   try {
     fs.writeFileSync(path.join(slotDir, ".claude.json"), claudeJsonRaw);
@@ -701,6 +782,14 @@ export function updateProfile(slug: string): ProfileResult<SavedProfile> {
 export function syncActiveProfile(): string | null {
   const slug = getActiveProfileSlug();
   if (!slug) return null;
+  // v3.21.5: an unattended write must never guess. getActiveProfileSlug is
+  // allowed to answer on weak evidence because its other callers only DISPLAY
+  // the result; this one overwrites a slot's tokens and identity, and a wrong
+  // answer costs the user an account permanently. Require the live identity to
+  // positively name this slot — the device-stable `userID` never counts, since
+  // it agrees across every account on the machine.
+  const slot = listProfiles().find((p) => p.slug === slug);
+  if (!slot || !confirmsAccount(readLiveIdentity(), slot)) return null;
   // Skip when already byte-identical: avoids spurious mtime bumps and
   // a self-triggering loop if the caller is running from a watcher.
   const slotCreds = path.join(PROFILES_DIR, slug, ".credentials.json");

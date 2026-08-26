@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.21.5] - 2026-08-27
+
+Saved Claude accounts stop going dead after repeated switching.
+
+### Fixed
+- **A saved account eventually stopped loading while the other kept working.** `syncActiveProfile()` re-snapshots the live credentials into the slot they belong to, and its own docstring says it should run "on every `~/.claude/.credentials.json` change" — but nothing ever drove it. The only callers were the switcher's own UI actions, so a slot stayed byte-current only while the user kept driving switches through the launcher. Anthropic rotates refresh tokens single-use: leave an account any other way — `claude /login` in a terminal, or simply enough time for the CLI to rotate in the background — and that slot keeps a refresh token the server has already revoked. The profile stays listed and switchable and just will not authenticate. The active profile is now re-synced on a 5-minute sample and whenever the window regains focus, so the outgoing account's snapshot is current before the user switches away from it.
+- **Switching could silently overwrite one saved account with another.** `updateProfile()` replaces a slot's credentials *and* its stored identity, so one wrong slug resolution converts a saved account into a duplicate of the live one — irreversibly, since the original tokens are then gone. `getActiveProfileSlug()` could produce that wrong slug: for snapshots predating `accountUuid` it fell back to matching on `.claude.json`'s top-level `userID`, and that field is device-stable, not account-distinct. Verified on a real install — two saved accounts with byte-identical `userID`, differing only by `accountUuid` and email. With two such slots the old code matched both, sorted by `savedAt`, and returned whichever was saved last.
+- Unattended writes now require the live identity to positively name the slot (`accountUuid`, else email); `userID` never counts on its own, and absence of evidence is not confirmation. Ambiguity resolves to "no match" — a stale slot is inconvenient and re-savable, a mismatched one is unrecoverable. Duplicate slots for a single account still resolve normally, since every candidate is the same account. `updateProfile()` additionally refuses any write whose live identity positively contradicts the slot, returning a new `identity-mismatch` error; that also covers Claude CLI's `/login` window, where `.credentials.json` holds the new account while `.claude.json` still names the previous one and the opaque `sk-ant-oat01-…` token offers nothing to contradict it.
+
+### Tests
+- Added cross-account clobber coverage (device-stable `userID` ambiguity, both slots left intact, email cross-check still matching, refused and permitted `updateProfile` writes) and auto-sync behaviour (no work during activation, delayed first run, repeating cadence, focus-triggered sync, failure swallowing, disposal). Full Node tests (513 passed, 1 platform skip) and Vitest (64 passed) pass.
+
 ## [3.21.4] - 2026-08-26
 
 Codex Reader answers, Codex session titles, and per-pane Ctrl+Wheel zoom.

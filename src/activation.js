@@ -1467,6 +1467,16 @@ function activate(context) {
   // via switcher.ts:refreshActiveProfile().
   account.createAccountStatusBar(context);
 
+  // v3.21.5: keep the ACTIVE profile's saved tokens byte-current with the
+  // live ones. Anthropic rotates refresh tokens single-use, so a snapshot
+  // taken before a rotation holds a token the server has already revoked.
+  // profiles.ts was built expecting a sync on every credentials change but
+  // nothing ever drove it, so a slot only stayed fresh while the user kept
+  // switching through the launcher — leave an account via `claude /login`,
+  // or just let the CLI rotate in the background, and switching back to it
+  // later restored dead credentials.
+  account.startAccountAutoSync(context);
+
   // v3.6.2: opt-in diagnostics for freeze investigation. The toggle is
   // off by default — when on, an OutputChannel named "CLI Launcher —
   // Diagnostics" gets a memory + per-panel chunk-stats dump every 10

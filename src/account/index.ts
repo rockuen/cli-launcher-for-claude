@@ -11,3 +11,4 @@ export {
   createAccountStatusBar,
   refreshAccountStatusBar,
 } from "./accountStatusBar";
+export { startAccountAutoSync } from "./autoSync";

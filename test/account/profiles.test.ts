@@ -862,3 +862,121 @@ describe("switchProfile — keychain backend (macOS)", () => {
     expect(getActiveProfileSlug()).toBe("a");
   });
 });
+
+// ─── v3.21.5: cross-account clobber protection ────────────────────────────
+// updateProfile() rewrites a slot's credentials AND its stored identity, so a
+// single wrong slug resolution converts one saved account into a duplicate of
+// another — permanently, since the original tokens are gone. Two paths could
+// produce that wrong slug, both rooted in `.claude.json`'s top-level `userID`
+// being DEVICE-stable rather than account-distinct (verified on a real machine:
+// two saved accounts, byte-identical userID, differing only by accountUuid and
+// email).
+describe("cross-account clobber protection", () => {
+  const legacyA = {
+    oauthAccount: { emailAddress: "alice@example.com" },
+    userID: "device-stable-id",
+  };
+  const legacyB = {
+    oauthAccount: { emailAddress: "bob@example.com" },
+    userID: "device-stable-id",
+  };
+  const creds = (refresh: string) => ({
+    claudeAiOauth: {
+      accessToken: `access-${refresh}`,
+      refreshToken: refresh,
+      expiresAt: 1_800_000_000_000,
+      subscriptionType: "max",
+    },
+  });
+
+  it("never resolves an active slot from the device-stable userID alone", () => {
+    // Two legacy slots (no accountUuid) that share the device userID.
+    writeLiveAccount(legacyA, creds("refresh-a"));
+    saveProfile("Alice");
+    writeLiveAccount(legacyB, creds("refresh-b"));
+    saveProfile("Bob");
+
+    // Live creds rotated (no hash match) and the identity file carries the
+    // device userID but no email — exactly the shape that used to match both
+    // slots and hand back whichever was saved most recently.
+    writeLiveAccount({ userID: "device-stable-id" }, creds("refresh-rotated"));
+    expect(getActiveProfileSlug()).toBeNull();
+  });
+
+  it("leaves both slots untouched when the active account is ambiguous", () => {
+    writeLiveAccount(legacyA, creds("refresh-a"));
+    saveProfile("Alice");
+    writeLiveAccount(legacyB, creds("refresh-b"));
+    saveProfile("Bob");
+    writeLiveAccount({ userID: "device-stable-id" }, creds("refresh-rotated"));
+
+    expect(syncActiveProfile()).toBeNull();
+    const read = (slug: string) =>
+      JSON.parse(
+        fs.readFileSync(path.join(PROFILES_DIR, slug, ".credentials.json"), "utf-8"),
+      ).claudeAiOauth.refreshToken;
+    expect(read("alice")).toBe("refresh-a");
+    expect(read("bob")).toBe("refresh-b");
+  });
+
+  it("still matches a legacy slot when the email cross-check confirms it", () => {
+    writeLiveAccount(legacyA, creds("refresh-a"));
+    saveProfile("Alice");
+    writeLiveAccount(legacyB, creds("refresh-b"));
+    saveProfile("Bob");
+    // Rotated bytes, but the identity file names Bob outright.
+    writeLiveAccount(legacyB, creds("refresh-b-rotated"));
+    expect(getActiveProfileSlug()).toBe("bob");
+    expect(syncActiveProfile()).toBe("bob");
+  });
+
+  it("refuses to write one account's tokens into another account's slot", () => {
+    // The `/login` window: Claude CLI rewrites .credentials.json for the new
+    // account BEFORE .claude.json catches up, so the identity file still names
+    // the previous account. Anthropic's access tokens are opaque
+    // (`sk-ant-oat01-…`), so nothing in the creds can contradict it — the guard
+    // has to live at the write, comparing the slot we are about to overwrite
+    // against the account the caller believes is live.
+    writeLiveAccount(
+      { oauthAccount: { emailAddress: "a@x.com", accountUuid: "uuid-a" }, userID: "dev" },
+      creds("refresh-a"),
+    );
+    saveProfile("A");
+    writeLiveAccount(
+      { oauthAccount: { emailAddress: "b@x.com", accountUuid: "uuid-b" }, userID: "dev" },
+      creds("refresh-b"),
+    );
+    saveProfile("B");
+
+    // Live identity says B; ask to re-snapshot into A's slot anyway.
+    const res = updateProfile("a");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toBe("identity-mismatch");
+    const aCreds = JSON.parse(
+      fs.readFileSync(path.join(PROFILES_DIR, "a", ".credentials.json"), "utf-8"),
+    );
+    expect(aCreds.claudeAiOauth.refreshToken).toBe("refresh-a");
+    const aMeta = JSON.parse(
+      fs.readFileSync(path.join(PROFILES_DIR, "a", "profile.json"), "utf-8"),
+    );
+    expect(aMeta.accountUuid).toBe("uuid-a");
+  });
+
+  it("still allows a same-account refresh through updateProfile", () => {
+    writeLiveAccount(
+      { oauthAccount: { emailAddress: "a@x.com", accountUuid: "uuid-a" }, userID: "dev" },
+      creds("refresh-a"),
+    );
+    saveProfile("A");
+    writeLiveAccount(
+      { oauthAccount: { emailAddress: "a@x.com", accountUuid: "uuid-a" }, userID: "dev" },
+      creds("refresh-a-rotated"),
+    );
+    const res = updateProfile("a");
+    expect(res.ok).toBe(true);
+    const aCreds = JSON.parse(
+      fs.readFileSync(path.join(PROFILES_DIR, "a", ".credentials.json"), "utf-8"),
+    );
+    expect(aCreds.claudeAiOauth.refreshToken).toBe("refresh-a-rotated");
+  });
+});
