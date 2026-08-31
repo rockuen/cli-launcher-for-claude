@@ -38,6 +38,7 @@ const { detectPromptAffordance } = require('../lib/promptAffordance');
 const { readAgentTurnState } = require('../lib/agentTurnState');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
 const { claudeChannelsArgs } = require('../lib/claudeChannels');
+const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -325,6 +326,12 @@ function startReaderWatch(entry, panel) {
     });
     watcher.on('add', () => schedule());
     watcher.on('change', () => schedule());
+    // Codex on Windows can append while leaving mtime frozen. chokidar sees
+    // the size delta but suppresses its public `change` event when atime is
+    // newer than that stale mtime; the raw polling event still carries both
+    // stats. Use it as a narrowly filtered fallback so the final reply cannot
+    // be the one append the Reader never re-reads.
+    attachRawSizeChangeFallback(watcher, schedule);
     watcher.on('error', (e) => console.error('[panel-reader] watcher error:', e && e.message));
     console.log('[panel-reader] watching ' + watchTarget);
     if ((entry.agent === 'kiro' && !entry._kiroPinned) || (entry.agent === 'codex' && !entry._codexPinned) || (entry.agent === 'grok' && !entry._grokPinned) || (entry.agent === 'gjc' && !entry._gjcPinned)) {

@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.21.6] - 2026-08-31
+
+Codex Reader reliably catches the final answer on Windows.
+
+### Fixed
+- **The Reader updated throughout a Codex turn but consistently missed the final answer.** Live Windows rollouts were observed growing from 1.55 MB to 1.67 MB while their mtime stayed frozen; atime had advanced beyond that stale mtime. chokidar 3's polling backend detects the size delta, emits it on `raw`, and then suppresses the public `change` event because mtime did not change and atime is newer. The Reader listened only for `add`/`change`, so the last append could be present and fully parseable on disk without ever triggering a final render.
+- Both the split-pane Reader and the standalone Reader now use a narrowly filtered `raw` fallback that schedules a render only when the file size actually changes. Normal `add`/`change` handling remains intact. The standalone Reader also performs one render when its watcher establishes the initial file baseline, closing the race where the final append lands between the initial read and watcher readiness.
+
+### Tests
+- Added regression coverage for frozen-mtime size growth, malformed/metadata-only raw events, and schedule deduplication. Live extraction from a completed current Codex rollout still returns all 31 visible messages and ends on the assistant answer.
+
 ## [3.21.5] - 2026-08-27
 
 Saved Claude accounts stop going dead after repeated switching.

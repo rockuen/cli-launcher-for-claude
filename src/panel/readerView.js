@@ -34,6 +34,7 @@ const {
 } = require('../lib/readerRender');
 const { listAgents } = require('../agents/registry');
 const { t } = require('../i18n');
+const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
@@ -84,12 +85,16 @@ function startLiveWatch(filePath) {
     // mtime/size cache the post-change re-extract is one parse, not two.
     liveWatcher = chokidar.watch(filePath, {
       persistent: true,
-      ignoreInitial: true,
+      // Re-render once after the watcher has established its baseline. This
+      // closes the race where the final append lands after openReader's first
+      // read but before chokidar becomes ready, leaving no later event to fire.
+      ignoreInitial: false,
       usePolling: true,
       interval: 1000,
     });
     liveWatcher.on('change', (p) => { console.log('[reader] change ' + p); scheduleLiveRender(); });
     liveWatcher.on('add',    (p) => { console.log('[reader] add ' + p);    scheduleLiveRender(); });
+    attachRawSizeChangeFallback(liveWatcher, scheduleLiveRender);
     liveWatcher.on('ready',  () => console.log('[reader] watcher ready'));
     liveWatcher.on('error',  (e) => console.error('[reader] watcher error:', e && e.message));
     console.log('[reader] live watch ' + filePath);
