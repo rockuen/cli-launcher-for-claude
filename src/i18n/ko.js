@@ -42,6 +42,11 @@ module.exports = {
   zoomOutTip: '글자 축소 (Ctrl+-)',
   zoomInTip: '글자 확대 (Ctrl+=)',
   handoffTip: '다른 에이전트로 핸드오프',
+  // v3.22.0: 세션 딥링크 (vscode://…/resume?…)
+  copyLinkTip: '이 세션을 다시 여는 링크 복사',
+  sessionLinkCopied: '세션 링크를 복사했습니다 — 어디든 붙여넣으면 이 세션이 다시 열립니다.',
+  sessionLinkFailed: '이 세션의 링크를 만들 수 없습니다.',
+  sessionLinkNoSession: '링크를 만들 활성 세션이 없습니다.',
   readerTip: '리더로 열기',
   soundToggleTip: '알림음 켜기/끄기',
   newTabTip: '새 탭',

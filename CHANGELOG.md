@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.22.0] - 2026-08-31
+
+Session deep links — one click from anywhere reopens that exact session.
+
+### Added
+- **Copy a link to any session and click it later from outside the editor.** `Copy Session Link` on the session tree's right-click menu (all agents) and a 🔗 button in the panel toolbar put a `<scheme>://rockuen.cli-launcher-for-claude/resume?agent=…&session=…&cwd=…` link on the clipboard. Clicking it anywhere the OS handles URIs — a Burst todo link, a note, a chat message — opens the editor and resumes that session. The scheme comes from `vscode.env.uriScheme`, so a link copied from VSCodium opens VSCodium, and from VS Code opens VS Code.
+- **The link lands in the window that owns the session's folder.** VS Code hands a URI to one window (the last focused) and gives extensions no way to message another. The receiving window resumes the link itself when the session's cwd is inside its own workspace; otherwise it parks a pending record in globalStorage and launches the editor CLI on that folder — which focuses the existing window for it, or opens a new one. The window that owns the folder then claims the record, via an `fs.watch` when it was already running or during activation when it was just opened. Claiming is the file `unlink`, so two windows on overlapping folders cannot both act, and a record older than 60s is ignored rather than replayed.
+- An already-open tab for the linked session is revealed instead of spawned a second time — a duplicate tab would put two PTYs on one transcript.
+- The launcher CLI is discovered by scanning the editor's `bin/` (`code` / `codium` / `cursor` are all found, `*-tunnel*` never is) rather than hardcoding a product name, with the editor executable as fallback and `open -a` on macOS.
+
+### Security
+- Session ids in a link are validated against `[A-Za-z0-9._@:+-]{1,200}` before they can reach a resume spawn — a path separator or `..` is refused on both the build and the parse side. An unknown `agent` falls back to `claude` rather than reaching the spawn path.
+- The `cwd` in a link never reaches a shell. Anything on the machine can fire a URI, and quoting a path into a `shell: true` spawn would have made `cwd=C:\dev" & calc & "` a command injection. Windows now spawns the editor executable directly with the folder as an array argument (no `.cmd`, so no shell), POSIX spawns the launcher script the same way, and either path first requires the value to be an existing directory. The spawn also drops `ELECTRON_RUN_AS_NODE` from the inherited env — the extension host carries it, and a child that keeps it starts in Node mode and shows no window.
+
+### Tests
+- 32 new cases across link round-trip (Windows drive paths, spaces, Korean titles, `&` in titles, malformed percent-escapes), rejection rules, window routing (nested folders, the `burst` vs `burst2` prefix trap, Windows case-insensitivity, multi-root), pending-record claiming (TTL, wrong folder, missing fields), and CLI discovery. Full Node suite passes (550 passed, 1 platform skip).
+
 ## [3.21.6] - 2026-08-31
 
 Codex Reader reliably catches the final answer on Windows.

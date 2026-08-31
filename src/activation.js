@@ -34,6 +34,8 @@ const { pickGjcModel, setupGjcCredentials } = require('./handlers/gjcModel');
 const { promptAndSetupTelegram, disableTelegram: disableGjcTelegram, detectTelegramSupport } = require('./handlers/telegramSettings');
 const { promptAndSetupTelegramChannel, disableTelegramChannel } = require('./handlers/claudeChannelSetup');
 const { listAgents } = require('./agents/registry');
+const { copySessionLinkFromTreeItem, copySessionLinkFromPanel } = require('./handlers/copySessionLink');
+const { registerSessionUriHandler } = require('./uri/sessionUriHandler');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
@@ -824,7 +826,17 @@ function activate(context) {
         sessionId,
         { backend: 'multiplexer' }
       );
-    })
+    }),
+    // v3.22.0 — session deep links. copySessionLink takes a tree item (context
+    // menu); copyActiveSessionLink uses the focused panel (toolbar / palette).
+    // Clicking the copied link routes back through uri/sessionUriHandler, which
+    // lands on resumeSession above.
+    vscode.commands.registerCommand('claudeCodeLauncher.copySessionLink', (item) =>
+      copySessionLinkFromTreeItem(context, item)
+    ),
+    vscode.commands.registerCommand('claudeCodeLauncher.copyActiveSessionLink', (tabId) =>
+      copySessionLinkFromPanel(context, typeof tabId === 'string' ? tabId : undefined)
+    )
   );
 
   context.subscriptions.push(
@@ -1523,6 +1535,11 @@ function activate(context) {
       },
     },
   );
+
+  // v3.22.0 — `<scheme>://rockuen.cli-launcher-for-claude/resume?…` deep links.
+  // Registered last: the handler resumes sessions through createPanel, which
+  // needs the tree providers wired up above.
+  registerSessionUriHandler(context);
 }
 
 function deactivate() {

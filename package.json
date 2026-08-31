@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.21.6",
+  "version": "3.22.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -17,7 +17,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onUri"
   ],
   "main": "./extension.js",
   "contributes": {
@@ -361,6 +362,18 @@
         "title": "CLI Launcher: Clear Session Filter",
         "category": "Claude",
         "icon": "$(close)"
+      },
+      {
+        "command": "claudeCodeLauncher.copySessionLink",
+        "title": "Copy Session Link",
+        "icon": "$(link)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.copyActiveSessionLink",
+        "title": "Copy Link to Active Session",
+        "icon": "$(link)",
+        "category": "Claude"
       }
     ],
     "viewsContainers": {
@@ -493,6 +506,10 @@
         },
         {
           "command": "claudeCodeLauncher.resumeSessionInMultiplexer",
+          "when": "false"
+        },
+        {
+          "command": "claudeCodeLauncher.copySessionLink",
           "when": "false"
         }
       ],
@@ -957,6 +974,11 @@
           "command": "claudeCodeLauncher.moveGroupDown",
           "when": "view == claudeCodeLauncher.chiefSessions && viewItem == customGroup",
           "group": "1_order@2"
+        },
+        {
+          "command": "claudeCodeLauncher.copySessionLink",
+          "when": "(viewItem == session || viewItem == subSession || viewItem == kiroSession || viewItem == codexSession || viewItem == grokSession || viewItem == gjcSession || viewItem == antigravitySession || viewItem == chiefSession)",
+          "group": "0_resume@3"
         }
       ],
       "view/title": [

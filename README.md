@@ -100,6 +100,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 - **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a desktop notification immediately.
 - **Agent themes** — the input area's tone follows the agent (Auto); pin one tone if you prefer.
 - **Hand-off** — pass conversation context to any other enabled agent.
+- **Session links** — right-click a session (or hit 🔗 in the toolbar) to copy a link that reopens it. Paste it into a task tracker, a note, or a chat; clicking it opens the editor and resumes that exact session, in the window that owns its folder.
 - **Multi-account switching** — save / switch Claude logins as profiles. The active account shows in the left status bar; click for a QuickPick. Tokens are read/written from `~/.claude/.credentials.json` on Windows/Linux and from the **Keychain on macOS**.
 - **Auto-links + context menu** — click file/URL/folder mentions in a reply; right-click a selection for a menu.
 - **Find files anywhere** — clicking a bare filename that lives outside the session's working directory falls back to the OS file index (Everything on Windows, Spotlight on macOS, `locate` on Linux) and opens it; one hit opens directly, several show a picker. One-time setup in *Getting started*.

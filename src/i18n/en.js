@@ -43,6 +43,11 @@ module.exports = {
   zoomOutTip: 'Zoom out (Ctrl+-)',
   zoomInTip: 'Zoom in (Ctrl+=)',
   handoffTip: 'Hand off to another agent',
+  // v3.22.0: session deep links (vscode://…/resume?…)
+  copyLinkTip: 'Copy a link that reopens this session',
+  sessionLinkCopied: 'Session link copied — paste it anywhere to reopen this session.',
+  sessionLinkFailed: 'Could not build a link for this session.',
+  sessionLinkNoSession: 'No active session to link.',
   readerTip: 'Open in Reader',
   soundToggleTip: 'Sound on/off',
   newTabTip: 'New tab',

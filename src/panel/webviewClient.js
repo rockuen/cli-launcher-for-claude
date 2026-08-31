@@ -557,6 +557,13 @@ function getClientScript(ctx) {
       vscode.postMessage({ type: 'invoke-command', command: 'claudeCodeLauncher.handoffToOther' });
       term.focus();
     });
+    // v3.22.0: copy a deep link to THIS session. Routed as a toolbar action
+    // (not invoke-command) so the extension side gets this panel's entry —
+    // invoke-command carries no tab id and would fall back to the active tab.
+    document.getElementById('btn-copy-link').addEventListener('click', () => {
+      vscode.postMessage({ type: 'toolbar', action: 'copy-link' });
+      term.focus();
+    });
 
     // Settings modal
     const settingsModal = document.getElementById('settings-modal');

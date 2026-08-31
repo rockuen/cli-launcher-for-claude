@@ -20,6 +20,13 @@ async function handleToolbar(action, entry, context, extensionPath, createPanel,
       createPanel(context, extensionPath, null, { agent: entry.agent });
       break;
     }
+    case 'copy-link': {
+      // v3.22.0: deep link to this exact session. Required lazily — toolbar.js
+      // is loaded on the PTY path and copySessionLink pulls in `vscode`.
+      const { copySessionLinkFromPanel } = require('./copySessionLink');
+      await copySessionLinkFromPanel(context, entry.tabId);
+      break;
+    }
   }
 }
 
