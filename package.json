@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.21.0",
+  "version": "3.21.1",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1460,6 +1460,11 @@
           "type": "boolean",
           "default": false,
           "description": "Run Kiro sessions with `kiro-cli chat --trust-all-tools` so Kiro may use any tool without asking for confirmation each time. Off by default (Kiro prompts for permission). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Kiro sessions."
+        },
+        "claudeCodeLauncher.kiro.useV3": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run Kiro sessions with `kiro-cli chat --v3` to launch the next-generation Kiro agent engine. Off by default (kiro-cli uses its current default engine, v2). Toggle in CLI Launcher Settings → Agent. Applies to newly opened and restarted Kiro sessions."
         },
         "claudeCodeLauncher.antigravity.trustAllTools": {
           "type": "boolean",

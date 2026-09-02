@@ -487,6 +487,20 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           trust.appendChild(tcb);
           trust.appendChild(trustText);
           main.appendChild(trust);
+          const v3 = document.createElement('label');
+          v3.className = 'agent-default' + (enabled && a.installed ? '' : ' hidden');
+          v3.title = 'Run Kiro with --v3 so sessions start on the next-generation Kiro agent engine. Applies to newly opened and restarted Kiro sessions.';
+          const v3cb = document.createElement('input');
+          v3cb.type = 'checkbox';
+          v3cb.checked = !!GLOBALS.kiroUseV3;
+          v3cb.addEventListener('change', () => {
+            vscode.postMessage({ type: 'set-global', key: 'kiro.useV3', value: v3cb.checked });
+          });
+          const v3Text = document.createElement('span');
+          v3Text.textContent = 'Launch with v3 engine (--v3)';
+          v3.appendChild(v3cb);
+          v3.appendChild(v3Text);
+          main.appendChild(v3);
         }
 
         // Antigravity-only: --dangerously-skip-permissions toggle (bypass tool
@@ -1081,6 +1095,7 @@ function openGlobalSettings(context) {
     claudeEffort: cfg.get('claude.effort', 'auto'),
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
+    kiroUseV3: cfg.get('kiro.useV3', false),
     antigravityTrustAllTools: cfg.get('antigravity.trustAllTools', false),
     codexTrustAllTools: cfg.get('codex.trustAllTools', false),
     grokTrustAllTools: cfg.get('grok.trustAllTools', false),
@@ -1115,6 +1130,7 @@ function openGlobalSettings(context) {
     'claude.effort',
     'claude.bypassPermissions',
     'kiro.trustAllTools',
+    'kiro.useV3',
     'antigravity.trustAllTools',
     'codex.trustAllTools',
     'grok.trustAllTools',

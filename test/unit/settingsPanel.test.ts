@@ -41,3 +41,21 @@ test('rename prefix settings are surfaced, loaded, and allowed for writes', () =
   assert.match(source, /'renamePrefix\.enabled',/);
   assert.match(source, /'renamePrefix\.format',/);
 });
+test('Kiro v3 engine setting is surfaced, loaded, and allowed for writes', () => {
+  const source = readSource();
+
+  assert.match(source, /Launch with v3 engine \(--v3\)/);
+  assert.match(source, /GLOBALS\.kiroUseV3/);
+  assert.match(source, /cfg\.get\('kiro\.useV3', false\)/);
+  assert.match(source, /key: 'kiro\.useV3'/);
+  assert.match(source, /'kiro\.useV3',/);
+});
+test('Kiro launch and restart append --v3 when kiro.useV3 is on', () => {
+  const create = fs.readFileSync(path.join(process.cwd(), 'src', 'panel', 'createPanel.js'), 'utf8');
+  const restart = fs.readFileSync(path.join(process.cwd(), 'src', 'panel', 'restartPty.js'), 'utf8');
+
+  for (const source of [create, restart]) {
+    assert.match(source, /get\('kiro\.useV3', false\)/);
+    assert.match(source, /kiroArgs\.push\('--v3'\)/);
+  }
+});

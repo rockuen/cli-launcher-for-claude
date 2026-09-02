@@ -68,6 +68,7 @@ cli-launcher는 다섯 개의 AI 코딩 CLI를 같은 방식으로 감싼다. �
 - **탭은 자기 에이전트 색을 자동으로 띤다** (Auto 테마). 터미널 출력 색은 안 건드리고 하단 입력 영역의 톤만 바뀌어서, 지금 어느 에이전트인지 한눈에 보이면서도 출력은 일관되게 유지된다. 원하면 한 색으로 고정할 수도 있다.
 - **Antigravity만 reader가 없다.** `agy`는 대화를 protobuf-in-SQLite로 저장해서 markdown으로 풀어낼 수가 없다. 그래서 Antigravity 탭은 터미널 단독으로 열린다. 핸드오프도 Antigravity로 *받는* 건 되지만(맥락을 프롬프트에 주입), Antigravity에서 다른 에이전트로 *주는* 건 안 된다 — 대화를 못 읽으니까.
 - 각 권한 토글은 해당 에이전트의 "묻지 말고 실행" 모드다. 신뢰하는 작업에서만 쓰고, 기본은 전부 꺼져 있다.
+- **Kiro v3 엔진은 옵트인.** 설정 → Agent → Kiro에 "Launch with v3 engine (`--v3`)" 체크박스가 있다 (`claudeCodeLauncher.kiro.useV3`). kiro-cli 2.18의 기본 엔진은 여전히 v2라 기본은 꺼져 있고, 새로 열거나 재시작한 Kiro 세션에 적용된다.
 
 ## 왜 만들었나
 

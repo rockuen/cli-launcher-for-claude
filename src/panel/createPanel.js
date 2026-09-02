@@ -560,6 +560,12 @@ function createPanel(context, extensionPath, session, opts) {
     if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
       kiroArgs.push('--trust-all-tools');
     }
+    // --v3 (opt-in via claudeCodeLauncher.kiro.useV3): launch the next-
+    // generation Kiro agent. Official kiro-cli 2.18+ flag on `chat`; still
+    // opt-in because the default engine remains v2.
+    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.useV3', false)) {
+      kiroArgs.push('--v3');
+    }
     args = [...resolvedKiro.args, ...kiroArgs];
   } else if (agent === 'antigravity') {
     const resolvedAgy = resolveAntigravityCli();

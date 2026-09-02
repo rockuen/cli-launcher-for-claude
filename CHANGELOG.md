@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.21.1] - 2026-08-17
+
+### Added
+- **Kiro v3 engine toggle** (CLI Launcher Settings → Agent, under Kiro). When on, Kiro sessions launch with `kiro-cli chat --v3` so they start on the next-generation agent engine. Off by default (kiro-cli 2.18 still defaults to the v2 engine). Applies to newly opened and restarted Kiro sessions; existing tabs pick it up on restart. Config key: `claudeCodeLauncher.kiro.useV3`.
+
+### Notes
+- Official `kiro-cli update` still reports **2.18.1** as the latest package. CLI 3.0 is an opt-in engine inside that build (`--v3` / `--agent-engine v3`), not a separate download.
+
 ## [3.21.0] - 2026-08-15
 
 ### Removed

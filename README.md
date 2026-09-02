@@ -69,6 +69,7 @@ cli-launcher wraps five AI coding CLIs the same way. Each one stores sessions di
 - **Tabs take their agent's color automatically** (Auto theme). The terminal output colors are left alone — only the bottom input area's tone changes — so you can tell which agent you're in at a glance while output stays consistent. You can also pin one color everywhere.
 - **Only Antigravity has no reader.** `agy` stores its conversations as protobuf-in-SQLite, which can't be unpacked into markdown, so Antigravity tabs open terminal-only. Hand-off *to* Antigravity works (the context is injected into the prompt), but handing off *from* it doesn't — there's no readable transcript to carry over.
 - Each permission toggle is that agent's "don't ask, just run" mode. Use it only on trusted work; all of them are off by default.
+- **Kiro v3 engine** is opt-in. Settings → Agent → Kiro has a "Launch with v3 engine (`--v3`)" checkbox (`claudeCodeLauncher.kiro.useV3`). Off by default because kiro-cli 2.18 still defaults to the v2 engine; new and restarted Kiro sessions pick it up.
 
 ## Why I built it
 
