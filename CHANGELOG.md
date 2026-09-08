@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.23.0] - 2026-09-08
+
+Pick a gjc model profile from the launcher — and see what it binds before you pick it.
+
+### Added
+- **The gjc picker now offers model PROFILES, not just single models.** gjc bundles roles into profiles (default/executor/architect/planner/critic) published in a signed registry, and until now the launcher could only pass a single fuzzy `--model`; the profile — which is what a session actually starts on — was reachable only by editing gjc's own config. `Gajae (gjc): Select Model / Subscription…` lists the registry's profiles above the single-model catalog, grouped by subscription, and saves the choice to `claudeCodeLauncher.gjc.profile`, passed as `gjc --mpreset <id>` on fresh sessions. A resume keeps the session's own choice, as before.
+- **Each profile shows the model it binds for the default role.** "Codex Pro" reads `default: openai-codex/gpt-5.6-sol:medium` in the list, so the profile that a ChatGPT Plus account cannot serve is visible as such before it is picked rather than after a session fails to start.
+- **Profiles are annotated with the account state of the providers they require** (`openai-codex ✓`, `grok-build ⊘`, `anthropic ✗`), read from `gjc accounts list --json` against the same agent dir the session will use — project-scoped storage has genuinely different account state from the user-global home. A profile with no usable account for anything it requires is flagged outright, since that is gjc's "requires credentials for: <provider>" startup failure, not a slow session.
+- The default list is limited to profiles for subscriptions this machine has an account row for (a revoked row still counts — it is still your subscription); `Show all profiles…` opens the full registry. With no account state readable at all, the whole registry is offered rather than the provider-agnostic handful.
+- `gjc.profile` combines with `gjc.model`: verified against gjc 0.16.6, `--mpreset codex-eco --model opus` answers from Claude, so the profile sets every role and the single model overrides the default one.
+
+### Tests
+- 10 new cases: registry parsing (the active revision rather than the newest, fallback-chain bindings, interchangeable provider groups, missing ids, corrupt JSON), the real-home fallback for a project home with no registry yet, account state (a live row beating a revoked one, an enabled row with a failed probe counting as unusable, an absent provider staying absent), the annotations shown for usable/revoked/combo/agnostic profiles, list filtering, picker item construction (one separator per subscription, the saved profile marked), and a wiring guard that keeps `--mpreset` inside the fresh-session branch. Full Node suite passes (564 passed, 1 platform skip).
+
 ## [3.22.1] - 2026-09-08
 
 gjc launches on the model profile you actually use.

@@ -211,6 +211,14 @@ module.exports = {
   gjcPickCurrent: '현재 gjc 모델: {0} — 변경하거나 작업을 선택하세요',
   gjcPickDefault: 'gjc 기본 모델을 선택하세요 (OAuth 구독 기준)',
   gjcCustomPrompt: 'gjc 모델 (퍼지 매칭: opus, gpt-5.2-codex, gemini-3-pro, grok-code-fast-1, 또는 provider/model)',
+  gjcProfileSection: '모델 프로필 — 모든 역할을 한 번에 지정 (gjc --mpreset)',
+  gjcModelSection: '단일 모델 — default 역할만 덮어씀 (gjc --model)',
+  gjcProfileSet: 'gjc 프로필: {0} — 새 gjc 세션에 적용됩니다(실행 중 세션은 재시작 시 적용).',
+  gjcProfileCleared: 'gjc 프로필을 초기화했습니다 (gjc 자체 설정 프로필 사용).',
+  gjcProfileDefaultRole: 'default: {0}',
+  gjcProfileNoCredentials: '⚠ 로그인 없음 — gjc가 "requires credentials"로 실패합니다',
+  gjcAllProfilesDesc: 'gjc 레지스트리의 전체 프로필({0}개) — 로그인하지 않은 구독까지 포함',
+  gjcPickCurrentProfile: '현재 gjc 프로필: {0} · 모델: {1} — 변경하거나 작업을 선택하세요',
 
   // ── gjc Telegram notifications (handlers/telegramSettings.js) ────
   tgGjcNotFound: 'Gajae Code CLI(gjc)를 찾을 수 없습니다. 설치: bun add -g gajae-code (Bun ≥ 1.3.14).',

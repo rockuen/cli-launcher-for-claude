@@ -699,14 +699,17 @@ function createPanel(context, extensionPath, session, opts) {
       : null;
     const gjcArgs = gjcResumePath ? ['-r', gjcResumePath]
       : (session?.sessionId ? ['-c'] : []);
-    // Model + thinking (effort) come from gjc-specific settings only on a FRESH
-    // session — a resume/continue restores the session's own model, so forcing
-    // --model would override the user's in-session choice. gjc is multi-model:
-    // the fuzzy --model string (e.g. "opus", "gpt-5.2-codex", "gemini-3-pro",
-    // "grok-code-fast-1") routes to whichever OAuth subscription is logged in.
-    // --thinking is gjc's effort knob (ultra|high|medium|low); Claude's
-    // --effort/autoEffortMax is NEVER passed to gjc.
+    // Profile + model + thinking (effort) come from gjc-specific settings only
+    // on a FRESH session — a resume/continue restores the session's own choice,
+    // so forcing them would override what the user picked in-session. gjc is
+    // multi-model: --mpreset <id> activates a registry profile (every role at
+    // once), while the fuzzy --model string (e.g. "opus", "gpt-5.2-codex",
+    // "gemini-3-pro", "grok-code-fast-1") targets whichever OAuth subscription
+    // is logged in. --thinking is gjc's effort knob (ultra|high|medium|low);
+    // Claude's --effort/autoEffortMax is NEVER passed to gjc.
     if (!session?.sessionId) {
+      const gjcProfile = (config.get('gjc.profile', '') || '').trim();
+      if (gjcProfile) gjcArgs.push('--mpreset', gjcProfile);
       const gjcModel = (config.get('gjc.model', '') || '').trim();
       if (gjcModel) gjcArgs.push('--model', gjcModel);
       const gjcThinking = (config.get('gjc.thinking', '') || '').trim();

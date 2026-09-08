@@ -212,6 +212,14 @@ module.exports = {
   gjcPickCurrent: 'Current gjc model: {0} — change it or pick an action',
   gjcPickDefault: 'Pick the default gjc model (based on OAuth subscriptions)',
   gjcCustomPrompt: 'gjc model (fuzzy: opus, gpt-5.2-codex, gemini-3-pro, grok-code-fast-1, or provider/model)',
+  gjcProfileSection: 'Model profile — binds every role at once (gjc --mpreset)',
+  gjcModelSection: 'Single model — overrides the default role (gjc --model)',
+  gjcProfileSet: 'gjc profile: {0} — applies to new gjc sessions (running sessions apply on restart).',
+  gjcProfileCleared: 'Cleared the gjc profile (using gjc\'s own configured profile).',
+  gjcProfileDefaultRole: 'default: {0}',
+  gjcProfileNoCredentials: '⚠ not logged in — gjc fails with "requires credentials"',
+  gjcAllProfilesDesc: 'Every profile in gjc\'s registry ({0}), including providers you have not logged into',
+  gjcPickCurrentProfile: 'Current gjc profile: {0} · model: {1} — change it or pick an action',
 
   // ── gjc Telegram notifications (handlers/telegramSettings.js) ────
   tgGjcNotFound: 'Gajae Code CLI (gjc) not found. Install: bun add -g gajae-code (Bun ≥ 1.3.14).',

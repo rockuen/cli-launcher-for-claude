@@ -133,10 +133,13 @@ function restartPty(entry, panel, context, extensionPath) {
       : null;
     const gjcArgs = gjcResumePath ? ['-r', gjcResumePath]
       : (entry.sessionId ? ['-c'] : []);
-    // Model/thinking only on a fresh restart (no sessionId) — a resume restores
-    // the session's own model. Claude's --effort is never passed to gjc.
+    // Profile/model/thinking only on a fresh restart (no sessionId) — a resume
+    // restores the session's own choice. Claude's --effort is never passed to
+    // gjc.
     if (!entry.sessionId) {
       const gjcCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+      const gjcProfile = (gjcCfg.get('gjc.profile', '') || '').trim();
+      if (gjcProfile) gjcArgs.push('--mpreset', gjcProfile);
       const gjcModel = (gjcCfg.get('gjc.model', '') || '').trim();
       if (gjcModel) gjcArgs.push('--model', gjcModel);
       const gjcThinking = (gjcCfg.get('gjc.thinking', '') || '').trim();
