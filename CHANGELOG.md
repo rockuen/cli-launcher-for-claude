@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.22.1] - 2026-09-08
+
+gjc launches on the model profile you actually use.
+
+### Fixed
+- **Every launcher-spawned gjc session died at "warming workspace" with `This ChatGPT Codex account cannot use model "gpt-5.6-sol"`, while the same gjc started fine from a terminal.** Project-scoped storage gives gjc its own agent dir (`GJC_CODING_AGENT_DIR`) and seeds it from `~/.gjc/agent`, `config.yml` included — and that file carries `modelProfile.default`. The seed is copy-if-absent, so the project copy froze on whatever profile was active when the dir was first created: `codex-pro`, whose `default` role binds `openai-codex/gpt-5.6-sol:medium`. The real home had since moved to `grok-build-pro`, so a terminal session never touched Codex, while the launcher asked a ChatGPT Plus account for a model it cannot serve on every single launch. gjc's model registry raises that error from `resolveModelChainWithAuth` before the session exists, which is why the pane stopped at "warming workspace" instead of showing a session.
+- `config.yml` now mirrors the real home whenever the real home has changed, tracked against a seed copy of what was last mirrored (`.config.yml.seed`, kept beside the agent dir so it stays out of the tree gjc scans). An mtime comparison — the strategy used for Codex credentials — cannot work here: gjc rewrites its own config on launch, so the project file is almost always the newer one and the real home's edits would never win. Comparing against the seed also leaves a config change made inside a launcher session alone for as long as the real home is untouched.
+- Installs already stranded on a stale profile heal themselves on the next launch: no seed file means the real home counts as changed, so the existing copy is refreshed instead of trusted.
+
+### Tests
+- 3 new tests: real-home changes propagating over a newer project file, project-local edits surviving an unchanged real home, a lost project copy being re-mirrored, a missing real config being a no-op, self-healing a pre-existing stale copy with no seed, and a wiring guard that keeps `config.yml` out of the seed-once copy list.
+
 ## [3.22.0] - 2026-08-31
 
 Session deep links — one click from anywhere reopens that exact session.

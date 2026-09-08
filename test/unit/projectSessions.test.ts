@@ -267,6 +267,83 @@ test('_refreshFileIfNewer tracks the real home only when it is newer', () => {
   });
 });
 
+// gjc's config.yml selects the model profile. A project home seeded once kept
+// whatever profile was active at seed time (`codex-pro` → gpt-5.6-sol), so every
+// launcher-spawned gjc crashed with "This ChatGPT Codex account cannot use model
+// …" while the same gjc ran fine from a terminal on the real home's newer
+// profile. mtime comparison cannot fix it: gjc rewrites its own copy on launch,
+// so the project file is nearly always the newer one.
+test('_mirrorFileFromSeed propagates real-home changes and survives gjc rewrites', () => {
+  withProjectSessions('project', (mod) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-seed-'));
+    const src = path.join(dir, 'real.yml');
+    const dst = path.join(dir, 'project', 'config.yml');
+    const seed = path.join(dir, '.config.yml.seed');
+
+    // absent dst → mirror + record the seed
+    fs.writeFileSync(src, 'profile: codex-pro');
+    mod._mirrorFileFromSeed(src, dst, seed);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'profile: codex-pro');
+    assert.equal(fs.readFileSync(seed, 'utf8'), 'profile: codex-pro');
+
+    // real home unchanged → leave a project-local edit alone, even when the
+    // project file is the newer one (gjc rewrote it on launch)
+    fs.writeFileSync(dst, 'profile: local-choice');
+    const later = new Date(Date.now() + 120_000);
+    fs.utimesSync(dst, later, later);
+    mod._mirrorFileFromSeed(src, dst, seed);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'profile: local-choice');
+
+    // real home changed → the new profile wins, however new the project file is
+    fs.writeFileSync(src, 'profile: grok-build-pro');
+    mod._mirrorFileFromSeed(src, dst, seed);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'profile: grok-build-pro');
+
+    // dst lost (fresh project home, seed still around) → re-mirror
+    fs.rmSync(dst);
+    mod._mirrorFileFromSeed(src, dst, seed);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'profile: grok-build-pro');
+
+    // missing src → no-op
+    fs.rmSync(src);
+    mod._mirrorFileFromSeed(src, dst, seed);
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'profile: grok-build-pro');
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// Installs that predate the mirror have a stale config.yml and no seed at all —
+// the very state that stranded gjc on an unusable model profile. First launch
+// after the fix must self-heal instead of trusting the existing copy.
+test('_mirrorFileFromSeed self-heals a pre-existing stale copy with no seed', () => {
+  withProjectSessions('project', (mod) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-heal-'));
+    const src = path.join(dir, 'real.yml');
+    const dst = path.join(dir, 'config.yml');
+    const seed = path.join(dir, '.config.yml.seed');
+
+    fs.writeFileSync(src, 'profile: grok-build-pro');
+    fs.writeFileSync(dst, 'profile: codex-pro');
+    mod._mirrorFileFromSeed(src, dst, seed);
+
+    assert.equal(fs.readFileSync(dst, 'utf8'), 'profile: grok-build-pro');
+    assert.equal(fs.existsSync(seed), true);
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+// Guard the wiring: config.yml must NOT go back into the seed-once copy list.
+test('gjc config.yml is mirrored, not seed-copied', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), 'src/lib/projectSessions.js'), 'utf8');
+  const gjcHome = source.slice(source.indexOf('function _prepareGjcHome'), source.indexOf('function _prepareChiefHome'));
+
+  assert.ok(gjcHome.includes("_mirrorFileFromSeed("), 'gjc home mirrors config.yml from the real home');
+  assert.ok(gjcHome.includes(".config.yml.seed"), 'the mirror seed lives beside the agent dir');
+  assert.ok(!/'config\.yml',/.test(gjcHome), 'config.yml is not in the seed-once copy list');
+});
+
 // Codex rewrites the content-hashed node_repl runtime path in the real home on
 // every runtime upgrade. A stale copy made MCP startup fail with "os error 3".
 test('_syncTomlSections refreshes node_repl only, preserving user settings', () => {

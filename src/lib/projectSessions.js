@@ -122,6 +122,35 @@ function _refreshFileIfNewer(src, dst) {
   } catch (_) {}
 }
 
+// Mirror src → dst whenever src changed since the last mirror, tracked by a
+// seed copy of what was mirrored. Used for gjc's config.yml, which carries the
+// ACTIVE MODEL PROFILE: neither of the strategies above keeps it usable.
+//   - seed-once (_copyFileIfExists) pins the profile that existed at seed time,
+//     so a real-home switch never arrives: a project home seeded while
+//     `modelProfile.default: codex-pro` was active kept resolving to
+//     `openai-codex/gpt-5.6-sol` and crashed EVERY launcher session with "This
+//     ChatGPT Codex account cannot use model …", while the same gjc ran fine
+//     from a terminal on the real home's newer profile.
+//   - mtime comparison (_refreshFileIfNewer) does not help either: gjc rewrites
+//     its own config on launch, so the project copy is almost always the newer
+//     file and the real home's edits never win.
+// Comparing src against the seed instead of against dst still leaves
+// project-local edits (made inside a launcher session) alone for as long as the
+// real home is untouched.
+function _mirrorFileFromSeed(src, dst, seed) {
+  try {
+    if (!fs.existsSync(src)) return;
+    const srcBuf = fs.readFileSync(src);
+    let seedBuf = null;
+    try { seedBuf = fs.readFileSync(seed); } catch (_) {}
+    if (seedBuf && seedBuf.equals(srcBuf) && fs.existsSync(dst)) return;
+    _mkdirp(path.dirname(dst));
+    fs.writeFileSync(dst, srcBuf);
+    _mkdirp(path.dirname(seed));
+    fs.writeFileSync(seed, srcBuf);
+  } catch (_) {}
+}
+
 // Locate the contiguous run of TOML sections whose headers match `matches`.
 // Returns null when no such section exists.
 function _tomlSectionRange(lines, matches) {
@@ -426,18 +455,25 @@ function _prepareGjcHome(cwd) {
   // after a migration, so absorbed legacy payload is normalized once.
   _ownerOnlySync(sessionsDir, migrated);
   // gjc honors GJC_CODING_AGENT_DIR directly, so no HOME/USERPROFILE
-  // virtualization is needed. Copy gjc's config + auth/state SQLite DBs so the
-  // project agent dir runs standalone (credentials can be re-imported if they
-  // rotate). The -shm/-wal sidecars are copied alongside each DB so an open
-  // WAL transaction isn't left dangling.
+  // virtualization is needed. Copy gjc's auth/state SQLite DBs so the project
+  // agent dir runs standalone (credentials can be re-imported if they rotate).
+  // The -shm/-wal sidecars are copied alongside each DB so an open WAL
+  // transaction isn't left dangling.
   for (const file of [
-    'config.yml',
     'agent.db', 'agent.db-shm', 'agent.db-wal',
     'history.db', 'history.db-shm', 'history.db-wal',
     'models.db', 'models.db-shm', 'models.db-wal',
   ]) {
     _copyFileIfExists(path.join(real, file), path.join(agentDir, file));
   }
+  // config.yml selects the model profile, so it has to keep tracking the real
+  // home (see _mirrorFileFromSeed). The seed lives beside the agent dir, out of
+  // the tree gjc scans.
+  _mirrorFileFromSeed(
+    path.join(real, 'config.yml'),
+    path.join(agentDir, 'config.yml'),
+    path.join(path.dirname(agentDir), '.config.yml.seed')
+  );
   return agentDir;
 }
 
@@ -576,6 +612,7 @@ function getChiefSessionsDir(cwd) {
 
 module.exports = {
   _refreshFileIfNewer,
+  _mirrorFileFromSeed,
   _syncTomlSections,
   isProjectSessionStorageEnabled,
   projectSessionRoot,
