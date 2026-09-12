@@ -112,10 +112,13 @@ test('gjc panels use the Gajae red/yellow input theme', () => {
   assert.ok(script.includes("accentStrong: '#ffd22e'"));
 });
 
-test('terminal output is bottom-pinned after writes and resizes', () => {
+// v3.23.1: writes and resizes still land on the bottom, but only when the user
+// is already there. The unconditional pin is gone — see terminalScroll.test.ts.
+test('terminal output follows the bottom after writes and resizes', () => {
   const script = renderClientScript();
 
-  assert.ok(script.includes('const PIN_TERMINAL_TO_BOTTOM = true'));
+  assert.ok(!script.includes('const PIN_TERMINAL_TO_BOTTOM = true'));
+  assert.ok(script.includes('function shouldFollowBottom(input)'));
   assert.ok(script.includes('function scrollTerminalToBottom()'));
   assert.ok(script.includes('if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();'));
 });

@@ -3,6 +3,7 @@
 // v2.6.0 plan: convert to real static client.js with __CLAUDE_INIT__ JSON injection.
 
 const { clientSource: copySelectionClientSource } = require('../lib/copySelection');
+const { clientSource: terminalScrollClientSource } = require('../lib/terminalScroll');
 
 function getClientScript(ctx) {
   const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent } = ctx;
@@ -119,19 +120,32 @@ function getClientScript(ctx) {
     // and keeps Claude's input naturally at the pane bottom.)
     fitAddon.fit();
 
-    // Keep terminal panes bottom-pinned by default. Long-running agent TUIs
-    // frequently redraw near the bottom, and users reported stale upper rows
-    // staying visible after output/resize. Manual scrollback is still available;
-    // the next output chunk intentionally follows the live bottom.
-    const PIN_TERMINAL_TO_BOTTOM = true;
+    // Terminal panes follow the live bottom only while the viewport is already
+    // parked there: scroll up to pause the follow, scroll back down to resume.
+    // Until v3.23.1 this was a hard pin (PIN_TERMINAL_TO_BOTTOM), so every PTY
+    // chunk yanked the user out of scrollback — see src/lib/terminalScroll.js.
+    // Full-screen TUIs (alt screen) and scrollback-less panes still pin, since
+    // their live frame is the whole content.
+    ${terminalScrollClientSource()}
     function terminalWasAtBottom() {
       try { return term.buffer.active.viewportY >= term.buffer.active.baseY; } catch (_) { return true; }
     }
     function shouldPinTerminal(wasAtBottom) {
-      return PIN_TERMINAL_TO_BOTTOM || wasAtBottom;
+      return shouldFollowBottom({ wasAtBottom: wasAtBottom });
     }
     function scrollTerminalToBottom() {
       try { term.scrollToBottom(); } catch (_) {}
+    }
+    // Every refit reflows scrollback and can move the viewport off the bottom,
+    // with no output chunk behind it to correct the result — so each one probes
+    // BEFORE the fit and restores the bottom only if that is where the user was.
+    // Miss one and that pane silently strands the user above the live content
+    // (v3.12.0's "stale upper rows" reports came from exactly this class of
+    // path, and were papered over with an unconditional pin instead).
+    function refitTerminal() {
+      const wasAtBottom = terminalWasAtBottom();
+      try { fitAddon.fit(); } catch (_) {}
+      if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();
     }
 
     // ── Fullscreen mode detection + mouse mode suppression (v2.5.7) ──
@@ -479,7 +493,7 @@ function getClientScript(ctx) {
       currentFontSize = Math.max(FONT_MIN, Math.min(FONT_MAX, size));
       term.options.fontSize = currentFontSize;
       fontLabel.textContent = currentFontSize + 'px';
-      fitAddon.fit();
+      refitTerminal();
       vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows });
     }
 
@@ -545,7 +559,7 @@ function getClientScript(ctx) {
       if (!reader || !splitter) return;
       reader.style.display = splitOn ? '' : 'none';
       splitter.style.display = splitOn ? '' : 'none';
-      try { fitAddon.fit(); } catch (_) {}
+      refitTerminal();
       try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
     }
     document.getElementById('btn-toggle-split').addEventListener('click', () => {
@@ -740,7 +754,7 @@ function getClientScript(ctx) {
       fontFamilyTimer = setTimeout(() => {
         const v = setFontfamily.value;
         term.options.fontFamily = v;
-        fitAddon.fit();
+        refitTerminal();
         vscode.postMessage({ type: 'save-setting', key: 'defaultFontFamily', value: v });
       }, 500);
     });
@@ -782,7 +796,7 @@ function getClientScript(ctx) {
         const reader = document.getElementById('reader-area');
         if (reader) {
           reader.style.flexBasis = (ratio * 100) + '%';
-          try { fitAddon.fit(); } catch (_) {}
+          refitTerminal();
           try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
         }
         SETTINGS.splitRatio = ratio;
@@ -1180,6 +1194,9 @@ function getClientScript(ctx) {
           const wasAtBottom = terminalWasAtBottom();
           term.write(cleaned, () => {
             if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();
+            // Output alone can change whether the follow is paused, and growing
+            // the buffer does not necessarily fire a viewport scroll event.
+            checkScroll();
           });
         }
       }
@@ -2212,9 +2229,10 @@ function getClientScript(ctx) {
     // v2.5.7: suppress in alternate screen — TUI manages own scrolling
     const checkScroll = () => {
       if (isAlternateScreen) { scrollFab.style.display = 'none'; return; }
-      const viewport = document.querySelector('.xterm-viewport');
-      if (!viewport) return;
-      const atBottom = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 10;
+      // Same probe the follow policy uses. A pixel threshold can disagree with
+      // it by a row — and in that gap the follow is paused while the only
+      // affordance that resumes it stays hidden.
+      const atBottom = terminalWasAtBottom();
       if (atBottom !== isAtBottom) {
         isAtBottom = atBottom;
         scrollFab.style.display = isAtBottom ? 'none' : 'flex';
@@ -2438,7 +2456,7 @@ function getClientScript(ctx) {
         if (currentRatio > max) {
           reader.style.flexBasis = (max * 100) + '%';
           lastRatio = max;
-          try { fitAddon.fit(); } catch (_) {}
+          refitTerminal();
           try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
           // Persist the corrected ratio so future tabs / sessions also start
           // inside the guard.
@@ -2447,10 +2465,14 @@ function getClientScript(ctx) {
       };
 
       const fitTerm = () => {
+        // Probed here, not inside the frame: by the time the rAF runs, the
+        // layout change that prompted the refit has already moved the viewport.
+        const wasAtBottom = terminalWasAtBottom();
         if (pendingFit) cancelAnimationFrame(pendingFit);
         pendingFit = requestAnimationFrame(() => {
           pendingFit = null;
           try { fitAddon.fit(); } catch (_) {}
+          if (shouldPinTerminal(wasAtBottom)) scrollTerminalToBottom();
           try { vscode.postMessage({ type: 'resize', cols: term.cols, rows: term.rows }); } catch (_) {}
         });
       };
