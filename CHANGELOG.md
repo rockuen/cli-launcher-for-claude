@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.24.0] - 2026-10-04
+
+Runs on Android, inside VSCodroid.
+
+### Added
+- **The extension can now be installed on VSCodroid** (VS Code ported to Android). VSCodroid asks the marketplace for the `alpine-arm64` build, because a glibc binary cannot start in an Android app process. The launcher published only `win32-x64`, `darwin-arm64` and `linux-x64` with no universal fallback, so the marketplace had no version for that platform and the install simply failed. CI now also builds `alpine-arm64`.
+- **node-pty falls back to the editor's own copy.** No node-pty binary the extension could ship loads in VSCodroid's Bionic Node, but the editor carries one built for exactly the platform it runs on, because its terminal needs it. When the bundled module fails to load, `src/pty/loadNodePty.js` loads the one under `vscode.env.appRoot` (`node_modules` on a server build, `node_modules.asar` on Electron desktop). The `alpine-arm64` build ships no node-pty binary at all, so the fallback is the path there. All three former `require('node-pty')` sites go through it.
+- **Agents launch through the shell on Android.** SELinux refuses `execve()` of anything under the app's files directory, so VSCodroid's `claude` is a bash function, defined through `BASH_ENV`, that hands the CLI bundled in Anthropic's Claude Code extension to a loader. It is not a file on PATH, so the launcher's `claude --version` probe found nothing. On Android every agent resolver now asks `$SHELL` whether it knows the command (`command -v`) and launches it as `$SHELL -c '<cli> "$@"' <cli> <args…>`, so the launcher runs exactly what the terminal runs and the arguments arrive untouched as `"$@"`. Probes are cached for 30 s per command: `listAgents()` runs all six resolvers and activation calls it several times, which on a phone would otherwise be dozens of blocking bash startups in a row.
+- On Android a missing `claude` now says to install the Claude Code extension (`anthropic.claude-code`) and opens it in the Extensions view. Suggesting `npm install -g` there would install a CLI that cannot run.
+
+### Fixed
+- gjc Telegram notification commands dropped `resolved.args` and ran the bare resolved binary. That is harmless on desktop, where the args are empty, but on Android it ran `bash daemon status …`.
+
+### Notes
+- Requires the Claude Code extension installed in VSCodroid; that is where VSCodroid's `claude` command gets its CLI.
+- Other agents (Codex, Kiro, Gajae, Grok, Antigravity) use the same shell route and appear only if `command -v` finds them in VSCodroid's shell. None of them ship an Android build today.
+
+### Tests
+- 11 cases in `androidCompat.test.ts`: a real bash function receiving the caller's args (spaces included) as `"$@"`; an unknown command resolving to null; the probe cache answering without a second bash; the Android branch running ahead of `~/.local/bin`; every resolver opening with it; the node-pty fallback order (bundled → `node_modules` → `node_modules.asar` → rethrow the bundled error); a guard that node-pty still loads its binary at require time off Windows, since the fallback depends on that; a guard that nothing in `src` requires node-pty directly; and the CI `alpine-arm64` job. Full suite passes (588 Node tests, 64 vitest).
+
 ## [3.23.1] - 2026-09-12
 
 Scrolling up in a terminal pane stays scrolled up.

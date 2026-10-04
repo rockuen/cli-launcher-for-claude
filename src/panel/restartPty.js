@@ -8,6 +8,7 @@ const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli
 const { findCodexSessionPath, findGrokSessionPath, findGrokEventsPath, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { readAgentTurnState } = require('../lib/agentTurnState');
 const { prepareProjectSessionEnvironment } = require('../lib/projectSessions');
+const { loadNodePty } = require('../pty/loadNodePty');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
@@ -24,7 +25,7 @@ function restartPty(entry, panel, context, extensionPath) {
 
   let pty;
   try {
-    pty = require('node-pty');
+    pty = loadNodePty();
   } catch (e) {
     entry._restarting = false;
     vscode.window.showErrorMessage(t('nodePtyFail') + e.message);

@@ -22,6 +22,7 @@ const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { createBackend } = require('../pty/backend');
+const { loadNodePty } = require('../pty/loadNodePty');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
@@ -369,7 +370,7 @@ function createPanel(context, extensionPath, session, opts) {
   // early, before any panel setup. The actual spawn goes through createBackend()
   // (pty/backend.js), which requires node-pty itself (module cache makes this free).
   try {
-    require('node-pty');
+    loadNodePty();
   } catch (e) {
     vscode.window.showErrorMessage(t('nodePtyFail') + e.message);
     return;
@@ -736,6 +737,21 @@ function createPanel(context, extensionPath, session, opts) {
   } else {
     // agent === 'claude' (default) — original logic, byte-for-byte preserved
     const resolved = resolveClaudeCli();
+    if (!resolved && process.platform === 'android') {
+      // VSCodroid's `claude` runs the CLI bundled in Anthropic's extension, and
+      // npm cannot install one that runs there.
+      const show = 'Show Extension';
+      vscode.window.showErrorMessage(
+        'Claude Code CLI not found. On Android (VSCodroid), install the Claude Code extension (anthropic.claude-code) — it provides the `claude` command.',
+        show
+      ).then(choice => {
+        if (choice === show) {
+          vscode.commands.executeCommand('workbench.extensions.search', '@id:anthropic.claude-code');
+        }
+      });
+      panel.dispose();
+      return;
+    }
     if (!resolved) {
       const install = 'Install Claude Code';
       vscode.window.showErrorMessage(

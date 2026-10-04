@@ -32,6 +32,35 @@ function resolveOnPath(name) {
   }
 }
 
+// Android (VSCodroid): SELinux refuses execve() of anything under the app's
+// filesDir, so the CLIs a user has there -- `claude` included -- are bash
+// functions that hand the real binary to a loader, not files on PATH. A binary
+// under ~/.local/bin cannot run at all, and `<name> --version` finds nothing.
+// Ask the shell instead (the app's BASH_ENV defines those functions for
+// non-interactive shells too) and launch through it: callers append their own
+// args after these, and the function receives them as "$@".
+//
+// Probes are cached briefly: listAgents() runs all six resolvers and activation
+// calls it several times, which on a phone was dozens of blocking bash startups
+// in a row. 30s still picks up a CLI installed mid-session without a reload.
+const SHELL_PROBE_TTL_MS = 30000;
+const _shellProbes = new Map();
+function resolveViaShell(name) {
+  const shell = process.env.SHELL || 'bash';
+  const key = shell + '\0' + name;
+  let probe = _shellProbes.get(key);
+  if (!probe || Date.now() - probe.at >= SHELL_PROBE_TTL_MS) {
+    let found = false;
+    try {
+      execFileSync(shell, ['-c', 'command -v "$1" >/dev/null', 'probe', name], { timeout: 3000, stdio: 'ignore' });
+      found = true;
+    } catch (_) {}
+    probe = { at: Date.now(), found };
+    _shellProbes.set(key, probe);
+  }
+  return probe.found ? { shell, args: ['-c', `${name} "$@"`, name] } : null;
+}
+
 function _pathEnvKey(env) {
   if (process.platform !== 'win32') return 'PATH';
   return Object.keys(env || process.env).find((k) => k.toLowerCase() === 'path') || 'Path';
@@ -107,6 +136,7 @@ function _resolveCodexWindowsRuntimeCli(localAppData) {
 }
 
 function resolveClaudeCli() {
+  if (process.platform === 'android') return resolveViaShell('claude');
   const isWin = process.platform === 'win32';
 
   // 1) ~/.local/bin/claude(.exe) — official standalone install
@@ -130,6 +160,7 @@ function resolveClaudeCli() {
 // @module pty/resolveCli — locates the Kiro CLI binary.
 // Priority: ~/.local/bin/kiro-cli → %LOCALAPPDATA%\Kiro-Cli (Windows installer) → PATH.
 function resolveKiroCli() {
+  if (process.platform === 'android') return resolveViaShell('kiro-cli');
   const isWin = process.platform === 'win32';
 
   // 1) ~/.local/bin/kiro-cli(.exe) — official standalone install (macOS/Linux)
@@ -154,6 +185,7 @@ function resolveKiroCli() {
 // @module pty/resolveCli — locates the Antigravity CLI (agy) binary.
 // Priority: ~/.local/bin/agy → %LOCALAPPDATA%\agy\bin (Windows installer) → PATH.
 function resolveAntigravityCli() {
+  if (process.platform === 'android') return resolveViaShell('agy');
   const isWin = process.platform === 'win32';
 
   // 1) ~/.local/bin/agy(.exe) — standalone install (macOS/Linux; some Windows)
@@ -179,6 +211,7 @@ function resolveAntigravityCli() {
 // Priority: Windows bundled runtime with sandbox helpers → ~/.local/bin/codex
 // → %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (Windows shim) → PATH.
 function resolveCodexCli() {
+  if (process.platform === 'android') return resolveViaShell('codex');
   const isWin = process.platform === 'win32';
 
   // Windows Codex Desktop / installer keeps the real runtime in a hash-named
@@ -219,6 +252,7 @@ function resolveCodexCli() {
 // @module pty/resolveCli — locates xAI's Grok CLI (grok) binary.
 // Priority: ~/.grok/bin/grok (official grok build) → ~/.local/bin/grok → PATH.
 function resolveGrokCli() {
+  if (process.platform === 'android') return resolveViaShell('grok');
   const isWin = process.platform === 'win32';
 
   // 1) ~/.grok/bin/grok(.exe) — official installer location (verified on Windows).
@@ -246,6 +280,7 @@ function resolveGrokCli() {
 // PATH. Requires Bun ≥ 1.3.14 to run, but that's gjc's own runtime concern; the
 // launcher only needs the absolute binary path for node-pty.
 function resolveGjcCli() {
+  if (process.platform === 'android') return resolveViaShell('gjc');
   const isWin = process.platform === 'win32';
 
   // 1) ~/.bun/bin/gjc(.exe) — bun global install (gajae-code package).
@@ -337,5 +372,6 @@ module.exports = {
     readCodexCliPathFromConfig: _readCodexCliPathFromConfig,
     resolveCodexWindowsRuntimeCli: _resolveCodexWindowsRuntimeCli,
     prependPathDirEnv: _prependPathDirEnv,
+    resolveViaShell,
   },
 };

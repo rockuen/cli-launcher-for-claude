@@ -22,6 +22,13 @@ jobs:
             target: darwin-arm64
           - os: ubuntu-latest
             target: linux-x64
+          # VSCodroid (VS Code on Android) asks the marketplace for alpine-arm64;
+          # without this build the extension has no version it can install there.
+          # No node-pty binary we could ship loads in its Bionic Node, so this
+          # one carries none and src/pty/loadNodePty.js uses the editor's own.
+          - os: ubuntu-latest
+            target: alpine-arm64
+            editorPty: true
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -30,7 +37,11 @@ jobs:
           node-version: 20
       - run: npm install
       - name: Rebuild node-pty for Electron 39.2.3
+        if: ${{ !matrix.editorPty }}
         run: npx @electron/rebuild -v 39.2.3 -m .
+      - name: Drop the bundled node-pty binaries
+        if: ${{ matrix.editorPty }}
+        run: rm -rf node_modules/node-pty/build node_modules/node-pty/prebuilds
       - run: npx @vscode/vsce package --target ${{ matrix.target }} --no-git-tag-version --allow-missing-repository
       - uses: actions/upload-artifact@v7
         with:

@@ -106,7 +106,7 @@ function runGjc(args, opts = {}) {
     }
     execFile(
       resolved.shell,
-      args,
+      [...(resolved.args || []), ...args],
       { timeout: opts.timeout || 8000, windowsHide: true, maxBuffer: 1024 * 1024, ...opts.spawn },
       (err, stdout, stderr) => {
         const out = (stdout || '').toString();

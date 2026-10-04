@@ -46,7 +46,7 @@ function spawnEnv(extraEnv) {
 //
 // opts: { spawnBin, spawnArgs, cwd, cols, rows, muxSessionName? }
 function createPtyBackend(opts) {
-  const pty = require('node-pty');
+  const pty = require('./loadNodePty').loadNodePty();
   const ptyProcess = pty.spawn(opts.spawnBin, opts.spawnArgs, {
     name: SPAWN_NAME,
     cols: opts.cols,
