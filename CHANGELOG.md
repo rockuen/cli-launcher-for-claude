@@ -1,5 +1,26 @@
 # Changelog
 
+## [3.24.1] - 2026-10-08
+
+Big sessions no longer stall the terminals while a reader is open.
+
+### Fixed
+- **An open reader re-parsed its whole session file on every change, on the thread that pumps terminal output.** The reader (split pane and standalone) re-renders whenever its session jsonl changes, and each render read and `JSON.parse`d the entire file synchronously on the extension host thread, which is also the thread that moves every terminal's PTY output to its webview. Files over 2 MB were not even cached (v3.5.6 dropped them to save memory), so a long session paid the full price on every 1 s poll for as long as its agent was writing: 0.5 s per render at 25.7 MB, about 1 s at 47 MB, and every terminal stalled for that long each time.
+- The reader now parses incrementally. Agent transcripts are append-only, so a cached entry remembers how far into the file it has parsed and reads only the bytes appended since. The entry keeps the extracted reader messages instead of the parsed lines (a 25.7 MB session reduces to 213 messages), so big files are cached again without the memory that v3.5.6 avoided. One appended turn now costs a read of that turn plus a few KB of checks instead of the whole file, and the first parse of a file is also about twice as fast because bytes are split on newlines before decoding.
+- Append-only is checked, not assumed. An entry keeps the first 4 KB of the file and the 256 bytes before its offset, and both must still be on disk before it reads on. A file that is the same size with a new mtime was rewritten in place, and a shrunk one was truncated; either is parsed again from the start. Size and mtime come from the open file descriptor, and the same two windows are compared again after reading, so a writer that replaces the file mid-read cannot leave a shifted parse that later checks would accept. A half-written last line waits for its newline, and a complete record without one is accepted once it parses.
+- **The session tree re-read every Codex rollout's first line on every refresh.** `session_meta` was read fresh (64-256 KB per rollout) each time, unlike the first user message beside it, which was already memoized. With 81 rollouts that was 0.6 s per tree refresh (1.8 s cold), and the tree refreshes on every tab state change. It is now memoized per rollout: 91 ms. A read that fails (a scanner briefly holding the file) is not memoized, so the session cannot drop out of the tree until the file next grows.
+
+### Changed
+- Each reader extractor is now an accumulator (push one line, read the messages so far), so the incremental cache and the one-shot `_extract*Messages(lines)` helpers share one parser per agent. Codex keeps the legacy and current turn shapes side by side because which one wins depends on the whole file; grok keeps its open chunk run between reads.
+- `extractAiTitle` always reads the v3.21.3 head/tail window. It used to answer from the reader's whole-file parse when one was cached, so the same file could yield two titles depending on whether a reader had it open, and the tree keeps whichever it saw first.
+
+### Notes
+- On the reporting machine the larger share of the stalls came from another extension in the same extension host. Its diagnostics log showed the host blocked for up to 120 s at a time, and 661 s within one 10-minute window, and the CPU profiles VS Code saved during those stalls were dominated by NoteWise's calendar re-indexing the workspace (a 4-15K file `findFiles`) on every file create, change and delete, with no debounce. That is fixed in notewise-editor 0.1.56. The launcher's own share in those profiles was small; the reader cost above grows with the size of the open session.
+
+### Tests
+- 16 cases in `incrementalReader.test.ts`: growth matching a cold parse; a half-written line shown only once complete; an unterminated complete record accepted and not repeated; Korean text straddling the 4 MB read-chunk boundary; **a one-line append to a 4.8 MB file reading only that line plus a constant amount of checks** (the previous implementation read 4.9 MB); a shrunk and a same-prefix-length rewritten file; a same-size in-place rewrite; an edit near the start that only the head check can see; returned arrays not mutated by later appends; ai-title following appended renames and giving the same answer with or without a cached parse; a gjc header title written later; codex dropping legacy turns once a current-shape turn arrives; a grok chunk run split across two reads; the codex `session_meta` cache following a replaced rollout; and a transient read failure not being remembered.
+- Old and new extraction were compared on 1,659 real sessions (2.4 GB, all six agents): identical messages, titles and turn counts. A randomized test growing files in byte splits that cut through lines, multi-byte characters and CRLF endings, with the read chunk, head and probe windows forced down to 1 byte, matched a cold parse in all 8,565 checks. Full suite passes (604 Node tests, 64 vitest).
+
 ## [3.24.0] - 2026-10-04
 
 Runs on Android, inside VSCodroid.

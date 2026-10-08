@@ -310,10 +310,12 @@ function findCodexSessionPath(sessionId, _dir, cwd) {
 // that budget is truncated, fails JSON.parse, leaves cwd empty, and the session
 // is then dropped by the cwd filter — the rollout disappears from the tree
 // entirely rather than merely losing its title.
+// Returns null when the file could not be read (as opposed to {} for "read,
+// no session_meta"), so the cache below never remembers a transient failure.
 function _codexSessionMeta(filePath, size) {
   for (const bytes of CODEX_TITLE_WINDOWS) {
     let head;
-    try { head = _splitJsonLines(_readChunk(filePath, Math.min(bytes, size))); } catch { return {}; }
+    try { head = _splitJsonLines(_readChunk(filePath, Math.min(bytes, size))); } catch { return null; }
     for (const d of head) {
       if (d && d.type === 'session_meta' && d.payload) {
         return { cwd: d.payload.cwd || '', id: d.payload.id || '' };
@@ -322,6 +324,23 @@ function _codexSessionMeta(filePath, size) {
     if (size <= bytes) break;
   }
   return {};
+}
+
+// v3.24.1: memoized like the first user message below. session_meta is the
+// rollout's first line and is never rewritten, so once found it holds for every
+// later size of the file; a miss is retried only once the file has grown. It
+// was read fresh on every call before — 64-256 KB per rollout, every tree
+// refresh: 0.6 s per refresh for 81 rollouts (1.8 s cold), synchronously on
+// the extension host thread.
+const _codexMetaCache = new Map(); // path -> { size, meta, found }
+
+function _codexSessionMetaCached(filePath, size) {
+  const cached = _codexMetaCache.get(filePath);
+  if (cached && (cached.found ? size >= cached.size : size === cached.size)) return cached.meta;
+  const meta = _codexSessionMeta(filePath, size);
+  if (!meta) return {}; // unreadable right now (locked by a scanner, mid-rename): ask again next time
+  _codexMetaCache.set(filePath, { size, meta, found: 'cwd' in meta });
+  return meta;
 }
 
 const CODEX_TITLE_WINDOWS = [CODEX_META_CHUNK, 256 * 1024];
@@ -387,7 +406,7 @@ function listCodexSessions(cwd, _dir, _indexFile) {
     if (!m) continue;
     let stat;
     try { stat = fs.statSync(p); } catch { continue; }
-    const meta = _codexSessionMeta(p, stat.size);
+    const meta = _codexSessionMetaCached(p, stat.size);
     const metaCwd = meta.cwd;
     const metaId = meta.id || m[1];
     const firstMsg = _codexFirstUserMessage(p, stat.size);
@@ -841,62 +860,203 @@ function _splitJsonLines(text) {
   return out;
 }
 
-// Parsed-lines cache. The split-pane reader and the standalone reader both
-// poll the same jsonl file, and each render used to call extractAiTitle +
-// extractMessages back-to-back — two whole-file reads + parses per render
-// tick for a single visible session. With 5 concurrent sessions that turned
-// into 10 reads/parses per render burst, on a file that grows to several MB
-// over a long session. Caching by {mtime, size} lets repeated reads of the
-// same on-disk snapshot share a single parse. The entry is invalidated
-// automatically the next time the file changes.
-const _lineCache = new Map();
-const _LINE_CACHE_MAX = 20; // ~max active sessions across both readers + the tree provider
+// v3.24.1: incremental message cache. The reader (split pane and standalone)
+// re-renders every time the session file it shows changes, and each render
+// used to re-read and JSON.parse the WHOLE file — synchronously, on the
+// extension host thread that also pumps every terminal's PTY output. Files
+// over 2 MB were not even cached (v3.5.6, for memory), so a long session paid
+// the full price on every poll while its agent was writing: 0.5 s per render
+// at 25.7 MB, about 1 s at 47 MB, roughly once a second for a whole turn —
+// every terminal stalls for that long each time.
+//
+// Agent transcripts are append-only, so an entry remembers how far into the
+// file it has parsed and the next call reads only the bytes after that point.
+// It keeps the extracted reader messages, not the parsed lines — the 25.7 MB
+// session above reduces to 213 messages — so caching big files no longer
+// costs the memory that made v3.5.6 stop caching them.
+//
+// Append-only is checked, not assumed. An entry keeps the file's first bytes
+// and the bytes just before its offset, and both must still be on disk before
+// it reads on; a file that is the same size with a new mtime was rewritten in
+// place (nothing was appended), and a shrunk one was truncated. Any of those is
+// parsed again from the start. The same two windows are compared again after
+// reading, so a writer that replaces the file mid-read cannot leave a shifted
+// parse that every later check would accept.
+const _msgCache = new Map(); // `${kind}\0${filePath}` → entry
+const _MSG_CACHE_MAX = 20; // ~max active sessions across both readers + the tree provider
+const _MSG_READ_CHUNK = 4 * 1024 * 1024;
+const _MSG_HEAD_BYTES = 4096;
+const _MSG_PROBE_BYTES = 256;
+const _MSG_KINDS = new Set(['kiro', 'codex', 'grok', 'gjc', 'chief']);
 
-// v3.5.6: don't cache parsed lines for very large jsonls. Tree refresh touches
-// every session file in the project; on vaults with multiple 20-50 MB sessions
-// (scm-pdca pattern observed in iloom-workspace: 7 files totalling 130 MB+),
-// caching parsed lines used to accumulate 500+ MB of resident memory because
-// the LRU happened to land on those big files. Large files still get fully
-// read + parsed (callers see no behavior change), they just don't persist in
-// the cache — so the next call re-parses from disk. Sized to comfortably fit
-// the average jsonl (≈ 1.3 MB in the wild) while excluding extreme outliers.
-const MAX_CACHEABLE_BYTES = 2 * 1024 * 1024; // 2 MB
-
-function _readLinesCached(filePath) {
-  let stat;
-  try { stat = fs.statSync(filePath); } catch { return null; }
-  const cached = _lineCache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
-    cached.lastUsed = Date.now();
-    return cached.lines;
-  }
-  let lines;
-  try {
-    lines = _splitJsonLines(fs.readFileSync(filePath, 'utf-8'));
-  } catch { return null; }
-  // v3.5.6: skip cache insertion for oversized files. Callers still receive
-  // the parsed result, but the next call will re-parse from disk rather than
-  // pinning a multi-MB array in memory across tree refreshes.
-  if (stat.size > MAX_CACHEABLE_BYTES) return lines;
-  if (_lineCache.size >= _LINE_CACHE_MAX) {
-    let oldestKey = null;
-    let oldestTime = Infinity;
-    for (const [k, v] of _lineCache) {
-      if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldestKey = k; }
-    }
-    if (oldestKey) _lineCache.delete(oldestKey);
-  }
-  _lineCache.set(filePath, {
-    mtimeMs: stat.mtimeMs,
-    size: stat.size,
-    lines,
-    lastUsed: Date.now(),
-  });
-  return lines;
+// Claude Code jsonls reach the reader as agent 'claude' or with no agent at
+// all (the tree's turn count); both parse as claude.
+function _messageKind(agent) {
+  return _MSG_KINDS.has(agent) ? agent : 'claude';
 }
 
-// Test-only: clear the line cache so unit tests can observe fresh reads.
-function _clearLineCache() { _lineCache.clear(); }
+function _newMessageEntry(kind) {
+  return { kind, offset: 0, head: null, probe: null, acc: _newMessageAccumulator(kind), size: -1, mtimeMs: -1, lastUsed: 0 };
+}
+
+function _readMessagesIncremental(filePath, agent) {
+  const kind = _messageKind(agent);
+  let stat;
+  try { stat = fs.statSync(filePath); } catch { return null; }
+  const key = kind + '\0' + filePath;
+  const cached = _msgCache.get(key);
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) {
+    cached.lastUsed = Date.now();
+    return cached;
+  }
+  let fd;
+  let e = null;
+  let consistent = false;
+  try {
+    fd = fs.openSync(filePath, 'r');
+    // Size and mtime of the file actually open, not of whatever the path
+    // named a moment ago.
+    const st = fs.fstatSync(fd);
+    if (cached && _isAppendOf(fd, cached, st)) {
+      e = cached;
+      consistent = _consumeAppended(fd, e, st.size);
+    }
+    if (!consistent) {
+      e = _newMessageEntry(kind);
+      consistent = _consumeAppended(fd, e, st.size);
+    }
+    e.size = st.size;
+    e.mtimeMs = st.mtimeMs;
+  } catch {
+    _msgCache.delete(key);
+    return null;
+  } finally {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+  }
+  if (!consistent) {
+    // Still being replaced while it was read: answer from this parse, but
+    // don't keep it — the next call starts over.
+    _msgCache.delete(key);
+    return e;
+  }
+  e.lastUsed = Date.now();
+  if (!_msgCache.has(key) && _msgCache.size >= _MSG_CACHE_MAX) {
+    let oldestKey = null;
+    let oldestTime = Infinity;
+    for (const [k, v] of _msgCache) {
+      if (v.lastUsed < oldestTime) { oldestTime = v.lastUsed; oldestKey = k; }
+    }
+    if (oldestKey) _msgCache.delete(oldestKey);
+  }
+  _msgCache.set(key, e);
+  return e;
+}
+
+// True when the open file is the one the entry parsed, with only bytes added.
+function _isAppendOf(fd, e, st) {
+  if (st.size < e.offset) return false;
+  if (st.size === e.size && st.mtimeMs !== e.mtimeMs) return false;
+  return _bytesAt(fd, e.head, 0) && _bytesAt(fd, e.probe, e.offset - (e.probe ? e.probe.length : 0));
+}
+
+function _bytesAt(fd, bytes, pos) {
+  if (!bytes || bytes.length === 0) return true;
+  const buf = Buffer.alloc(bytes.length);
+  const n = fs.readSync(fd, buf, 0, buf.length, pos);
+  return n === buf.length && buf.equals(bytes);
+}
+
+// Parse every complete line between e.offset and `size`, advancing e.offset
+// past each one. Lines are split on the raw 0x0A byte before decoding, so a
+// multi-byte character can never be cut by a chunk boundary. Returns false
+// when the file no longer holds the bytes this pass parsed (replaced mid-read).
+function _consumeAppended(fd, e, size) {
+  const startOffset = e.offset;
+  let pos = e.offset;
+  let carry = null; // bytes of a line not yet terminated; starts at e.offset
+  let head = null; // the file's first bytes, when this pass reads from 0
+  let tail = null; // the last bytes this pass consumed
+  while (pos < size) {
+    const want = Math.min(_MSG_READ_CHUNK, size - pos);
+    const buf = Buffer.allocUnsafe(want);
+    const n = fs.readSync(fd, buf, 0, want, pos);
+    if (n <= 0) break;
+    if (pos === 0) head = Buffer.from(buf.subarray(0, Math.min(_MSG_HEAD_BYTES, n)));
+    pos += n;
+    const chunk = carry ? Buffer.concat([carry, buf.subarray(0, n)]) : buf.subarray(0, n);
+    let start = 0;
+    let nl;
+    while ((nl = chunk.indexOf(10, start)) !== -1) {
+      _pushJsonLine(e, chunk.toString('utf-8', start, nl));
+      start = nl + 1;
+    }
+    if (start > 0) tail = Buffer.from(chunk.subarray(Math.max(0, start - _MSG_PROBE_BYTES), start));
+    e.offset += start;
+    carry = start < chunk.length ? chunk.subarray(start) : null;
+  }
+  // A last line without its newline counts once it parses: a record cut off
+  // mid-write never does, and a writer that omits the final newline would
+  // otherwise hide its newest message forever.
+  if (carry && carry.length > 0 && _pushJsonLine(e, carry.toString('utf-8'))) {
+    e.offset += carry.length;
+    tail = Buffer.from(carry.subarray(Math.max(0, carry.length - _MSG_PROBE_BYTES)));
+  }
+  // A small append (one short line, a lone newline) would shrink the probe to
+  // just its own bytes; extend it with the previous probe, which ends exactly
+  // where this pass began.
+  if (tail && tail.length < _MSG_PROBE_BYTES && e.probe && e.offset - tail.length === startOffset) {
+    const joined = Buffer.concat([e.probe, tail]);
+    tail = Buffer.from(joined.subarray(Math.max(0, joined.length - _MSG_PROBE_BYTES)));
+  }
+  if (head) e.head = head;
+  if (tail) e.probe = tail;
+  return _bytesAt(fd, e.head, 0) && _bytesAt(fd, e.probe, e.offset - (e.probe ? e.probe.length : 0));
+}
+
+// Returns false when the text is not a JSON line (blank, partial, corrupt) —
+// those are skipped exactly as _splitJsonLines skips them.
+function _pushJsonLine(e, text) {
+  let d;
+  try { d = JSON.parse(text); } catch { return false; }
+  e.acc.push(d);
+  return true;
+}
+
+// Test-only: clear the read caches so unit tests can observe fresh reads.
+function _clearLineCache() {
+  _msgCache.clear();
+  _codexMetaCache.clear();
+}
+
+// Reader message extraction is written as accumulators — push one parsed line
+// at a time, read the messages so far with result() — so the incremental cache
+// above and the one-shot _extract*Messages(lines) helpers share one parser per
+// agent. result() returns a fresh array: the cache keeps appending to its own.
+function _newMessageAccumulator(kind) {
+  if (kind === 'kiro') return _lineMapAccumulator(_kiroLineMessage);
+  if (kind === 'codex') return _codexAccumulator();
+  if (kind === 'grok') return _grokAccumulator();
+  if (kind === 'gjc') return _lineMapAccumulator(_gjcLineMessage);
+  if (kind === 'chief') return _lineMapAccumulator(_chiefLineMessage);
+  return _lineMapAccumulator(_claudeLineMessage);
+}
+
+// For agents where each line maps to at most one message on its own.
+function _lineMapAccumulator(lineToMessage) {
+  const out = [];
+  return {
+    push(d) {
+      const m = lineToMessage(d);
+      if (m) out.push(m);
+    },
+    result() { return out.slice(); },
+  };
+}
+
+function _extractWith(acc, lines) {
+  for (const d of lines) acc.push(d);
+  return acc.result();
+}
 
 // Kiro JSONL parser helper. Each line has: { version, kind, data: { ... } }
 //   kind === 'Prompt'           → role 'user'
@@ -907,32 +1067,32 @@ function _clearLineCache() { _lineCache.clear(); }
 //   empty text block + a toolUse block — surfacing the toolUse keeps those
 //   turns visible in the reader instead of dropping the whole message.
 // Timestamp comes from data.meta?.timestamp.
-function _extractKiroMessages(lines) {
-  const out = [];
-  for (const d of lines) {
-    const kind = d && d.kind;
-    if (kind !== 'Prompt' && kind !== 'AssistantMessage') continue;
-    const role = kind === 'Prompt' ? 'user' : 'assistant';
-    const content = d.data && d.data.content;
-    if (!Array.isArray(content)) continue;
-    const parts = [];
-    for (const c of content) {
-      if (!c) continue;
-      if (c.kind === 'text' && typeof c.data === 'string' && c.data.trim()) {
-        parts.push(c.data);
-      } else if (c.kind === 'toolUse' && c.data) {
-        // Show the tool call (name + its stated purpose) so tool-only
-        // assistant turns aren't invisible in the reader.
-        const name = c.data.name || 'tool';
-        const purpose = c.data.input && c.data.input.__tool_use_purpose;
-        parts.push(purpose ? '`🔧 ' + name + '` — ' + purpose : '`🔧 ' + name + '`');
-      }
+function _kiroLineMessage(d) {
+  const kind = d && d.kind;
+  if (kind !== 'Prompt' && kind !== 'AssistantMessage') return null;
+  const role = kind === 'Prompt' ? 'user' : 'assistant';
+  const content = d.data && d.data.content;
+  if (!Array.isArray(content)) return null;
+  const parts = [];
+  for (const c of content) {
+    if (!c) continue;
+    if (c.kind === 'text' && typeof c.data === 'string' && c.data.trim()) {
+      parts.push(c.data);
+    } else if (c.kind === 'toolUse' && c.data) {
+      // Show the tool call (name + its stated purpose) so tool-only
+      // assistant turns aren't invisible in the reader.
+      const name = c.data.name || 'tool';
+      const purpose = c.data.input && c.data.input.__tool_use_purpose;
+      parts.push(purpose ? '`🔧 ' + name + '` — ' + purpose : '`🔧 ' + name + '`');
     }
-    if (parts.length === 0) continue;
-    const timestamp = (d.data && d.data.meta && d.data.meta.timestamp) || null;
-    out.push({ role, text: parts.join('\n\n'), timestamp });
   }
-  return out;
+  if (parts.length === 0) return null;
+  const timestamp = (d.data && d.data.meta && d.data.meta.timestamp) || null;
+  return { role, text: parts.join('\n\n'), timestamp };
+}
+
+function _extractKiroMessages(lines) {
+  return _extractWith(_lineMapAccumulator(_kiroLineMessage), lines);
 }
 
 // Codex JSONL parser helper. Rollout records are { timestamp, type, payload }.
@@ -960,89 +1120,98 @@ function _codexCompletedItemText(item) {
   return parts.join('\n\n');
 }
 
+// Both shapes are collected side by side because whether the current one is
+// present is a property of the whole file: one completed turn anywhere means
+// the legacy records are duplicates.
+function _codexAccumulator() {
+  const completed = [];
+  const legacy = [];
+  let hasCompletedTurns = false;
+  return {
+    push(d) {
+      if (!d || d.type !== 'event_msg' || !d.payload) return;
+      const p = d.payload;
+      if (p.type === 'item_completed' && p.item) {
+        const item = p.item;
+        const role = item.type === 'UserMessage' ? 'user'
+          : item.type === 'AgentMessage' ? 'assistant' : null;
+        if (!role) return;
+        hasCompletedTurns = true;
+        const text = _codexCompletedItemText(item);
+        if (text.trim()) completed.push({ role, text, timestamp: d.timestamp || null });
+      } else if (p.type === 'user_message' || p.type === 'agent_message') {
+        const text = typeof p.message === 'string' ? p.message : '';
+        if (!text.trim()) return;
+        legacy.push({
+          role: p.type === 'user_message' ? 'user' : 'assistant',
+          text,
+          timestamp: d.timestamp || null,
+        });
+      }
+    },
+    result() { return (hasCompletedTurns ? completed : legacy).slice(); },
+  };
+}
+
 function _extractCodexMessages(lines) {
-  const out = [];
-  const hasCompletedTurns = lines.some((d) => {
-    const item = d && d.type === 'event_msg' && d.payload
-      && d.payload.type === 'item_completed' && d.payload.item;
-    return item && (item.type === 'UserMessage' || item.type === 'AgentMessage');
-  });
-
-  for (const d of lines) {
-    if (!d || d.type !== 'event_msg' || !d.payload) continue;
-    let role = null;
-    let text = '';
-
-    if (hasCompletedTurns) {
-      if (d.payload.type !== 'item_completed' || !d.payload.item) continue;
-      const item = d.payload.item;
-      if (item.type === 'UserMessage') role = 'user';
-      else if (item.type === 'AgentMessage') role = 'assistant';
-      else continue;
-      text = _codexCompletedItemText(item);
-    } else {
-      const pt = d.payload.type;
-      if (pt !== 'user_message' && pt !== 'agent_message') continue;
-      role = pt === 'user_message' ? 'user' : 'assistant';
-      text = typeof d.payload.message === 'string' ? d.payload.message : '';
-    }
-
-    if (!text.trim()) continue;
-    out.push({
-      role,
-      text,
-      timestamp: d.timestamp || null,
-    });
-  }
-  return out;
+  return _extractWith(_codexAccumulator(), lines);
 }
 
 // Grok updates.jsonl parser helper. ACP update lines carry
 // { params: { update: { sessionUpdate, content: { text } } } }. The same file
 // also includes thoughts and hook/tool events; the reader surfaces only visible
 // dialogue chunks, preserving their order.
-function _extractGrokMessages(lines) {
+// The run of same-role chunks still being written is kept open between pushes
+// and shown as the last message, the same as the one-shot flush at the end.
+function _grokAccumulator() {
   const out = [];
   let currentRole = null;
   let currentText = '';
   let currentTs = null;
 
   const flush = () => {
-    if (!currentRole || !currentText.trim()) {
-      currentRole = null;
-      currentText = '';
-      currentTs = null;
-      return;
+    if (currentRole && currentText.trim()) {
+      out.push({ role: currentRole, text: currentText, timestamp: currentTs });
     }
-    out.push({ role: currentRole, text: currentText, timestamp: currentTs });
     currentRole = null;
     currentText = '';
     currentTs = null;
   };
 
-  for (const d of lines) {
-    const update = d?.params?.update || d?.update || {};
-    const kind = update.sessionUpdate || update.type || '';
-    let role = null;
-    if (kind === 'user_message_chunk') role = 'user';
-    else if (kind === 'agent_message_chunk' || kind === 'assistant_message_chunk') role = 'assistant';
-    else continue;
+  return {
+    push(d) {
+      const update = d?.params?.update || d?.update || {};
+      const kind = update.sessionUpdate || update.type || '';
+      let role = null;
+      if (kind === 'user_message_chunk') role = 'user';
+      else if (kind === 'agent_message_chunk' || kind === 'assistant_message_chunk') role = 'assistant';
+      else return;
 
-    const text = update.content?.text ?? update.text ?? update.chunk ?? '';
-    if (typeof text !== 'string' || !text) continue;
-    if (currentRole && currentRole !== role) flush();
-    if (!currentRole) {
-      currentRole = role;
-      const meta = (d.params && d.params._meta) || d._meta || update._meta || {};
-      currentTs = meta.agentTimestampMs
-        || _toEpochMs(d.timestamp || update.timestamp || update.created_at)
-        || null;
-      if (currentTs === 0) currentTs = null;
-    }
-    currentText += text;
-  }
-  flush();
-  return out;
+      const text = update.content?.text ?? update.text ?? update.chunk ?? '';
+      if (typeof text !== 'string' || !text) return;
+      if (currentRole && currentRole !== role) flush();
+      if (!currentRole) {
+        currentRole = role;
+        const meta = (d.params && d.params._meta) || d._meta || update._meta || {};
+        currentTs = meta.agentTimestampMs
+          || _toEpochMs(d.timestamp || update.timestamp || update.created_at)
+          || null;
+        if (currentTs === 0) currentTs = null;
+      }
+      currentText += text;
+    },
+    result() {
+      const res = out.slice();
+      if (currentRole && currentText.trim()) {
+        res.push({ role: currentRole, text: currentText, timestamp: currentTs });
+      }
+      return res;
+    },
+  };
+}
+
+function _extractGrokMessages(lines) {
+  return _extractWith(_grokAccumulator(), lines);
 }
 
 // gjc JSONL parser helper. Line 1 is a `{ type:"session" }` header; dialogue
@@ -1051,40 +1220,40 @@ function _extractGrokMessages(lines) {
 // thinking / image blocks are dropped — matching the claude extractor). Only
 // user + assistant turns surface; other roles and non-message entries (model
 // changes, compaction, custom messages) are skipped.
-function _extractGjcMessages(lines) {
-  const out = [];
-  for (const d of lines) {
-    if (!d || d.type !== 'message' || !d.message) continue;
-    const role = d.message.role;
-    if (role !== 'user' && role !== 'assistant') continue;
-    const content = d.message.content;
-    let text = '';
-    if (typeof content === 'string') {
-      text = content;
-    } else if (Array.isArray(content)) {
-      const parts = [];
-      for (const blk of content) {
-        if (blk && typeof blk === 'object' && typeof blk.text === 'string' && blk.text.trim()) {
-          parts.push(blk.text);
-        }
+function _gjcLineMessage(d) {
+  if (!d || d.type !== 'message' || !d.message) return null;
+  const role = d.message.role;
+  if (role !== 'user' && role !== 'assistant') return null;
+  const content = d.message.content;
+  let text = '';
+  if (typeof content === 'string') {
+    text = content;
+  } else if (Array.isArray(content)) {
+    const parts = [];
+    for (const blk of content) {
+      if (blk && typeof blk === 'object' && typeof blk.text === 'string' && blk.text.trim()) {
+        parts.push(blk.text);
       }
-      text = parts.join('\n\n');
     }
-    if (!text.trim()) continue;
-    out.push({ role, text, timestamp: d.timestamp || null });
+    text = parts.join('\n\n');
   }
-  return out;
+  if (!text.trim()) return null;
+  return { role, text, timestamp: d.timestamp || null };
+}
+
+function _extractGjcMessages(lines) {
+  return _extractWith(_lineMapAccumulator(_gjcLineMessage), lines);
+}
+
+function _chiefLineMessage(d) {
+  if (!d || (d.role !== 'user' && d.role !== 'assistant')) return null;
+  const text = typeof d.text === 'string' ? d.text : '';
+  if (!text.trim()) return null;
+  return { role: d.role, text, timestamp: d.timestamp || null };
 }
 
 function _extractChiefMessages(lines) {
-  const out = [];
-  for (const d of lines) {
-    if (!d || (d.role !== 'user' && d.role !== 'assistant')) continue;
-    const text = typeof d.text === 'string' ? d.text : '';
-    if (!text.trim()) continue;
-    out.push({ role: d.role, text, timestamp: d.timestamp || null });
-  }
-  return out;
+  return _extractWith(_lineMapAccumulator(_chiefLineMessage), lines);
 }
 
 // Latest `ai-title` line wins — Claude Code rewrites the title as a session grows.
@@ -1099,22 +1268,18 @@ function _extractChiefMessages(lines) {
 // The windowed read brings the same 130 files to 0.42 s and was validated to
 // return byte-identical titles on all 663 sessions across both vaults.
 //
-// An already-resident line-cache snapshot still wins: the reader panels call
-// extractMessages on the same file, so reusing their parse costs nothing there.
+// v3.24.1: always the window. It used to answer from the reader's whole-file
+// parse when one was cached (under 2 MB), so the same file could yield two
+// titles depending on whether a reader had it open; the tree keeps whichever
+// it saw first for a given size and mtime.
 function extractAiTitle(filePath, agent) {
   if (agent === 'kiro' || agent === 'codex' || agent === 'grok' || agent === 'chief') return null;
   let stat;
   try { stat = fs.statSync(filePath); } catch { return null; }
   let lines;
-  const cached = _lineCache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
-    cached.lastUsed = Date.now();
-    lines = cached.lines;
-  } else {
-    try {
-      lines = _splitJsonLines(_readHeadTail(filePath, stat.size, TITLE_HEAD_BYTES, TITLE_TAIL_BYTES));
-    } catch { return null; }
-  }
+  try {
+    lines = _splitJsonLines(_readHeadTail(filePath, stat.size, TITLE_HEAD_BYTES, TITLE_TAIL_BYTES));
+  } catch { return null; }
   if (agent === 'gjc') {
     let gjcTitle = null;
     for (const d of lines) {
@@ -1126,7 +1291,7 @@ function extractAiTitle(filePath, agent) {
   }
   let title = null;
   for (const d of lines) {
-    if (d.type === 'ai-title' && typeof d.aiTitle === 'string' && d.aiTitle.trim()) {
+    if (d && d.type === 'ai-title' && typeof d.aiTitle === 'string' && d.aiTitle.trim()) {
       title = d.aiTitle.trim();
     }
   }
@@ -1163,74 +1328,44 @@ function extractFirstUserMessage(filePath) {
 //   - filters:   sidechain, isMeta, system-tag-prefixed strings
 const SYS_TAG_RE = /^\s*<(?:command-[a-z-]+|local-command-[a-z-]+|system-reminder|user-prompt-submit-hook)\b/i;
 
-function extractMessages(filePath, agent) {
-  const lines = _readLinesCached(filePath);
-  if (!lines) return [];
-  if (agent === 'kiro') return _extractKiroMessages(lines);
-  if (agent === 'codex') return _extractCodexMessages(lines);
-  if (agent === 'grok') return _extractGrokMessages(lines);
-  if (agent === 'gjc') return _extractGjcMessages(lines);
-  if (agent === 'chief') return _extractChiefMessages(lines);
-  const out = [];
-  try {
-    for (const d of lines) {
-      if (d.isSidechain) continue;
-      const ts = d.timestamp || null;
-      if (d.type === 'assistant') {
-        const content = d.message && d.message.content;
-        if (!Array.isArray(content)) continue;
-        const parts = [];
-        for (const blk of content) {
-          if (blk && blk.type === 'text' && typeof blk.text === 'string' && blk.text.trim()) {
-            parts.push(blk.text);
-          }
-        }
-        if (parts.length === 0) continue;
-        out.push({ role: 'assistant', text: parts.join('\n\n'), timestamp: ts });
-      } else if (d.type === 'user' && !d.isMeta) {
-        const msg = d.message;
-        if (!msg || msg.role !== 'user') continue;
-        if (typeof msg.content !== 'string') continue;
-        const t = msg.content;
-        if (SYS_TAG_RE.test(t)) continue;
-        if (!t.trim()) continue;
-        out.push({ role: 'user', text: t, timestamp: ts });
+// One Claude Code line → reader message, or null.
+function _claudeLineMessage(d) {
+  if (!d || typeof d !== 'object' || d.isSidechain) return null;
+  const ts = d.timestamp || null;
+  if (d.type === 'assistant') {
+    const content = d.message && d.message.content;
+    if (!Array.isArray(content)) return null;
+    const parts = [];
+    for (const blk of content) {
+      if (blk && blk.type === 'text' && typeof blk.text === 'string' && blk.text.trim()) {
+        parts.push(blk.text);
       }
     }
-  } catch {}
-  return out;
+    if (parts.length === 0) return null;
+    return { role: 'assistant', text: parts.join('\n\n'), timestamp: ts };
+  }
+  if (d.type === 'user' && !d.isMeta) {
+    const msg = d.message;
+    if (!msg || msg.role !== 'user') return null;
+    if (typeof msg.content !== 'string') return null;
+    const t = msg.content;
+    if (SYS_TAG_RE.test(t)) return null;
+    if (!t.trim()) return null;
+    return { role: 'user', text: t, timestamp: ts };
+  }
+  return null;
 }
 
-// User + assistant turn count, matching extractMessages()'s filter so the
-// number on the metadata row equals the rendered reader transcript length.
+function extractMessages(filePath, agent) {
+  const e = _readMessagesIncremental(filePath, agent);
+  return e ? e.acc.result() : [];
+}
+
+// User + assistant turn count — the length of extractMessages(), so the number
+// on the metadata row equals the rendered reader transcript length.
 function extractMessageCount(filePath, agent) {
-  const lines = _readLinesCached(filePath);
-  if (!lines) return 0;
-  if (agent === 'kiro') return _extractKiroMessages(lines).length;
-  if (agent === 'codex') return _extractCodexMessages(lines).length;
-  if (agent === 'grok') return _extractGrokMessages(lines).length;
-  if (agent === 'gjc') return _extractGjcMessages(lines).length;
-  if (agent === 'chief') return _extractChiefMessages(lines).length;
-  let n = 0;
-  try {
-    for (const d of lines) {
-      if (d.isSidechain) continue;
-      if (d.type === 'assistant') {
-        const c = d.message && d.message.content;
-        if (Array.isArray(c) && c.some(blk => blk && blk.type === 'text' && typeof blk.text === 'string' && blk.text.trim())) {
-          n++;
-        }
-      } else if (d.type === 'user' && !d.isMeta) {
-        const msg = d.message;
-        if (!msg || msg.role !== 'user') continue;
-        if (typeof msg.content !== 'string') continue;
-        if (SYS_TAG_RE.test(msg.content)) continue;
-        if (!msg.content.trim()) continue;
-        n++;
-      }
-    }
-  } catch {}
-  return n;
+  const e = _readMessagesIncremental(filePath, agent);
+  return e ? e.acc.result().length : 0;
 }
 
 module.exports = {
