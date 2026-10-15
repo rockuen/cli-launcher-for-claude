@@ -320,8 +320,8 @@ function routeWebviewMessage(msg, ctx) {
       // cwd. Without this, fs.statSync uses the extension host's cwd and
       // almost always returns ENOENT. handleOpenFile / handleOpenFolder both
       // honor fileAssociations once we hand them an absolute path, so a `.md`
-      // resolved this way still routes to Obsidian (or whatever the user
-      // configured) instead of the IDE.
+      // resolved this way still routes to NoteWise / Obsidian (or whatever the
+      // user configured) instead of the plain text editor.
       // Preserve the pre-absolutize fragment so the fallback chain (incl. the
       // OS file index) can search by basename when the cwd-resolved path misses.
       const fragment = p;

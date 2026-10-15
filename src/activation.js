@@ -36,6 +36,7 @@ const { promptAndSetupTelegramChannel, disableTelegramChannel } = require('./han
 const { listAgents } = require('./agents/registry');
 const { copySessionLinkFromTreeItem, copySessionLinkFromPanel } = require('./handlers/copySessionLink');
 const { registerSessionUriHandler } = require('./uri/sessionUriHandler');
+const { migrateFileAssociationsSetting } = require('./handlers/openFile');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
@@ -45,6 +46,7 @@ function activate(context) {
 
   // Migrate legacy workspaceState data to JSON file
   migrateFromWorkspaceState(context);
+  migrateFileAssociationsSetting();
 
   state.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   state.statusBar.command = 'claudeCodeLauncher.open';

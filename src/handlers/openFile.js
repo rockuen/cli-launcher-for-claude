@@ -1,6 +1,8 @@
 // @module handlers/openFile — opens a file via OS default app or IDE editor.
 // Handles partial-path recovery (cwd/ancestors/home/roots) and
-// honors fileAssociations setting (obsidian/excel/browser/system/editor/auto).
+// honors fileAssociations setting (obsidian/excel/browser/system/editor/
+// notewise/auto). `.md` on 'auto' opens NoteWise when installed, otherwise the
+// IDE's default editor — see lib/openMethod.
 //
 // Windows quirk: vscode.env.openExternal silently fails for file:// URIs in
 // some Electron hosts (Antigravity). We use `cmd /c start` with verbatim args
@@ -19,6 +21,7 @@ const fs = require('fs');
 const { t } = require('../i18n');
 const { expandBraces } = require('../util/braceExpand');
 const fileLocator = require('../lib/fileLocator');
+const { resolveOpenMethod, migrateFrozenFileAssociations, NOTEWISE_EXTENSION_ID, NOTEWISE_VIEW_TYPE } = require('../lib/openMethod');
 
 // Resolve a possibly-partial path to an existing absolute path.
 // Tries (in order): absolute, cwd+frag, walk up cwd ancestors, homedir, platform roots.
@@ -179,7 +182,9 @@ async function handleOpenFile(filePath, line, entry) {
   const config = vscode.workspace.getConfiguration('claudeCodeLauncher');
   const fileAssoc = config.get('fileAssociations', {});
   const ext = path.extname(absPath).toLowerCase();
-  const method = fileAssoc[ext] || 'auto';
+  const method = resolveOpenMethod(ext, fileAssoc, {
+    notewiseInstalled: !!vscode.extensions.getExtension(NOTEWISE_EXTENSION_ID),
+  });
   const nativePath = absPath.replace(/\//g, path.sep);
 
   const shellOpen = () => {
@@ -216,7 +221,7 @@ async function handleOpenFile(filePath, line, entry) {
     }
   };
 
-  if (method === 'obsidian' || (method === 'auto' && ext === '.md')) {
+  if (method === 'obsidian') {
     const wsFolder = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath?.replace(/\\/g, '/');
     const vaultRoot = wsFolder ? wsFolder + '/' : '';
     const vaultName = wsFolder ? path.basename(wsFolder) : '';
@@ -243,7 +248,13 @@ async function handleOpenFile(filePath, line, entry) {
   } else if (method === 'notewise') {
     // Open in the NoteWise Markdown Editor custom editor (rockuen.notewise-editor).
     const fileUri = vscode.Uri.file(nativePath);
-    vscode.commands.executeCommand('vscode.openWith', fileUri, 'notewise.editor');
+    vscode.commands.executeCommand('vscode.openWith', fileUri, NOTEWISE_VIEW_TYPE).then(undefined, warnOpenFailed);
+  } else if (method === 'default') {
+    // The IDE's own default editor for this file type (honors
+    // workbench.editorAssociations), unlike 'editor' which forces text.
+    const fileUri = vscode.Uri.file(nativePath);
+    const options = line ? { selection: new vscode.Range(line - 1, 0, line - 1, 0) } : {};
+    vscode.commands.executeCommand('vscode.open', fileUri, options).then(undefined, warnOpenFailed);
   } else if (method !== 'auto') {
     if (process.platform === 'darwin') {
       openNative(method);
@@ -264,4 +275,22 @@ async function handleOpenFile(filePath, line, entry) {
   }
 }
 
-module.exports = { handleOpenFile, resolvePathFragment };
+function warnOpenFailed(e) {
+  vscode.window.showWarningMessage('Open file failed: ' + (e && e.message ? e.message : String(e)));
+}
+
+// v3.25.0: drop a fileAssociations map the pre-3.25 settings panel froze into
+// Global settings, so `.md` follows the new 'auto' default (lib/openMethod).
+function migrateFileAssociationsSetting() {
+  try {
+    const config = vscode.workspace.getConfiguration('claudeCodeLauncher');
+    const info = config.inspect('fileAssociations');
+    if (!info) return;
+    const next = migrateFrozenFileAssociations(info.globalValue, info.defaultValue);
+    if (!next) return;
+    const value = Object.keys(next).length ? next : undefined;
+    config.update('fileAssociations', value, vscode.ConfigurationTarget.Global).then(undefined, () => {});
+  } catch (_) {}
+}
+
+module.exports = { handleOpenFile, resolvePathFragment, migrateFileAssociationsSetting };

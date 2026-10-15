@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.25.0] - 2026-10-15
+
+Markdown links open in NoteWise when it's installed, and a fresh sidebar shows only Sessions.
+
+### Changed
+- **`.md` file links default to `auto` instead of Obsidian.** On `auto`, a `.md`/`.markdown` link opens in the NoteWise Markdown Editor whenever that extension (`rockuen.notewise-editor`) is installed and enabled, even if `workbench.editorAssociations` maps `*.md` elsewhere. Without NoteWise it opens in the IDE's default editor for the file (`vscode.open`, which does follow `workbench.editorAssociations`). Obsidian is still available as an explicit choice.
+- **New `default` method ("IDE Default" in Settings → File Associations)**: the IDE's default editor for the file type, where `editor` always opens the text editor.
+- **An explicit `notewise` association no longer fails when NoteWise is missing.** It falls back to the IDE's default editor instead of calling `vscode.openWith` on a view type nobody registered, and a failed open now shows a warning instead of an unhandled rejection.
+- **Quick Actions and CCG start hidden on first install.** Both views declare `"visibility": "hidden"`, so a new install shows only the Sessions view; either can be turned back on from the view container's `⋯` menu. Both session view layouts carry new session and settings in their title bar (the split layout's Claude Sessions view gains the settings gear). Existing installs keep their current layout: VS Code saves a shown/hidden flag per view, and a saved flag wins over the initial state.
+
+### Fixed
+- **The settings panel froze every File Associations default into `settings.json`.** VS Code merges an object setting with its default, but the panel saved the whole merged map on every add or delete. Anyone who ever edited the list kept the defaults of that day for good, so a later default change (like `.md` above) never reached them, and deleting a default entry did nothing because the merge brought it back. The panel now stores only entries that differ from the defaults, and a deleted default as `null`.
+- **One-time migration of a frozen map.** On activation, a Global `fileAssociations` that holds every pre-3.25 default key (as the old panel wrote it) with `.md` still `"obsidian"` is reduced to the entries that differ from today's defaults, so `.md` follows the new `auto` while the user's own additions and changes stay. A map missing any of those keys, a hand-written `{ ".md": "obsidian" }`, or one whose `.md` is already something else is left as it is.
+- **The panel no longer copies workspace-level File Associations into user settings.** It listed the merged value (default + user + workspace) and saved it to Global; it now lists and saves default + Global only.
+
+### Tests
+- 18 cases in `openMethod.test.ts`: `auto` `.md` with and without NoteWise, a missing or `null` entry behaving as `auto`, `.markdown`, explicit choices kept, the `notewise` fallback, non-markdown extensions untouched; override-only storage (changed, added and deleted entries); the migration and the maps it must not touch; the legacy snapshot differing from today's defaults only in `.md`; the package.json defaults (`.md` = `auto`, both views hidden, both session layouts keeping new session + settings); and the real `openFile.js` run against a stub `vscode` for each route, the failure warning and the migration write. Full suite passes (622 Node tests, 64 vitest).
+
 ## [3.24.1] - 2026-10-08
 
 Big sessions no longer stall the terminals while a reader is open.

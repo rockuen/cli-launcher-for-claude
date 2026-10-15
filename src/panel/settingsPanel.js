@@ -17,6 +17,7 @@
 const vscode = require('vscode');
 const { listAgents } = require('../agents/registry');
 const { t } = require('../i18n');
+const { visibleFileAssociations, fileAssociationOverrides } = require('../lib/openMethod');
 
 // Module-scoped single-instance cache.
 let panel = null;
@@ -341,6 +342,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
         <h2>File Associations</h2>
         <div class="field-desc" style="margin-bottom:14px;max-width:560px;">
           Map a file extension to the method used to open it from the terminal.
+          <b>Auto</b> on <code>.md</code>/<code>.markdown</code> opens the NoteWise Editor when it's installed, otherwise the IDE's default editor.
         </div>
         <div class="g-list" id="set-fileassoc-list"></div>
         <div class="g-add-row">
@@ -351,6 +353,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
             <option value="browser">Browser</option>
             <option value="obsidian">Obsidian</option>
             <option value="editor">IDE Editor</option>
+            <option value="default">IDE Default</option>
             <option value="notewise">NoteWise Editor</option>
             <option value="auto">Auto</option>
           </select>
@@ -1010,7 +1013,7 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     }
 
     // ---- File Associations ----
-    const FA_LABELS = { excel: 'Excel', system: 'System Default', browser: 'Browser', obsidian: 'Obsidian', editor: 'IDE Editor', notewise: 'NoteWise Editor', auto: 'Auto' };
+    const FA_LABELS = { excel: 'Excel', system: 'System Default', browser: 'Browser', obsidian: 'Obsidian', editor: 'IDE Editor', default: 'IDE Default', notewise: 'NoteWise Editor', auto: 'Auto' };
     let localFileAssoc = Object.assign({}, GLOBALS.fileAssociations || {});
     const faListEl = document.getElementById('set-fileassoc-list');
     function renderFaList() {
@@ -1094,7 +1097,13 @@ function openGlobalSettings(context) {
     repoSyncEnabled: cfg.get('repoSync.enabled', false),
     repoSyncPath: cfg.get('repoSync.path', ''),
     customSlashCommands: cfg.get('customSlashCommands', []),
-    fileAssociations: cfg.get('fileAssociations', {}),
+    // Default + Global only: the panel writes Global, so a workspace entry
+    // must not be shown here and then copied into user settings.
+    fileAssociations: visibleFileAssociations(Object.assign(
+      {},
+      (cfg.inspect('fileAssociations') || {}).defaultValue,
+      (cfg.inspect('fileAssociations') || {}).globalValue,
+    )),
     sessionSaveDisabledAgents: cfg.get('sessionSaveDisabledAgents', []),
     splitLayoutDefaultAgents: cfg.get('splitLayoutDefaultAgents', []),
     splitLayoutDefaultGlobal: cfg.get('splitLayoutDefault', false),
@@ -1147,9 +1156,16 @@ function openGlobalSettings(context) {
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'set-global') {
       if (typeof msg.key === 'string' && ALLOWED_GLOBAL_KEYS.has(msg.key)) {
-        vscode.workspace
-          .getConfiguration('claudeCodeLauncher')
-          .update(msg.key, msg.value, vscode.ConfigurationTarget.Global);
+        const conf = vscode.workspace.getConfiguration('claudeCodeLauncher');
+        let value = msg.value;
+        if (msg.key === 'fileAssociations') {
+          // Store only overrides so later default changes still reach the user
+          // (VS Code merges this object with its default) — see lib/openMethod.
+          const info = conf.inspect('fileAssociations');
+          value = fileAssociationOverrides(value, info && info.defaultValue);
+          if (!Object.keys(value).length) value = undefined;
+        }
+        conf.update(msg.key, value, vscode.ConfigurationTarget.Global);
       }
       return;
     }

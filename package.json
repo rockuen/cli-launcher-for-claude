@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.24.1",
+  "version": "3.25.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -389,7 +389,8 @@
       "claude-code-launcher": [
         {
           "id": "claudeCodeLauncher.quickActions",
-          "name": "Quick Actions"
+          "name": "Quick Actions",
+          "visibility": "hidden"
         },
         {
           "id": "claudeCodeLauncher.unifiedSessions",
@@ -434,7 +435,8 @@
         {
           "id": "claudeCodeLauncher.ccgPanel",
           "name": "CCG",
-          "when": "claudeCodeLauncher.omcModeActive"
+          "when": "claudeCodeLauncher.omcModeActive",
+          "visibility": "hidden"
         }
       ]
     },
@@ -1023,6 +1025,11 @@
           "when": "view == claudeCodeLauncher.sessionList"
         },
         {
+          "command": "claudeCodeLauncher.openSettings",
+          "group": "navigation@3",
+          "when": "view == claudeCodeLauncher.sessionList"
+        },
+        {
           "command": "claudeCodeLauncher.newKiro",
           "group": "navigation@1",
           "when": "view == claudeCodeLauncher.kiroSessions"
@@ -1335,13 +1342,13 @@
             ".pdf": "system",
             ".html": "browser",
             ".htm": "browser",
-            ".md": "obsidian",
+            ".md": "auto",
             ".png": "system",
             ".jpg": "system",
             ".gif": "system",
             ".svg": "system"
           },
-          "description": "File extension → open method. Values: 'editor' (IDE), 'system' (OS default), 'obsidian', 'notewise' (NoteWise Markdown Editor), 'browser', 'excel', or full app path."
+          "description": "File extension → open method. Values: 'editor' (IDE text editor), 'default' (the IDE's default editor for the file type), 'system' (OS default), 'obsidian', 'notewise' (NoteWise Markdown Editor), 'browser', 'excel', 'auto', or full app path. 'auto' on .md/.markdown opens the NoteWise Markdown Editor when it's installed, otherwise the IDE's default editor for the file."
         },
         "claudeCodeLauncher.splitLayoutDefault": {
           "type": "boolean",
