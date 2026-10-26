@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.27.0",
+  "version": "3.28.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1406,6 +1406,11 @@
           "type": "boolean",
           "default": true,
           "description": "Give agents running in launcher tabs the `cli-launcher` command. The launcher puts it on the PATH of every tab it starts (Claude Code, Codex, gjc, Kiro, Grok, Chief), so an agent can run `cli-launcher link` to get a resume link for its own session (e.g. to attach to a Burst todo or a note), `cli-launcher rename <title>` to name its tab, `cli-launcher tabs` to list open tabs with their links, and `cli-launcher open <link>` to ask you to resume a session (you confirm in a notification). It talks to this window over a local pipe that only processes started from its tabs can use. Not available in tmux/psmux (multiplexer) tabs. Takes effect after a window reload."
+        },
+        "claudeCodeLauncher.agentCli.claudeHooks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Let Claude Code tell the launcher itself when a turn is done or it needs you. New Claude tabs start with `--settings` pointing at a file that adds a Stop hook and a Notification hook running `cli-launcher notify --from-hook` (your own settings and hooks are untouched). Once a tab hears from those hooks, it stops guessing the end of a turn from quiet terminal output, so a long tool call or a slow reply no longer raises a false \"done\" notification. Off = the guessed notifications only. Needs claudeCodeLauncher.agentCli.enabled; not in tmux/psmux tabs. Applies to Claude tabs started after the change."
         },
         "claudeCodeLauncher.readerMessageCap": {
           "type": "integer",

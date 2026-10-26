@@ -37,8 +37,9 @@ const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
 const { readAgentTurnState } = require('../lib/agentTurnState');
+const { planAgentNotify, notifyMessage, pendingAfterOutput, outputRunStart, isSustainedRun, isDuplicate, endsTurn, isStaleBusy, PROMPT_KINDS } = require('../lib/agentNotify');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
-const { applyAgentCliEnv } = require('../handlers/agentCli');
+const { applyAgentCliEnv, claudeHookArgs } = require('../handlers/agentCli');
 const { claudeChannelsArgs } = require('../lib/claudeChannels');
 const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
 
@@ -50,6 +51,9 @@ const IDLE_DELAY_MS = 3000;
 // session killed mid-turn still settles instead of pulsing 'running' forever.
 const TURN_GATE_RECHECK_MS = 4000;
 const TURN_GATE_MAX_STALE_MS = 10 * 60 * 1000;
+// v3.28.0: in a tab that hears from its hooks, output counts as "still
+// working" only if the last chunk is this recent.
+const HOOK_OUTPUT_LIVE_MS = 600;
 
 // NOTE (selector removal): the inline y/n prompt-bar and numbered choice-bar
 // — plus their byte-stream detectors (detectBinaryPrompt / detectChoicePrompt)
@@ -781,7 +785,10 @@ function createPanel(context, extensionPath, session, opts) {
     const claudeArgs = session?.sessionId
       ? ['--resume', session.sessionId]
       : ['--session-id', sessionId];
-    args = [...resolved.args, ...claudeArgs, ...claudeEffortArgs(config), ...claudeChannelsArgs(config), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
+    args = [...resolved.args, ...claudeArgs, ...claudeEffortArgs(config), ...claudeChannelsArgs(config), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : []),
+      // v3.28.0: Stop / Notification hooks → `cli-launcher notify` (not in
+      // tmux/psmux tabs, which get no cli-launcher).
+      ...claudeHookArgs({ enabled: backend !== 'multiplexer' })];
   }
 
   // Multiplexer wrap: keep the webview UI, but spawn an attached tmux/psmux
@@ -1047,11 +1054,35 @@ function createPanel(context, extensionPath, session, opts) {
     const grokTurnComplete = entry.agent === 'grok'
       && readAgentTurnState('grok', resolveTurnStatePath()).state === 'complete';
 
+    // v3.28.0: hook tabs. Output after a pending Stop that keeps flowing means
+    // another Stop hook blocked the stop — drop it. An agent-set flag is
+    // cleared by focus or a new turn (UserPromptSubmit), not by Claude's
+    // end-of-turn redraw.
+    const outAt = Date.now();
+    entry._outputRunStart = outputRunStart(entry._outputRunStart, entry._lastOutputAt, outAt);
+    entry._lastOutputAt = outAt;
+    if (entry._pendingDone) entry._pendingDone = pendingAfterOutput(entry._pendingDone, outAt);
+    // Real work (an unbroken 2 s of output) outranks the agent's flag: the
+    // user answered a prompt from another window, or a new turn's
+    // UserPromptSubmit was lost. Claude's short redraws never get here.
+    // It is also a new stretch of work, whose end has not been announced yet.
+    if (entry._hookSignals && isSustainedRun(entry._outputRunStart, outAt)) {
+      entry._agentFlagged = false;
+      entry._turnAnnounced = false;
+    }
+    const hookFlagged = entry._hookSignals && entry._agentFlagged && entry.state === 'needs-attention';
+
     // Only transition to 'running' if output persists for 3s+
-    if (!grokTurnComplete && entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+    if (!grokTurnComplete && !hookFlagged && entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
       if (!runningDelayTimer) {
         runningDelayTimer = setTimeout(() => {
           if (entry._disposed) { runningDelayTimer = null; return; }
+          // Hook tabs: only output that is still coming counts (the timer
+          // otherwise fires 3 s after a single redraw).
+          if (entry._hookSignals && ((entry._agentFlagged && entry.state === 'needs-attention') || Date.now() - (entry._lastOutputAt || 0) > HOOK_OUTPUT_LIVE_MS)) {
+            runningDelayTimer = null;
+            return;
+          }
           if (entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
             entry.state = 'running';
             entry.runningStartedAt = Date.now();
@@ -1069,6 +1100,8 @@ function createPanel(context, extensionPath, session, opts) {
     function onOutputSettled() {
       if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
       if (entry._disposed || !entry.pty || entry.state === 'done' || entry.state === 'error') return;
+      // v3.28.0: the quiet after a Stop confirms it (see entry._agentNotify).
+      if (entry._pendingDone) { settleHookTab(); return; }
 
       // Idle-gated interactive-prompt notification. Output has settled; if the
       // screen shows a prompt waiting on the user (a /model-style menu, a
@@ -1089,6 +1122,9 @@ function createPanel(context, extensionPath, session, opts) {
         // re-asserting here corrects that instead of leaving the attention lost.
         if (entry.state !== 'needs-attention') {
           entry.state = 'needs-attention';
+          // The detector's flag, not the agent's: Claude's output after the
+          // answer may move the tab on (v3.28.0, hookFlagged).
+          entry._agentFlagged = false;
           setTabIcon(panel, 'done', extensionPath);
           try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
           updateStatusBar();
@@ -1096,8 +1132,14 @@ function createPanel(context, extensionPath, session, opts) {
         }
         // Desktop notification only for a genuinely NEW prompt (dedup on the
         // marker) so navigation redraws don't spam. Fires on background tabs too.
+        // v3.28.0: skipped when the agent's own hook just announced it (Claude
+        // Code's permission Notification) — one toast per prompt, not two.
+        const agentJustSaid = isDuplicate(entry._lastHookPromptAt, Date.now());
         if (isNewPrompt) {
-          showDesktopNotification(entry.title);
+          if (!agentJustSaid) {
+            showDesktopNotification(entry.title);
+            entry._lastPromptToastAt = Date.now();
+          }
           if (!panel.active) {
             try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
             startTitleBlink();
@@ -1114,11 +1156,28 @@ function createPanel(context, extensionPath, session, opts) {
         // A prompt just cleared (answered / dismissed) → restore the terminal
         // pane to the user's ratio (no-op if it was never auto-expanded).
         try { panel.webview.postMessage({ type: 'prompt-terminal-restore' }); } catch (_) {}
+        // …and the next prompt is a new one for the toast dedup too.
+        entry._lastPromptToastAt = 0;
+        entry._lastHookPromptAt = 0;
       }
       entry._promptSig = null; // no prompt on screen → let the next one re-notify
 
       // Brief outputs (< 3s, never reached 'running') stay as-is
       if (entry.state !== 'running') return;
+
+      // v3.28.0: this tab's agent reports its own turn end (Stop hook →
+      // entry._agentNotify). Quiet output is then a long tool call, a slow
+      // reply — the guess's false alarms — or an Esc interrupt, which fires no
+      // Stop. So quiet only turns the icon idle, silently; needs-attention and
+      // the toast come from the agent alone.
+      if (entry._hookSignals) {
+        entry.state = 'waiting';
+        setIdleIcon(panel, entry, extensionPath);
+        try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+        updateStatusBar();
+        state.refreshSessionTrees();
+        return;
+      }
 
       // v3.20.9: transcript gate before announcing a finished turn. PTY silence
       // alone is not "done" for every agent — Kiro's TUI goes quiet while a
@@ -1143,6 +1202,8 @@ function createPanel(context, extensionPath, session, opts) {
         setTabIcon(panel, 'done', extensionPath);
         try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
         showDesktopNotification(entry.title);
+        // A Stop hook for the same turn end (a tab's first) must not toast again.
+        entry._lastGuessToastAt = Date.now();
         if (!panel.active) {
           try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
           startTitleBlink();
@@ -1178,6 +1239,121 @@ function createPanel(context, extensionPath, session, opts) {
       sendPtyChunkPaced(panel, payload, entry);
     }
   }
+
+  // v3.28.0: the agent's own signal (`cli-launcher notify`, or Claude Code's
+  // Stop / Notification hooks wired to it). Same tab state + toast as the
+  // guessed path below, but at the moment the agent says so. A hook signal
+  // also switches this tab off the guess (entry._hookSignals, onOutputSettled).
+  const alive = () => !!entry.pty && !['done', 'error', 'stuck'].includes(entry.state);
+  const applyAgentNotify = (ev) => {
+    const now = Date.now();
+    const plan = planAgentNotify(ev, {
+      state: entry.state,
+      alive: alive(),
+      announced: !!entry._turnAnnounced,
+      viewing: panel.active && !!(vscode.window.state && vscode.window.state.focused),
+    });
+    // Only a turn end announces the turn (flagged, toasted, or seen by the
+    // user): a permission prompt inside it does not, so Claude's 60 s idle
+    // reminder stays the fallback if the Stop is lost.
+    if (endsTurn(ev)) {
+      entry._turnAnnounced = true;
+      entry._lastTurnEndT = typeof ev.t === 'number' ? ev.t : now;
+    }
+    if (plan.attention) {
+      if (runningDelayTimer) { clearTimeout(runningDelayTimer); runningDelayTimer = null; }
+      if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
+      entry.state = 'needs-attention';
+      // Set by the agent (not the on-screen detector): survives Claude's
+      // redraws; cleared by focus or a new turn.
+      entry._agentFlagged = true;
+      setTabIcon(panel, 'done', extensionPath);
+      try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
+      updateStatusBar();
+      state.refreshSessionTrees();
+      if (!panel.active) {
+        try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+        startTitleBlink();
+      }
+    } else if (ev.event === 'done' && alive() && (entry.state === 'running' || entry.state === 'needs-attention')) {
+      // Done while the user watches the tab: settle the icon (including a flag
+      // the prompt detector left), no flag of our own.
+      entry._agentFlagged = false;
+      entry.state = 'waiting';
+      setIdleIcon(panel, entry, extensionPath);
+      try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+      updateStatusBar();
+    }
+    let toast = plan.toast;
+    // One toast per moment, whichever source spoke first: the on-screen prompt
+    // detector already toasted this permission prompt (it runs ~3 s after the
+    // prompt; Claude's permission Notification ~6 s), or the guess toasted this
+    // turn end before the tab first heard from its hooks.
+    if (toast && PROMPT_KINDS.has(ev.kind) && isDuplicate(entry._lastPromptToastAt, now)) toast = false;
+    if (toast && ev.event === 'done' && isDuplicate(entry._lastGuessToastAt, now)) toast = false;
+    if (PROMPT_KINDS.has(ev.kind)) entry._lastHookPromptAt = now;
+    if (toast) showDesktopNotification(entry.title, notifyMessage(ev));
+    return { attention: plan.attention, toast };
+  };
+  // A Stop is confirmed at the next quiet moment (onOutputSettled, or this
+  // timer when no output follows it); output that keeps flowing cancels it
+  // (flushPending) — another Stop hook blocked the stop and Claude went on.
+  const settleHookTab = () => {
+    const pending = entry._pendingDone;
+    if (!pending || entry._disposed) return;
+    entry._pendingDone = null;
+    applyAgentNotify(pending.ev);
+  };
+  entry._settleHookTab = settleHookTab;
+  // After a new turn started: if no output keeps the tab busy (an Esc right
+  // away fires no Stop), settle the icon instead of leaving it running.
+  const settleIfQuiet = () => {
+    if (entry._disposed || !alive() || entry.state !== 'running' || entry._pendingDone) return;
+    const quietFor = Date.now() - (entry._lastOutputAt || 0);
+    if (quietFor < IDLE_DELAY_MS) {
+      entry.idleTimer = setTimeout(settleIfQuiet, IDLE_DELAY_MS - quietFor);
+      return;
+    }
+    entry.state = 'waiting';
+    setIdleIcon(panel, entry, extensionPath);
+    try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
+    updateStatusBar();
+  };
+  entry._agentNotify = (ev) => {
+    if (entry._disposed) return { attention: false, toast: false };
+    if (ev.source === 'hook') entry._hookSignals = true;
+    if (ev.event === 'busy') {
+      // Hooks are separate processes: a UserPromptSubmit started before a
+      // short turn's Stop / StopFailure may arrive after it. That busy is old.
+      const pendingT = entry._pendingDone && entry._pendingDone.ev && entry._pendingDone.ev.t;
+      if (isStaleBusy(ev.t, entry._lastTurnEndT) || isStaleBusy(ev.t, pendingT)) {
+        return { attention: false, toast: false, stale: true };
+      }
+      // A new turn: forget the last one's announcement and flag.
+      entry._pendingDone = null;
+      entry._turnAnnounced = false;
+      entry._agentFlagged = false;
+      entry._lastPromptToastAt = 0;
+      entry._lastHookPromptAt = 0;
+      if (alive() && entry.state !== 'running') {
+        entry.state = 'running';
+        entry.runningStartedAt = Date.now();
+        setTabIcon(panel, 'running', extensionPath);
+        try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
+        updateStatusBar();
+      }
+      if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      entry.idleTimer = setTimeout(settleIfQuiet, IDLE_DELAY_MS);
+      return { attention: false, toast: false };
+    }
+    if (ev.event === 'done' && ev.source === 'hook' && alive()) {
+      entry._pendingDone = { ev, at: Date.now() };
+      if (entry.idleTimer) clearTimeout(entry.idleTimer);
+      entry.idleTimer = setTimeout(settleHookTab, IDLE_DELAY_MS);
+      return { attention: false, toast: false, pending: true };
+    }
+    return applyAgentNotify(ev);
+  };
 
   entry._ptyDataSub = ptyProcess.onData(data => {
     if (entry._disposed || entry.pty !== initialPty) return; // disposed/stale handler guard
@@ -1225,6 +1401,7 @@ function createPanel(context, extensionPath, session, opts) {
       state.activeTabId = tabId;
     }
     if (e.webviewPanel.active && entry.state === 'needs-attention') {
+      entry._agentFlagged = false;
       entry.state = 'waiting';
       setIdleIcon(panel, entry, extensionPath);
       try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}

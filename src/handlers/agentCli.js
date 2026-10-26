@@ -19,6 +19,7 @@ const {
 } = require('../lib/agentCli');
 const { getSessionJsonlPath, extractAiTitle } = require('../lib/sessionJsonl');
 const { notificationText } = require('../lib/sessionLink');
+const { HOOK_COMMAND, claudeHookSettings } = require('../lib/agentNotify');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { saveSessions, isDefaultTabTitle } = require('../store/sessionManager');
 
@@ -88,6 +89,48 @@ function requestOpen(context, link, caller) {
   return 'confirm';
 }
 
+// v3.28.0: `cli-launcher notify` → the tab (createPanel entry._agentNotify:
+// tab state + toast). A tab without the hook-up (none expected) still toasts.
+function notifyEntry(entry, ev) {
+  if (typeof entry._agentNotify === 'function') return entry._agentNotify(ev);
+  const { showDesktopNotification } = require('./desktopNotification');
+  const { notifyMessage } = require('../lib/agentNotify');
+  showDesktopNotification(entry.title, notifyMessage(ev));
+  return { attention: false, toast: true };
+}
+
+// The settings file a Claude tab gets with `--settings`: Stop / Notification
+// hooks that run `cli-launcher notify --from-hook`. Written once per
+// activation into this extension's global storage (no quoting of JSON on a
+// command line, which a `claude.cmd` shim would re-parse through cmd).
+function claudeHookSettingsFile(context) {
+  const dir = context.globalStorageUri ? context.globalStorageUri.fsPath : context.globalStoragePath;
+  if (!dir) return null;
+  const file = path.join(dir, 'claude-agent-hooks.json');
+  const content = JSON.stringify(claudeHookSettings(HOOK_COMMAND), null, 2);
+  try {
+    // Written only when missing or different: Claude processes in other
+    // windows may be reading it, and a deleted file is put back.
+    let current = null;
+    try { current = fs.readFileSync(file, 'utf8'); } catch (_) {}
+    if (current !== content) {
+      fs.mkdirSync(dir, { recursive: true });
+      const tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, content);
+      try {
+        fs.renameSync(tmp, file);
+      } catch (e) {
+        try { fs.unlinkSync(tmp); } catch (_) {}
+        throw e;
+      }
+    }
+    return file;
+  } catch (e) {
+    console.error('[agent-cli] could not write the Claude hook settings (non-fatal):', (e && e.message) || e);
+    return null;
+  }
+}
+
 function ensureExecutable(file) {
   if (process.platform === 'win32') return;
   try {
@@ -121,6 +164,7 @@ function startAgentCli(context) {
     titleFor,
     rename: renameEntry,
     openLink: (link, caller) => requestOpen(context, link, caller),
+    notify: notifyEntry,
   });
   const server = createAgentCliServer({ ipcPath, nonce, handlers });
 
@@ -133,6 +177,7 @@ function startAgentCli(context) {
     // The editor's own runtime: always present and recent, unlike a user Node.
     nodeRuntime: process.execPath,
     scheme,
+    context,
   };
   running = started;
   server.listen().catch((e) => {
@@ -162,7 +207,11 @@ function applyAgentCliEnv(env, tab) {
   if (!running || tab.enabled === false) return env;
   try {
     Object.assign(env, buildAgentCliEnv({
-      ...running,
+      ipcPath: running.ipcPath,
+      nonce: running.nonce,
+      binDir: running.binDir,
+      nodeRuntime: running.nodeRuntime,
+      scheme: running.scheme,
       tabId: tab.tabId,
       agent: tab.agent,
       cwd: tab.cwd,
@@ -173,4 +222,26 @@ function applyAgentCliEnv(env, tab) {
   return env;
 }
 
-module.exports = { startAgentCli, applyAgentCliEnv, _test: { titleFor, renameEntry } };
+/**
+ * Extra `claude` arguments that wire this tab's Stop / Notification hooks to
+ * `cli-launcher notify` (v3.28.0). Empty when the agent CLI is off, the tab
+ * gets no `cli-launcher` (tmux/psmux), or claudeCodeLauncher.agentCli.claudeHooks
+ * is off — the tab then keeps the guessed notifications.
+ * @param {{enabled?:boolean}} [tab]
+ */
+function claudeHookArgs(tab) {
+  if (!running || (tab && tab.enabled === false)) return [];
+  // VSCodroid: SELinux may refuse to execute bin/path/cli-launcher from the
+  // app's files dir — every hook would fail with a notice. Unverified, so off.
+  if (process.platform === 'android') return [];
+  const cfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
+  if (!cfg.get('agentCli.claudeHooks', true)) return [];
+  const file = claudeHookSettingsFile(running.context);
+  if (!file) return [];
+  // An npm-installed claude runs through cmd.exe, which re-parses & ^ % | < > !
+  // even inside the quoted path node-pty passes. Rare paths; keep guessing there.
+  if (process.platform === 'win32' && /[&^%|<>!"]/.test(file)) return [];
+  return ['--settings', file];
+}
+
+module.exports = { startAgentCli, applyAgentCliEnv, claudeHookArgs, _test: { titleFor, renameEntry, notifyEntry } };

@@ -24,6 +24,8 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { buildSessionLink, parseSessionLink, isValidSessionId, isKnownAgent, isSafeLinkCwd } = require('./sessionLink');
 
+const { NOTIFY_EVENTS: NOTIFY_EVENTS_SET } = require('./agentNotify');
+
 const PROTOCOL_VERSION = 1;
 const MAX_REQUEST_BYTES = 64 * 1024;
 const REQUEST_TIMEOUT_MS = 5000;
@@ -418,6 +420,24 @@ function createSessionOps(deps) {
         });
       }
       return out;
+    },
+
+    // v3.28.0: the agent says its turn is done / it needs the user. The glue
+    // drives the tab state and the desktop toast (lib/agentNotify).
+    notify(req) {
+      const args = req.args || {};
+      const event = NOTIFY_EVENTS_SET.has(args.event) ? args.event : 'attention';
+      const entry = findTab(req.tab);
+      if (typeof deps.notify !== 'function') throw new AgentCliError('unsupported', 'notify is not available');
+      const result = deps.notify(entry, {
+        event,
+        message: cleanTitle(args.message || ''),
+        kind: typeof args.kind === 'string' ? args.kind.slice(0, 40) : null,
+        source: args.source === 'hook' ? 'hook' : 'cli',
+        // When the hook process started — orders hooks that arrive out of order.
+        t: Number.isFinite(args.t) ? args.t : null,
+      }) || {};
+      return { tab: String(req.tab), event, attention: !!result.attention, toast: !!result.toast };
     },
 
     async open(req) {

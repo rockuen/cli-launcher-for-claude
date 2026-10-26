@@ -18,6 +18,7 @@ const {
   cleanTitle,
 } = require('../src/lib/agentCli');
 const { buildSessionLink, isValidSessionId } = require('../src/lib/sessionLink');
+const { NOTIFY_EVENTS, notifyFromHookInput } = require('../src/lib/agentNotify');
 
 const USAGE = `Usage: cli-launcher <command> [options]
 
@@ -32,12 +33,21 @@ Commands (run inside a CLI Launcher tab):
   open <link | session-id> [--agent <id>] [--cwd <dir>] | open --link-env
                       Ask to resume a session in the launcher (the user
                       confirms in the editor; an open tab is just focused).
+  notify [--event done|attention|info] [<message> | --message-env]
+                      Tell the user this tab is done (done) or needs them
+                      (attention, the default): the tab is flagged and a
+                      desktop notification shows <message>. info only shows
+                      the notification.
+  notify --from-hook  For agent hooks: reads the hook JSON from stdin (Claude
+                      Code Stop, StopFailure, Notification, UserPromptSubmit).
+                      Prints nothing, always exits 0.
   help                Show this help.
 
 Windows cmd / PowerShell: cmd re-parses arguments, so text containing
 & | < > ^ % must not go on the command line -- that includes every session
 link (it has & between its parameters). Put a title in CLI_LAUNCHER_TITLE and
-pass --title-env, a link in CLI_LAUNCHER_LINK and pass --link-env, e.g.:
+pass --title-env, a link in CLI_LAUNCHER_LINK and pass --link-env, a notify
+message in CLI_LAUNCHER_MESSAGE and pass --message-env, e.g.:
   $env:CLI_LAUNCHER_TITLE = 'R&D notes'; cli-launcher rename --title-env
   $env:CLI_LAUNCHER_LINK = '<link>'; cli-launcher open --link-env
 
@@ -45,6 +55,7 @@ Exit codes: 0 ok, 1 command failed, 2 usage error, 3 not inside a launcher tab.`
 
 const TITLE_ENV = 'CLI_LAUNCHER_TITLE';
 const LINK_ENV = 'CLI_LAUNCHER_LINK';
+const MESSAGE_ENV = 'CLI_LAUNCHER_MESSAGE';
 
 const EXIT_OK = 0;
 const EXIT_FAILED = 1;
@@ -233,6 +244,37 @@ async function cmdOpen(argv, env, io) {
   return EXIT_OK;
 }
 
+async function cmdNotify(argv, env, io) {
+  const { flags, positionals } = parseArgs(argv, ['event', 'kind']);
+  // Agents often try --help first; that must not notify anyone.
+  if (flags.help) {
+    io.out(USAGE);
+    return EXIT_OK;
+  }
+  if (flags['from-hook']) {
+    // Run by an agent hook. Whatever happens, stay silent and exit 0: a
+    // non-zero exit or output from a Stop hook can change what the agent does.
+    try {
+      const raw = io.readStdin ? await io.readStdin() : '';
+      let input = null;
+      try { input = JSON.parse(raw); } catch (_) {}
+      const ev = notifyFromHookInput(input);
+      // t: when this hook process started. Claude starts hooks in order, but
+      // each is its own process, so their notifications can arrive out of it.
+      if (ev) await call(env, 'notify', { ...ev, source: 'hook', t: Math.round(performance.timeOrigin) });
+    } catch (_) {}
+    return EXIT_OK;
+  }
+  const event = typeof flags.event === 'string' ? flags.event : 'attention';
+  // busy (a new turn) comes from hooks only.
+  if (!NOTIFY_EVENTS.has(event) || event === 'busy') throw new AgentCliError('usage', `--event must be done, attention or info (got ${event})`);
+  const message = flags['message-env'] ? String(env[MESSAGE_ENV] || '') : positionals.join(' ');
+  const result = await call(env, 'notify', { event, message, kind: typeof flags.kind === 'string' ? flags.kind : undefined });
+  if (flags.json) io.out(asciiJson(result));
+  else io.out(`Sent (${result.event}).`);
+  return EXIT_OK;
+}
+
 /**
  * @param {string[]} argv arguments after the command name
  * @param {Record<string,string|undefined>} env
@@ -248,6 +290,7 @@ async function main(argv, env, io) {
       case 'rename': return await cmdRename(rest, env, io);
       case 'tabs': return await cmdTabs(rest, env, io);
       case 'open': return await cmdOpen(rest, env, io);
+      case 'notify': return await cmdNotify(rest, env, io);
       case '--version':
       case 'version':
         io.out(version());
@@ -273,11 +316,28 @@ async function main(argv, env, io) {
 
 module.exports = { main, parseArgs, asciiJson, resolveCwd, USAGE };
 
+// stdin for `notify --from-hook` (the hook JSON). A terminal or an idle pipe
+// must not hang the command: give up after a short wait.
+function readStdin(timeoutMs) {
+  return new Promise((resolve) => {
+    if (process.stdin.isTTY) { resolve(''); return; }
+    let data = '';
+    const timer = setTimeout(() => resolve(data), timeoutMs);
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => { data += chunk; });
+    process.stdin.on('end', () => { clearTimeout(timer); resolve(data); });
+    process.stdin.on('error', () => { clearTimeout(timer); resolve(data); });
+  });
+}
+
 if (require.main === module) {
   main(process.argv.slice(2), process.env, {
     out: (s) => process.stdout.write(s + '\n'),
     err: (s) => process.stderr.write(s + '\n'),
+    readStdin: () => readStdin(3000),
   }).then((code) => {
     process.exitCode = code;
+    // A stdin that never closed must not keep the process alive.
+    try { process.stdin.destroy(); } catch (_) {}
   });
 }

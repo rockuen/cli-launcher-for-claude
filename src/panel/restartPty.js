@@ -15,7 +15,8 @@ const { saveSessions } = require('../store/sessionManager');
 const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
-const { applyAgentCliEnv } = require('../handlers/agentCli');
+const { applyAgentCliEnv, claudeHookArgs } = require('../handlers/agentCli');
+const { pendingAfterOutput, outputRunStart, isSustainedRun } = require('../lib/agentNotify');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 
 const IDLE_DELAY_MS = 3000;
@@ -181,7 +182,7 @@ function restartPty(entry, panel, context, extensionPath) {
     shell = resolved.shell;
     const claudeCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
     const bypassPermissions = claudeCfg.get('claude.bypassPermissions', false);
-    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...claudeEffortArgs(claudeCfg), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : [])];
+    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...claudeEffortArgs(claudeCfg), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : []), ...claudeHookArgs()];
   }
 
   // Kill old PTY before spawning new one to prevent orphaned processes.
@@ -199,6 +200,14 @@ function restartPty(entry, panel, context, extensionPath) {
   entry._promptSig = null;  // footer satisfy the idle prompt-affordance check
   if (entry.idleTimer) { clearTimeout(entry.idleTimer); entry.idleTimer = null; }
   entry._disposed = false;
+  // v3.28.0: the new process proves its hooks afresh (the setting may be off
+  // now, or the agent CLI down) — until then the tab guesses again.
+  entry._hookSignals = false;
+  entry._pendingDone = null;
+  entry._turnAnnounced = false;
+  entry._agentFlagged = false;
+  entry._lastTurnEndT = null;
+  entry._lastHookPromptAt = 0;
 
   try {
     const sessionEnv = { ...prepareProjectSessionEnvironment(agent, entry.cwd, process.env), ...extraEnv };
@@ -246,7 +255,19 @@ function restartPty(entry, panel, context, extensionPath) {
         } catch (_) {}
       }
 
-      if (!grokTurnComplete && entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
+      // v3.28.0: hook tabs (see createPanel): sustained output cancels a
+      // pending Stop; an agent-set flag survives Claude's redraws.
+      const outAt = Date.now();
+      entry._outputRunStart = outputRunStart(entry._outputRunStart, entry._lastOutputAt, outAt);
+      entry._lastOutputAt = outAt;
+      if (entry._pendingDone) entry._pendingDone = pendingAfterOutput(entry._pendingDone, outAt);
+      if (entry._hookSignals && isSustainedRun(entry._outputRunStart, outAt)) {
+        entry._agentFlagged = false;
+        entry._turnAnnounced = false;
+      }
+      const hookFlagged = entry._hookSignals && entry._agentFlagged && entry.state === 'needs-attention';
+
+      if (!grokTurnComplete && !hookFlagged && entry.state !== 'running' && entry.state !== 'done' && entry.state !== 'error') {
         entry.state = 'running';
         setTabIcon(panel, 'running', extensionPath);
         try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
@@ -279,7 +300,13 @@ function restartPty(entry, panel, context, extensionPath) {
         entry.idleTimer = setTimeout(() => {
           if (entry._disposed) return;
           if (!entry.pty || entry.state === 'done' || entry.state === 'error') return;
-          if (panel.active) {
+          // v3.28.0: the quiet after a Stop confirms it (createPanel).
+          if (entry._pendingDone && entry._settleHookTab) { entry._settleHookTab(); return; }
+          // An agent-set flag stays until focus / a new turn.
+          if (entry._hookSignals && entry._agentFlagged && entry.state === 'needs-attention') return;
+          // Otherwise quiet only turns the icon idle in a hook tab; it never
+          // flags it (see createPanel onOutputSettled).
+          if (panel.active || entry._hookSignals) {
             entry.state = 'waiting';
             setIdleIcon(panel, entry, extensionPath);
             try { panel.webview.postMessage({ type: 'state', state: 'waiting' }); } catch (_) {}
