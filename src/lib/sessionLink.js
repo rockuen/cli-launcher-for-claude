@@ -31,6 +31,44 @@ function isKnownAgent(agent) {
 }
 
 /**
+ * Can a link's cwd be acted on? It must be a local absolute path: a drive path
+ * on Windows, a rooted path elsewhere. A UNC / network path (`\\host\share`,
+ * `//host/share`) is refused — merely stat()ing one sends the user's NTLM
+ * credentials to that host, and a link can come from anywhere. No cwd is fine
+ * (the receiving window resumes it itself).
+ */
+function isSafeLinkCwd(cwd, platform) {
+  if (cwd === null || cwd === undefined || cwd === '') return true;
+  if (typeof cwd !== 'string' || cwd.length > 1024) return false;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f]/.test(cwd)) return false;
+  if (/^[\\/]{2}/.test(cwd)) return false;
+  if ((platform || process.platform) === 'win32') return /^[A-Za-z]:[\\/]/.test(cwd);
+  return cwd.startsWith('/');
+}
+
+/**
+ * Link-supplied text made safe to show in a VS Code notification: those render
+ * `[text](target)` as a clickable link (command: targets included), and bidi
+ * controls can disguise a path. Brackets, control and bidi characters go, and
+ * long text is cut so it cannot push the rest of the message out of view.
+ */
+function notificationText(value, max) {
+  const limit = max || 120;
+  const text = String(value === null || value === undefined ? '' : value)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[[\]()\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]/g, '')
+    .trim();
+  return text.length > limit ? text.slice(0, limit - 1) + '…' : text;
+}
+
+// encodeURIComponent leaves ! ' ( ) * alone; a `)` in a title or cwd would end
+// a Markdown link early, so encode those too.
+function encodeParam(value) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
+/**
  * Build a resume deep link.
  * @param {{scheme?:string, extensionId?:string, sessionId:string, agent?:string, cwd?:string, title?:string}} o
  * @returns {string|null} the link, or null when the required parts are missing.
@@ -45,10 +83,10 @@ function buildSessionLink(o) {
 
   const params = [];
   const agent = isKnownAgent(opts.agent) ? opts.agent : 'claude';
-  params.push('agent=' + encodeURIComponent(agent));
-  params.push('session=' + encodeURIComponent(sessionId));
-  if (opts.cwd) params.push('cwd=' + encodeURIComponent(opts.cwd));
-  if (opts.title) params.push('title=' + encodeURIComponent(String(opts.title).slice(0, 200)));
+  params.push('agent=' + encodeParam(agent));
+  params.push('session=' + encodeParam(sessionId));
+  if (opts.cwd) params.push('cwd=' + encodeParam(opts.cwd));
+  if (opts.title) params.push('title=' + encodeParam(String(opts.title).slice(0, 200)));
 
   return `${scheme}://${extensionId}${RESUME_PATH}?${params.join('&')}`;
 }
@@ -122,6 +160,8 @@ module.exports = {
   RESUME_PATH,
   isValidSessionId,
   isKnownAgent,
+  isSafeLinkCwd,
+  notificationText,
   buildSessionLink,
   parseSessionLink,
 };

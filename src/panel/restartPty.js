@@ -15,6 +15,7 @@ const { saveSessions } = require('../store/sessionManager');
 const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
+const { applyAgentCliEnv } = require('../handlers/agentCli');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 
 const IDLE_DELAY_MS = 3000;
@@ -194,6 +195,7 @@ function restartPty(entry, panel, context, extensionPath) {
 
   try {
     const sessionEnv = { ...prepareProjectSessionEnvironment(agent, entry.cwd, process.env), ...extraEnv };
+    applyAgentCliEnv(sessionEnv, { tabId: entry.tabId, agent, cwd: entry.cwd });
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: entry._lastCols || 120,

@@ -112,4 +112,4 @@ function restoreSessions(onRestore) {
   });
 }
 
-module.exports = { saveSessions, restoreSessions };
+module.exports = { saveSessions, restoreSessions, isDefaultTabTitle };

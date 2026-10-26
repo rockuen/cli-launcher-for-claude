@@ -38,6 +38,7 @@ const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
 const { readAgentTurnState } = require('../lib/agentTurnState');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
+const { applyAgentCliEnv } = require('../handlers/agentCli');
 const { claudeChannelsArgs } = require('../lib/claudeChannels');
 const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
 
@@ -249,6 +250,9 @@ function startReaderWatch(entry, panel) {
     : entry.agent === 'grok' ? resolveGrokPath
     : entry.agent === 'gjc' ? resolveGjcPath
     : () => watchTarget;
+  // `cli-launcher link` runs this once so a session written a moment ago gets
+  // its real id now instead of on the watcher's next poll (handlers/agentCli).
+  entry._resolveSessionPath = resolvePath;
 
   let debounceTimer = null;
   let discoveryTimer = null;
@@ -783,7 +787,11 @@ function createPanel(context, extensionPath, session, opts) {
     const muxBin = process.platform === 'win32' ? 'psmux' : 'tmux';
     muxSessionName = `cli-launcher-${sessionId.slice(0, 8)}`;
     const quote = (s) => (/[\s"']/.test(s) ? "'" + s.replace(/'/g, "'\\''") + "'" : s);
-    const claudeCmdString = [shell, ...args].map(quote).join(' ');
+    // A tmux server started from inside a launcher tab carries that tab's
+    // CLI_LAUNCHER_* — a session it creates here must not answer as that tab.
+    // (psmux: no portable `env` on Windows; its tabs just lack cli-launcher.)
+    const unsetAgentCli = process.platform === 'win32' ? '' : 'env -u CLI_LAUNCHER_IPC -u CLI_LAUNCHER_NONCE -u CLI_LAUNCHER_TAB ';
+    const claudeCmdString = unsetAgentCli + [shell, ...args].map(quote).join(' ');
     // Always hand node-pty an absolute path (see detect block above for why).
     spawnBin = muxBinResolved || muxBin;
     spawnArgs = ['new-session', '-A', '-s', muxSessionName, claudeCmdString];
@@ -792,6 +800,10 @@ function createPanel(context, extensionPath, session, opts) {
   console.log('[Claude Launcher] Spawning:', spawnBin, spawnArgs.join(' '), '| cwd:', cwd, '| backend:', backend);
   console.log('[Claude Launcher] resolved shell:', shell, '| agent:', agent, '| args:', args);
   const sessionEnv = { ...prepareProjectSessionEnvironment(agent, cwd, process.env), ...extraEnv };
+  // v3.26.0: `cli-launcher` on PATH + this tab's IPC coordinates (handlers/agentCli).
+  // Not for tmux/psmux tabs: a session takes the multiplexer server's
+  // environment, so a second tab would answer as the first.
+  applyAgentCliEnv(sessionEnv, { tabId, agent, cwd, enabled: backend !== 'multiplexer' });
 
   let ptyProcess;
   try {

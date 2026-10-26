@@ -37,6 +37,7 @@ const { listAgents } = require('./agents/registry');
 const { copySessionLinkFromTreeItem, copySessionLinkFromPanel } = require('./handlers/copySessionLink');
 const { registerSessionUriHandler } = require('./uri/sessionUriHandler');
 const { migrateFileAssociationsSetting } = require('./handlers/openFile');
+const { startAgentCli } = require('./handlers/agentCli');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
@@ -47,6 +48,9 @@ function activate(context) {
   // Migrate legacy workspaceState data to JSON file
   migrateFromWorkspaceState(context);
   migrateFileAssociationsSetting();
+  // v3.26.0 — `cli-launcher` for agents. Before any panel spawns (restore
+  // included) so every PTY gets the endpoint in its environment.
+  startAgentCli(context);
 
   state.statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   state.statusBar.command = 'claudeCodeLauncher.open';

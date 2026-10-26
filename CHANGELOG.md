@@ -1,5 +1,36 @@
 # Changelog
 
+## [3.26.0] - 2026-10-26
+
+Agents running in a launcher tab can get a link back to their own session, so a todo they file in Burst (or a note, or a PR) carries the way back.
+
+### Added
+- **`cli-launcher` command for agents.** Every tab the launcher starts gets `cli-launcher` on its PATH, so the agent inside (Claude Code, Codex, gjc, Kiro, Grok, Chief) can run it from its shell tool:
+  - `cli-launcher link [--markdown | --json] [--title <text>]`: the resume deep link for this tab's session (the same link as Copy Session Link). `info` is `link --json`.
+  - `cli-launcher rename <title>`: renames the tab and its session in the Sessions view, the same as Rename Tab.
+  - `cli-launcher tabs [--json]`: open launcher tabs with their agent, title and link; the caller's tab is marked.
+  - `cli-launcher open <link | session-id> [--agent <id>] [--cwd <dir>]`: asks to resume a session. An already open tab is focused at once; anything else shows a notification and resumes only when the user clicks **Open** (it spawns an agent CLI, maybe an editor window, so an agent cannot do it on its own). The resume goes through the deep-link path (a session from another folder goes to that folder's window).
+  - Exit codes: 0 ok, 1 refused, 2 usage, 3 not inside a launcher tab.
+  - On Windows cmd/PowerShell, text containing `& | < > ^ %` must not go on the command line: cmd re-parses the arguments of any `.cmd`, and PowerShell 5.1 passes `a&b` unquoted, so the rest runs as a command. Every session link has `&` between its parameters. Put a title in `CLI_LAUNCHER_TITLE` and pass `--title-env` (`link`, `rename`), a link in `CLI_LAUNCHER_LINK` and pass `--link-env` (`open`). Environment variables reach the CLI untouched and in Unicode.
+- **A command rather than an MCP server.** Every hosted agent has a shell tool that inherits the PTY environment, so one command works in all of them with no per-agent registration and no tool schema in every prompt.
+- **How a tab finds its own session.** Each PTY gets `CLI_LAUNCHER_TAB` plus the window's IPC endpoint (`CLI_LAUNCHER_IPC`, a named pipe on Windows, a unix socket in a per-user 0700 directory elsewhere) and a per-activation nonce. The command asks the window, which knows the tab's live session id. Kiro, Codex, Grok and gjc only get a real id after their first transcript write; the request runs that tab's discovery once instead of waiting for the reader's next poll, and a tab that has not written yet gets a "no session id yet" error instead of a link that would resume the wrong session. In a Claude tab the command prefers `CLAUDE_CODE_SESSION_ID`, which Claude Code exports to its tools and which follows `/clear` where the launcher's copy does not.
+- **Link titles**: `--title`, else a name the user gave the tab, else the Sessions view title, else the agent's own auto-title. Burst shows the link's `title` as the chip label.
+- **Runs on the editor's runtime.** The `sh` and `cmd` shims in `bin/path/` start `bin/cli-launcher.js` with the editor binary as Node (`ELECTRON_RUN_AS_NODE=1`), so no Node install is needed. Only the shims are on PATH, not `chief-repl.js`, which Windows would hand to Windows Script Host through `PATHEXT`. `.gitattributes` keeps the `sh` shim LF on Windows checkouts and the `cmd` shim CRLF. `--json` output escapes non-ASCII, so a Korean title survives PowerShell and cmd reading the pipe in a legacy code page.
+- **Fallback**: when the window cannot be reached, `link` in a Claude tab is built from `CLAUDE_CODE_SESSION_ID` and the tab's cwd and editor scheme, with a warning on stderr.
+- **Env names avoid `KEY`, `SECRET` and `TOKEN`**, the words Codex's default `shell_environment_policy` strips from its shell tool's environment. `CLI_LAUNCHER_*` inherited by the editor itself (a window opened with `code .` from inside a tab) is dropped before a tab gets its own, so a tab never points at another window's endpoint.
+- **Not in tmux/psmux tabs.** A multiplexer session takes the multiplexer server's environment rather than the client's, so a second multiplexer tab would have answered as the first one. Those tabs get no `cli-launcher`, and on tmux the session command runs under `env -u CLI_LAUNCHER_IPC -u CLI_LAUNCHER_NONCE -u CLI_LAUNCHER_TAB`, so a tmux server started from inside a launcher tab cannot hand that tab's identity to a new session.
+- **The Open prompt shows link text plain.** VS Code notifications render `[text](target)` as a clickable link (command targets included), so the agent's title, the tab title and the folder are stripped of brackets, control and bidi characters and capped; the folder comes before the title so a long title cannot push it out of view. The deep-link warnings use the same cleaning.
+- **Git Bash**: the `sh` shim turns off MSYS path conversion (`/plan` stayed `/plan` instead of becoming `C:/Program Files/Git/plan` on the way to a Windows program) and converts its own script path with `cygpath`. `open --cwd` accepts relative and Git Bash paths (`/c/dev/x`).
+- **Unix socket directory**: refused when it is a symlink or someone else's (a shared `/tmp` could have it planted), instead of followed.
+- Setting `claudeCodeLauncher.agentCli.enabled` (default on). Takes effect after a window reload.
+
+### Fixed
+- **Session links with a network or relative folder are refused.** A resume link (clicked, or from `cli-launcher open`) whose `cwd` is a UNC path (`\\host\share`, `//host/share`) or not absolute is now ignored with a warning before anything touches the path. Merely checking that a UNC folder exists sends the user's NTLM credentials to that host, and a link can come from anywhere. This applies to the v3.22.0 deep-link handler as well.
+- **Session links percent-encode `! ' ( ) *`.** `encodeURIComponent` leaves them alone, so a title such as `1) 정리` ended a Markdown link early. Links built by earlier versions still parse.
+
+### Tests
+- 43 cases in `agentCli.test.ts`: PATH prepending (Windows key case, duplicates, already present), the env a tab gets and dropping inherited variables, endpoint shapes, a symlinked socket directory, dispatch auth/version/unknown-op/error mapping, one dispatch per request even when more data follows, session lookup per agent (pending, on-demand discovery for the caller's tab only, the Claude id hint applying to Claude tabs only, title override and cleaning), rename (including Claude's live id after `/clear`), tabs, open (link, bare id, unknown agent, UNC/relative/control-character folders, focus vs. confirmation), link encoding, the real CLI against a real pipe server, `--title-env` and `--link-env`, notification text cleaning, exit codes, the offline fallback, the `sh` and `cmd` shims spawned for real with Korean and path-like arguments, shim line endings, the vscode glue with a stub `vscode` (title precedence, disabled setting, a listening server, the Open prompt with agent text kept out of notification links, the deep-link handler refusing UNC folders), and wiring guards for every PTY spawn. Full suite passes (664 Node tests + 2 platform skips, 64 vitest).
+
 ## [3.25.0] - 2026-10-15
 
 Markdown links open in NoteWise when it's installed, and a fresh sidebar shows only Sessions.

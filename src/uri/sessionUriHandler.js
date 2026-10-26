@@ -14,7 +14,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const state = require('./../state');
-const { parseSessionLink } = require('../lib/sessionLink');
+const { parseSessionLink, isSafeLinkCwd, notificationText } = require('../lib/sessionLink');
 const { routeForLink, pendingFilePath, shouldClaimPending } = require('../lib/windowRoute');
 const { openFolderWindow } = require('../lib/editorCli');
 
@@ -91,18 +91,26 @@ function claimPending(context) {
   return pending;
 }
 
+/**
+ * @returns {'revealed'|'resumed'|'handed-off'|'rejected'|'failed'} what happened
+ */
 function handleLink(context, link) {
-  if (revealExistingPanel(link.sessionId)) return;
+  // Checked before anything touches the path (see isSafeLinkCwd).
+  if (!isSafeLinkCwd(link.cwd)) {
+    vscode.window.showWarningMessage(`Session link ignored: its folder is not a local absolute path (${notificationText(link.cwd)}).`);
+    return 'rejected';
+  }
+  if (revealExistingPanel(link.sessionId)) return 'revealed';
 
   if (routeForLink(link, workspaceFolderPaths()) === 'here') {
     resumeHere(link);
-    return;
+    return 'resumed';
   }
 
   // The session belongs to another folder — hand it to that window.
   if (!writePending(context, link)) {
     resumeHere(link); // storage unavailable: better a tab here than nothing
-    return;
+    return 'resumed';
   }
   const launched = openFolderWindow(link.cwd, vscode.env.appRoot);
   if (!launched) {
@@ -110,9 +118,11 @@ function handleLink(context, link) {
     // window opens that folder next, within the TTL. Take it back.
     try { fs.unlinkSync(pendingFilePath(globalStorageDir(context))); } catch (_) {}
     vscode.window.showWarningMessage(
-      `Could not open a window for ${link.cwd}. Open that folder and click the link again.`
+      `Could not open a window for ${notificationText(link.cwd)}. Open that folder and click the link again.`
     );
+    return 'failed';
   }
+  return 'handed-off';
 }
 
 /** Claim a record left by another window (called once during activate). */
@@ -157,4 +167,4 @@ function registerSessionUriHandler(context) {
   setTimeout(() => consumePendingResume(context), 1500);
 }
 
-module.exports = { registerSessionUriHandler, consumePendingResume, handleLink };
+module.exports = { registerSessionUriHandler, consumePendingResume, handleLink, revealExistingPanel };

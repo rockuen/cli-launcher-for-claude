@@ -1,0 +1,18 @@
+#!/bin/sh
+# cli-launcher shim (POSIX shells, Git Bash) -- see ../cli-launcher.js.
+# Runs with the editor's own runtime (CLI_LAUNCHER_NODE), so no Node install is
+# needed; ELECTRON_RUN_AS_NODE makes an Electron binary behave as plain Node.
+script="$(dirname "$0")/../cli-launcher.js"
+if command -v cygpath >/dev/null 2>&1; then
+  # Git Bash rewrites arguments that look like paths ("/plan" becomes
+  # "C:/Program Files/Git/plan") on their way to a Windows program. Pass them
+  # through untouched, and convert the one path we build ourselves.
+  script=$(cygpath -w "$script")
+  MSYS_NO_PATHCONV=1
+  MSYS2_ARG_CONV_EXCL='*'
+  export MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL
+fi
+if [ -n "$CLI_LAUNCHER_NODE" ]; then
+  ELECTRON_RUN_AS_NODE=1 exec "$CLI_LAUNCHER_NODE" "$script" "$@"
+fi
+exec node "$script" "$@"

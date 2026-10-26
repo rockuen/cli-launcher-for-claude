@@ -100,6 +100,7 @@ cli-launcher는 다섯 개의 AI 코딩 CLI를 같은 방식으로 감싼다. �
 - **에이전트 테마** — 입력 영역 톤이 에이전트를 따라간다(Auto). 한 색 고정도 가능.
 - **핸드오프** — 활성화된 다른 에이전트로 대화 맥락 전달.
 - **세션 링크** — 세션 우클릭(또는 툴바 🔗)으로 그 세션을 다시 여는 링크를 복사한다. 할 일 관리 앱·노트·채팅에 붙여두고 나중에 누르면 에디터가 뜨면서 그 세션이 그대로 재개된다. 세션 폴더를 열고 있는 창에서 열린다.
+- **에이전트용 `cli-launcher` 명령** — 탭마다 PATH에 `cli-launcher`가 들어가서, 그 안의 에이전트(Claude Code·Codex·gjc·Kiro·Grok·Chief)가 자기 탭을 다룰 수 있다. `cli-launcher link`는 지금 세션을 다시 여는 링크를 출력한다(에이전트에게 할 일·노트·PR에 붙이라고 하면 된다). `cli-launcher rename "<제목>"`은 탭 이름 변경, `cli-launcher tabs`는 열린 탭과 링크 목록, `cli-launcher open <링크>`는 세션 재개 요청(알림에서 Open을 눌러야 열린다). 설치·에이전트별 등록이 필요 없고, 에디터 자체 런타임으로 돌며 이 창과 로컬 파이프로 통신한다. 옵션은 `cli-launcher help`. 끄려면 `claudeCodeLauncher.agentCli.enabled`.
 - **다중 계정 전환** — Claude 로그인을 프로필로 저장/전환. 활성 계정명이 하단 상태바에 상시 표시, 클릭하면 QuickPick. Windows/Linux는 `~/.claude/.credentials.json`, **macOS는 Keychain**에서 토큰을 읽고 쓴다.
 - **자동 링크 + 컨텍스트 메뉴** — 응답 안의 파일/URL/폴더 클릭, 선택 후 우클릭 메뉴.
 - **어디 있든 파일 찾기** — 세션 작업 폴더 밖에 있는 파일명을 클릭하면 OS 파일 인덱스(Windows=Everything, macOS=Spotlight, Linux=`locate`)로 찾아서 연다. 하나면 바로 열고, 여러 개면 선택창. 일회성 설치는 *어떻게 쓰나* 참고.

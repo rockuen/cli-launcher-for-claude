@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.25.0",
+  "version": "3.26.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1401,6 +1401,11 @@
           "type": "boolean",
           "default": false,
           "description": "When on, records per-panel PTY chunk statistics (size + inter-arrival histograms) and dumps a memory + counter summary to the 'CLI Launcher — Diagnostics' OutputChannel every 10 minutes. Use this only when investigating a freeze or memory issue — the hot-path cost when off is one null check per PTY chunk. The 'Claude: Diagnostics: Dump Now' command forces a snapshot on demand."
+        },
+        "claudeCodeLauncher.agentCli.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Give agents running in launcher tabs the `cli-launcher` command. The launcher puts it on the PATH of every tab it starts (Claude Code, Codex, gjc, Kiro, Grok, Chief), so an agent can run `cli-launcher link` to get a resume link for its own session (e.g. to attach to a Burst todo or a note), `cli-launcher rename <title>` to name its tab, `cli-launcher tabs` to list open tabs with their links, and `cli-launcher open <link>` to ask you to resume a session (you confirm in a notification). It talks to this window over a local pipe that only processes started from its tabs can use. Not available in tmux/psmux (multiplexer) tabs. Takes effect after a window reload."
         },
         "claudeCodeLauncher.readerMessageCap": {
           "type": "integer",

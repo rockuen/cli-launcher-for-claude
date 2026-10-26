@@ -1,0 +1,4 @@
+# Shell shims must keep LF even on a Windows checkout (core.autocrlf=true):
+# Git Bash and sh choke on CRLF. The cmd shim is the opposite.
+bin/path/cli-launcher text eol=lf
+bin/path/*.cmd text eol=crlf
