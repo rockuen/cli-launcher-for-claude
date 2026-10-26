@@ -32,7 +32,8 @@ test('v3.6.9: _loadSessions accepts protectedIds + archivedIds sets', () => {
   // Group members must bypass the top-30 hot path and load up to a 100 cap;
   // archived members must skip title/firstMsg parsing entirely. Both behaviours
   // are driven by the two id sets passed in from _buildGroups.
-  assert.match(treeSrc, /_loadSessions\s*\(\s*protectedIds\s*=\s*new Set\(\)\s*,\s*archivedIds\s*=\s*new Set\(\)\s*\)/);
+  // v3.27.0 adds a third, optional out-array for the older ungrouped files.
+  assert.match(treeSrc, /_loadSessions\s*\(\s*protectedIds\s*=\s*new Set\(\)\s*,\s*archivedIds\s*=\s*new Set\(\)\s*(,\s*olderOut\s*=\s*null\s*)?\)/);
   assert.match(treeSrc, /const PROTECTED_CAP\s*=\s*100/);
   assert.match(treeSrc, /protectedExtras\.length\s*>=\s*PROTECTED_CAP/);
 });
@@ -59,7 +60,7 @@ test('v3.6.9: _buildGroups partitions ids into protected vs archived', () => {
   // so that a session in both a regular group AND an archive bucket lands on
   // the cheap archived path (archive wins).
   assert.match(treeSrc, /const archivedGroups\s*=\s*new Set\(sessionStoreGet\(['"]claudeSessionGroupArchived['"]/);
-  assert.match(treeSrc, /this\._loadSessions\(\s*protectedIds\s*,\s*archivedIds\s*\)/);
+  assert.match(treeSrc, /this\._loadSessions\(\s*protectedIds\s*,\s*archivedIds\s*(,\s*olderFiles\s*)?\)/);
 });
 
 test('No leftover sessionsRoot i18n key', () => {
@@ -68,10 +69,10 @@ test('No leftover sessionsRoot i18n key', () => {
   assert.equal(/t\(['"]sessionsRoot['"]\)/.test(treeSrc), false);
 });
 
-test('_expandedGroups defaults to Resume Later only', () => {
+test("_expandedGroups defaults to Resume Later and Recent Sessions' Today period", () => {
   assert.match(
     treeSrc,
-    /this\._expandedGroups\s*=\s*new Set\(\[t\('resumeLaterGroup'\)\]\)/,
+    /this\._expandedGroups\s*=\s*new Set\(\[t\('resumeLaterGroup'\), 'period:today'\]\)/,
   );
 });
 

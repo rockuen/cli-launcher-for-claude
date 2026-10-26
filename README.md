@@ -94,7 +94,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 
 ## Features
 
-- **Per-agent session views** — a sidebar tree for each of Claude / Codex / Grok / Kiro / Antigravity. Groups, folders (nested up to 3 levels), drag-and-drop, rename, trash.
+- **Per-agent session views** — a sidebar tree for each of Claude / Codex / Grok / Kiro / Antigravity. Groups, folders (nested up to 3 levels), drag-and-drop, rename, trash. Recent Sessions is split by period (Today, Yesterday, Previous 7 / 30 days, then by month), so every ungrouped session stays reachable.
 - **Reader-Live** — the running conversation as markdown, split-pane or standalone, with a branded welcome screen for empty sessions. (Antigravity excepted.)
 - **Customizable reader sender names** — set the name shown for "you" (global) and a per-agent AI name in Settings.
 - **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a desktop notification immediately.

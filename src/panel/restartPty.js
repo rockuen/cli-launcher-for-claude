@@ -133,6 +133,13 @@ function restartPty(entry, panel, context, extensionPath) {
     const gjcResumePath = (entry.isGjcResume || (entry.sessionId && findGjcSessionPath(entry.sessionId, null, entry.cwd)))
       ? findGjcSessionPath(entry.sessionId, null, entry.cwd)
       : null;
+    // v3.27.0: same as createPanel — a pinned session that is gone was
+    // trashed or deleted; `gjc -c` would continue some other session.
+    if (entry.isGjcResume && !gjcResumePath) {
+      vscode.window.showWarningMessage(`This Gajae (gjc) session is no longer on disk — it was moved to Trash or deleted (${entry.sessionId}).`);
+      entry._restarting = false;
+      return;
+    }
     const gjcArgs = gjcResumePath ? ['-r', gjcResumePath]
       : (entry.sessionId ? ['-c'] : []);
     // Profile/model/thinking only on a fresh restart (no sessionId) — a resume

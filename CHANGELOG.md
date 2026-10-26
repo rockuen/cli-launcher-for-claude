@@ -1,5 +1,33 @@
 # Changelog
 
+## [3.27.0] - 2026-10-26
+
+Recent Sessions lists every ungrouped session, split by period, instead of only the 30 newest.
+
+### Changed
+- **Recent Sessions is split by period**: Today, Yesterday, Previous 7 days, Previous 30 days, then one folder per month, and per year past twelve months (labels follow the editor language: `September 2026` / `2026년 9월`). Each period shows its count; Today opens by default when Recent Sessions is expanded. Applies to every session view (Claude, the unified Sessions view, Kiro, Codex, Grok, gjc, Chief, Antigravity).
+- **Older Claude sessions are listed again.** The Claude view loaded only the 30 newest ungrouped sessions (plus grouped ones), so anything older was not reachable from the tree at all. On a vault with 378 session files, Recent Sessions went from 30 to 331. Sessions past the newest 30 are only stat'ed when the tree refreshes, and their titles are read when you open their period. That reading yields to the editor every 5 files, so opening a 107-session month no longer holds the thread that pumps every terminal (longest single block ~30 ms, ~190 ms with 20 files per step); it is cached afterwards. Tree refresh time is in line with the flat list.
+- **Subagent transcripts are no longer listed as sessions.** Older Claude Code versions kept `agent-<id>.jsonl` subagent transcripts beside the sessions (22 of the 378 files on that vault). Their first message is "Warmup" and `claude --resume agent-…` fails, so they are skipped everywhere.
+- A session nested under another (either side of the pair) is loaded up front, so nesting an older session under a listed one, or the reverse, keeps both visible. Nested sessions have their own cap (100), separate from grouped sessions'.
+- Move Up / Move Down and drag-to-reorder work on older sessions and stay inside the period the session is listed in.
+- A session search also finds older sessions whose titles are already known (saved, or read when their period was opened), without reading any file for it (a saved-title hit is built from the saved title alone).
+- Sessions without a timestamp go to a **No date** period at the end instead of Today. The 7- and 30-day boundaries are calendar days, so a daylight-saving change does not shift them.
+- A period's count can include a session with nothing to show (no title and no user message) until the period has been opened once. After that, the title cache knows it is empty and the count drops it.
+- Period expand state has its own key (`period:<key>`), so a custom group named "Today" or "2025" does not open and close with the period.
+- Dropping a session on a period node ungroups it, the same as dropping it on the Recent Sessions header.
+- The session title cache holds 2000 entries (was 200), so opened periods stay cached across refreshes.
+- Setting `claudeCodeLauncher.recentSessions.groupByPeriod` (default on). Off restores the flat list of the 30 newest.
+
+### Fixed
+- **Trash did nothing on Gajae (gjc) sessions.** Two bugs stacked. In the Gajae Sessions view (and the other per-agent views: Codex, Grok, Chief, Antigravity) the Trash command read `item._agent`, which only the unified Sessions view sets — those leaves carry `_agentMode` — so it returned without doing anything. In the unified view the session file did move to `<sessions>/trash/`, but the gjc listing walks every folder under `<sessions>`, so the trashed session was listed again. The command now reads either field, and gjc and Grok listings skip `trash/`. gjc's sibling `<stem>/` folder (tool logs, resident cache) goes to the trash with the transcript.
+- **Trash did nothing on Grok sessions either**: it moved only `updates.jsonl` out of the session folder, and the `summary.json` left behind kept the session listed (and every trashed `updates.jsonl` overwrote the previous one in `trash/`). It now moves the folder, found by id even when it has no `updates.jsonl`.
+- **Nested Gajae, Codex and Antigravity sessions had no Trash button** (their menus matched only top-level leaves; Grok and Chief already covered nested ones).
+- **Trashing a name that is already in the trash** no longer overwrites the earlier file or fails on a folder; the new one gets a numeric suffix. The transcript moves before gjc's sidecar folder, so a locked transcript does not strand its tool logs in the trash.
+- **Opening a gjc session that was trashed or deleted** (from a link, a Burst todo or a saved tab) now says so. It used to fall back to `gjc -c`, which continued whatever session was most recent in that folder.
+
+### Tests
+- `sessionPeriods.test.ts`: day boundaries at local midnight (future mtimes count as today, missing ones go to No date), calendar-day 7/30-day boundaries, month and year buckets, bucket order, labels per locale; then a real `SessionTreeDataProvider` over a fake Claude project folder with 41 sessions and a subagent transcript: every ungrouped session reachable by period, older periods built only on expand and sorted newest first, an untitled session dropping out of the count after its period was opened, grouped sessions kept out, `agent-*.jsonl` never listed, nesting with older sessions in both directions, Move Up on an older session staying in its period, search over known titles, the period expand key, the flat setting, unified-view markers on lazily built leaves, and drop behaviour. Kiro and Antigravity tree tests read Recent Sessions through its period nodes. Reviewed (code-reviewer), findings addressed. `agentTrash.test.ts`: gjc and Grok listings skip `trash/`; real moves of a gjc transcript plus its sidecar folder and of a Grok session folder (including a summary-only one), name collisions for files and folders, the Trash command reading `_agentMode`, nested-session Trash menus in every per-agent view, and no `gjc -c` fallback for a session that is gone. Full suite passes (691 Node tests + 2 platform skips, 64 vitest).
+
 ## [3.26.0] - 2026-10-26
 
 Agents running in a launcher tab can get a link back to their own session, so a todo they file in Burst (or a note, or a PR) carries the way back.

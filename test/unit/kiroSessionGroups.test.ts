@@ -133,6 +133,12 @@ test('kiro and claude group stores are fully independent', () => {
   assert.equal(JSON.stringify(claudeGroups).includes('kiro-aaaa'), false);
 });
 
+// v3.27.0: Recent Sessions is split into period nodes (Today, …) by default —
+// read the session leaves through them.
+function recentLeaves(recent: any): any[] {
+  return recent._children.flatMap((n: any) => (n._periodKey ? n._children : [n]));
+}
+
 test('kiro build groups its sessions and lists the rest under Recent Sessions', () => {
   reset();
   const kiro = new SessionTreeDataProvider({}, 'kiro');
@@ -149,7 +155,8 @@ test('kiro build groups its sessions and lists the rest under Recent Sessions', 
   // Ungrouped sessions now live under a Recent Sessions node.
   const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
   assert.ok(recent, 'expected a recentGroup node');
-  const ungroupedIds = recent._children
+  assert.ok(recent._children.every((n: any) => n._periodKey), 'Recent Sessions holds period nodes');
+  const ungroupedIds = recentLeaves(recent)
     .filter((n: any) => n.contextValue === 'kiroSession')
     .map((n: any) => n._sessionId)
     .sort();
@@ -167,13 +174,13 @@ test('kiro nesting persists under the kiro parent key and renders as children', 
   // Ungrouped sessions (incl. the parent) live under the Recent Sessions node.
   const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
   assert.ok(recent, 'expected a recentGroup node');
-  const parent = recent._children.find((n: any) => n._sessionId === 'kiro-aaaa');
+  const parent = recentLeaves(recent).find((n: any) => n._sessionId === 'kiro-aaaa');
   assert.ok(parent, 'parent session should be under Recent Sessions');
   assert.ok(Array.isArray(parent._children) && parent._children.length === 1);
   assert.equal(parent._children[0]._sessionId, 'kiro-bbbb');
   assert.equal(parent._children[0].contextValue, 'subSession');
   // The nested child must NOT also appear at the Recent Sessions top level.
-  const recentIds = recent._children.filter((n: any) => n.contextValue === 'kiroSession' || n.contextValue === 'subSession').map((n: any) => n._sessionId);
+  const recentIds = recentLeaves(recent).filter((n: any) => n.contextValue === 'kiroSession' || n.contextValue === 'subSession').map((n: any) => n._sessionId);
   assert.equal(recentIds.includes('kiro-bbbb'), false);
 });
 

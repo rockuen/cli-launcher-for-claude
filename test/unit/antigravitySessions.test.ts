@@ -262,6 +262,12 @@ test('antigravity group store is independent of claude + kiro', () => {
   assert.equal(JSON.stringify(sessionStoreGet('claudeSessionGroups', {})).includes('conv-a'), false);
 });
 
+// v3.27.0: Recent Sessions is split into period nodes by default — read the
+// session leaves through them.
+function recentLeaves(recent: any): any[] {
+  return recent._children.flatMap((n: any) => (n._periodKey ? n._children : [n]));
+}
+
 test('antigravity build groups its conversations + lists the rest under Recent Sessions', () => {
   reset();
   const agy = new SessionTreeDataProvider({}, 'antigravity');
@@ -275,7 +281,7 @@ test('antigravity build groups its conversations + lists the rest under Recent S
   assert.equal(groupNode._children[0]._sessionId, 'conv-a');
   const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
   assert.ok(recent, 'expected a recentGroup node');
-  const ungrouped = recent._children
+  const ungrouped = recentLeaves(recent)
     .filter((n: any) => n.contextValue === 'antigravitySession')
     .map((n: any) => n._sessionId)
     .sort();
@@ -287,7 +293,7 @@ test('antigravity session item carries the conversation-resume command', () => {
   const agy = new SessionTreeDataProvider({}, 'antigravity');
   const roots = agy._buildAntigravitySessions();
   const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
-  const item = recent._children.find((n: any) => n._sessionId === 'conv-a');
+  const item = recentLeaves(recent).find((n: any) => n._sessionId === 'conv-a');
   assert.ok(item, 'conv-a should be present');
   assert.equal(item.command.command, 'claudeCodeLauncher.resumeSession');
   assert.equal(item.command.arguments[0], 'conv-a');
@@ -303,7 +309,7 @@ test('antigravity nesting persists under the antigravity parent key + renders as
   assert.deepEqual(sessionStoreGet('claudeSessionParent', {}), {});
   const roots = agy._buildAntigravitySessions();
   const recent = roots.find((n: any) => n.contextValue === 'recentGroup');
-  const parent = recent._children.find((n: any) => n._sessionId === 'conv-a');
+  const parent = recentLeaves(recent).find((n: any) => n._sessionId === 'conv-a');
   assert.ok(parent && Array.isArray(parent._children) && parent._children.length === 1);
   assert.equal(parent._children[0]._sessionId, 'conv-b');
   assert.equal(parent._children[0].contextValue, 'subSession');

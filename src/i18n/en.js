@@ -9,6 +9,11 @@ module.exports = {
   enterTabName: 'Enter tab name',
   resumeLaterGroup: 'Resume Later',
   recentSessionsGroup: 'Recent Sessions',
+  periodToday: 'Today',
+  periodYesterday: 'Yesterday',
+  periodLast7Days: 'Previous 7 days',
+  periodLast30Days: 'Previous 30 days',
+  periodNoDate: 'No date',
   // v3.11: unified-view session-name search + new-session model picker
   searchSessionsPrompt: 'Search sessions by name',
   searchSessionsPlaceholder: 'Type part of a session title…',

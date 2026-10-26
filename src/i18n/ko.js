@@ -8,6 +8,11 @@ module.exports = {
   enterTabName: '탭 이름을 입력하세요',
   resumeLaterGroup: '나중에 이어서',
   recentSessionsGroup: '최근 세션',
+  periodToday: '오늘',
+  periodYesterday: '어제',
+  periodLast7Days: '지난 7일',
+  periodLast30Days: '지난 30일',
+  periodNoDate: '날짜 없음',
   // v3.11: unified-view 세션명 검색 + 새 세션 모델 선택
   searchSessionsPrompt: '세션명으로 검색',
   searchSessionsPlaceholder: '세션 제목 일부를 입력하세요…',

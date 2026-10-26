@@ -702,6 +702,14 @@ function createPanel(context, extensionPath, session, opts) {
     const gjcResumePath = (session?.isGjcResume || (session?.sessionId && findGjcSessionPath(session.sessionId, null, cwd)))
       ? findGjcSessionPath(session.sessionId, null, cwd)
       : null;
+    // v3.27.0: an exact session (tree, deep link, Burst link) that is no
+    // longer on disk was trashed or deleted — say so instead of falling
+    // through to `gjc -c`, which would continue some other session.
+    if (session?.isGjcResume && !gjcResumePath) {
+      vscode.window.showWarningMessage(`This Gajae (gjc) session is no longer on disk — it was moved to Trash or deleted (${session.sessionId}).`);
+      panel.dispose();
+      return;
+    }
     const gjcArgs = gjcResumePath ? ['-r', gjcResumePath]
       : (session?.sessionId ? ['-c'] : []);
     // Profile + model + thinking (effort) come from gjc-specific settings only

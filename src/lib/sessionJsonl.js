@@ -230,6 +230,9 @@ function listAntigravitySessions(cwd, _file, _convDir) {
 // OUTSIDE the rollout in ~/.codex/session_index.jsonl: { id, thread_name,
 // updated_at } — paired by explicit id (unlike agy's rank pairing).
 const CODEX_ROLLOUT_RE = /-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
+// Folder the launcher's Trash moves agent sessions into, inside each agent's
+// sessions root (lib/agentTrash). Session listings skip it.
+const { AGENT_TRASH_DIR } = require('./agentTrash');
 
 // session_meta is always line 1, but it embeds base_instructions (observed up
 // to ~22 KB) — read a 64 KB head so the first line is never truncated.
@@ -451,6 +454,7 @@ function _walkGrokSessionDirs(dir) {
   let groups;
   try { groups = fs.readdirSync(dir); } catch { return out; }
   for (const g of groups) {
+    if (g === AGENT_TRASH_DIR) continue; // trashed sessions (see _walkGjcSessionFiles)
     const groupDir = path.join(dir, g);
     let groupStat;
     try { groupStat = fs.statSync(groupDir); } catch { continue; }
@@ -495,7 +499,9 @@ function _grokFirstUserFromUpdates(updatesPath) {
   }
 }
 
-function findGrokSessionPath(sessionId, _dir, cwd) {
+// The session's folder (<group>/<id>/), whether or not it still has an
+// updates.jsonl — a summary-only folder is still listed, so Trash must find it.
+function findGrokSessionDir(sessionId, _dir, cwd) {
   if (!sessionId) return null;
   const dir = _dir || _grokSessionsDir(cwd);
   const needle = String(sessionId);
@@ -506,10 +512,16 @@ function findGrokSessionPath(sessionId, _dir, cwd) {
       const info = _grokSummaryInfo(summary);
       if (!_cwdMatch(info.cwd || info.workingDirectory || info.workspace, cwd)) continue;
     }
-    const updatesPath = path.join(sessionDir, 'updates.jsonl');
-    return fs.existsSync(updatesPath) ? updatesPath : null;
+    return sessionDir;
   }
   return null;
+}
+
+function findGrokSessionPath(sessionId, _dir, cwd) {
+  const sessionDir = findGrokSessionDir(sessionId, _dir, cwd);
+  if (!sessionDir) return null;
+  const updatesPath = path.join(sessionDir, 'updates.jsonl');
+  return fs.existsSync(updatesPath) ? updatesPath : null;
 }
 
 // Sibling of updates.jsonl. Grok's events.jsonl is the turn-state authority
@@ -582,6 +594,9 @@ function _walkGjcSessionFiles(dir) {
   let groups;
   try { groups = fs.readdirSync(dir); } catch { return out; }
   for (const g of groups) {
+    // The launcher's Trash moves sessions to <sessions>/trash/ — walking it
+    // listed every trashed session again, so Trash looked like it did nothing.
+    if (g === AGENT_TRASH_DIR) continue;
     const groupDir = path.join(dir, g);
     let groupStat;
     try { groupStat = fs.statSync(groupDir); } catch { continue; }
@@ -1377,6 +1392,7 @@ module.exports = {
   findCodexSessionPath,
   listGrokSessions,
   findGrokSessionPath,
+  findGrokSessionDir,
   findGrokEventsPath,
   _toEpochMs,
   listGjcSessions,

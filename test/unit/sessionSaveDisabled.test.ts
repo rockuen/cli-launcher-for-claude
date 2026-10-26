@@ -62,6 +62,7 @@ test('SessionTreeDataProvider drops save-disabled agents from the unified tree',
   assert.match(src, /_saveDisabledAgents\(\)\s*\{[\s\S]*sessionSaveDisabledAgents/);
   // Non-claude agents skipped while folding other agents into the unified view.
   assert.match(src, /if \(saveDisabled\.has\(spec\.agent\)\) continue;/);
-  // claude's own leaves dropped when claude is save-disabled.
-  assert.match(src, /_saveDisabledAgents\(\)\.has\('claude'\)\) allItems\.length = 0;/);
+  // claude's own leaves dropped when claude is save-disabled — the loaded ones
+  // and (v3.27.0) the older stat-only ones listed by period.
+  assert.match(src, /_saveDisabledAgents\(\)\.has\('claude'\)\) \{\s*allItems\.length = 0;\s*olderFiles\.length = 0;\s*\}/);
 });

@@ -93,7 +93,7 @@ cli-launcher는 다섯 개의 AI 코딩 CLI를 같은 방식으로 감싼다. �
 
 ## 주요 기능
 
-- **에이전트별 세션 뷰** — Claude / Codex / Grok / Kiro / Antigravity 각각의 사이드바 트리. 그룹·폴더(최대 3단 중첩)·드래그앤드롭·이름 변경·휴지통.
+- **에이전트별 세션 뷰** — Claude / Codex / Grok / Kiro / Antigravity 각각의 사이드바 트리. 그룹·폴더(최대 3단 중첩)·드래그앤드롭·이름 변경·휴지통. 최근 세션은 기간별(오늘·어제·지난 7일·지난 30일·월별)로 나뉘어 그룹에 안 넣은 세션도 전부 찾아 들어갈 수 있다.
 - **Reader-Live** — 진행 중 대화를 markdown으로. split layout 또는 standalone. 빈 세션엔 브랜디드 환영 화면. (Antigravity 제외)
 - **reader 발신자 이름 커스텀** — reader에 뜨는 "나"의 이름(전역)과 에이전트별 AI 이름을 설정에서 바꾼다.
 - **상태 인식 탭** — idle / running / done / error / needs-attention. 인터랙티브 프롬프트(`[Y/n]`, 메뉴 등)는 7초 임계 무시하고 즉시 needs-attention + 데스크탑 알림.

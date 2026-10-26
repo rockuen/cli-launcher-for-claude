@@ -23,8 +23,12 @@ const vscode = require('vscode');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
-const { t } = require('../i18n');
+const { t, getLocale } = require('../i18n');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
+const { bucketByPeriod, periodLabel, periodOf } = require('../lib/sessionPeriods');
+
+// Uncached title reads between yields while a lazy period expands.
+const LAZY_PERIOD_BATCH = 5;
 const { pathDepth, getDescendants } = require('../util/groupPath');
 const { extractAiTitle, extractFirstUserMessage, extractMessageCount, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions, listChiefSessions } = require('../lib/sessionJsonl');
 const { getKiroSessionsDir } = require('../lib/projectSessions');
@@ -208,7 +212,9 @@ class SessionTreeDataProvider {
     this._onDidChangeTreeData = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     this._cache = null;
-    this._expandedGroups = new Set([t('resumeLaterGroup')]);
+    // Today's sessions open by default once Recent Sessions is expanded
+    // (period nodes carry their own `period:<key>` expand key).
+    this._expandedGroups = new Set([t('resumeLaterGroup'), 'period:today']);
     // v3.11: session-name search filter. When non-empty (already lowercased),
     // the _build* methods drop session leaves whose title doesn't include it;
     // empty groups then collapse to nothing. Set via setFilter() from the
@@ -238,8 +244,13 @@ class SessionTreeDataProvider {
     // the full extract. Sizing the cap above the worst-case working set is
     // what actually makes it a cache. Entries hold two short strings, so the
     // extra headroom costs nothing.
+    //
+    // v3.27.0: Recent Sessions lists every ungrouped session by period, and an
+    // expanded period re-reads its sessions' titles on each refresh — so the
+    // working set can be every session the user has opened a period for.
+    // 2000 entries is a few hundred KB.
     this._fileMetaCache = new Map();
-    this._FILE_META_CACHE_MAX = 200;
+    this._FILE_META_CACHE_MAX = 2000;
 
     // TreeDragAndDropController interface (read by createTreeView(options)).
     // MIME pair is agent-scoped so a drag in one view can't drop in another.
@@ -408,6 +419,17 @@ class SessionTreeDataProvider {
       element._composedChildren = children;
       return children;
     }
+    // v3.27.0: a Recent Sessions period whose older Claude sessions were only
+    // stat'ed — their titles are read now, on expand (see _periodNodes).
+    if (element._lazyFiles && !element._children) {
+      if (!element._childrenPromise) {
+        element._childrenPromise = this._expandLazyPeriod(element).then((children) => {
+          element._children = children;
+          return children;
+        });
+      }
+      return element._childrenPromise;
+    }
     return element._children || [];
   }
 
@@ -553,11 +575,17 @@ class SessionTreeDataProvider {
     for (const s of savedSessions) {
       if (!archivedIds.has(s.sessionId)) protectedIds.add(s.sessionId);
     }
-    const allItems = this._loadSessions(protectedIds, archivedIds);
+    // Ungrouped Claude sessions past the top 30, stat only — listed by period
+    // under Recent Sessions and parsed when their period is expanded.
+    const olderFiles = [];
+    const allItems = this._loadSessions(protectedIds, archivedIds, olderFiles);
     if (unified) {
       // Drop claude's own sessions from the unified tree when claude session
       // save is disabled; other agents are filtered inside _loadOtherAgentItems.
-      if (this._saveDisabledAgents().has('claude')) allItems.length = 0;
+      if (this._saveDisabledAgents().has('claude')) {
+        allItems.length = 0;
+        olderFiles.length = 0;
+      }
       // Tag the claude leaves with their agent + a model icon, then fold in the
         // other agents' sessions (kiro/codex/grok/agy). They all share the same
       // itemMap / group / Recent / sort logic below, keyed by their own id.
@@ -721,11 +749,45 @@ class SessionTreeDataProvider {
     const recentItems = items.filter(item =>
       !groupedSet.has(item._sessionId) && !isSubSession(item._sessionId)
     );
-    if (recentItems.length > 0) {
+    // v3.27.0: older ungrouped sessions join Recent Sessions, split by period.
+    const byPeriod = this._groupRecentByPeriod();
+    const titleMap = sessionStoreGet('claudeSessionTitles', {});
+    let olderRecent = byPeriod
+      ? olderFiles.filter((f) => {
+        const sid = f.name.replace('.jsonl', '');
+        const pid = parents[sid];
+        // Nested sessions are loaded up front (_loadSessions); this only
+        // guards the rare one past NESTED_CAP from showing twice.
+        return !groupedSet.has(sid) && !(pid && itemMap.has(pid));
+      })
+      : [];
+    if (filterActive) {
+      // Search covers older sessions whose titles are already known — saved,
+      // or read when their period was opened — without reading any file.
+      for (const f of olderRecent) {
+        const sid = f.name.replace('.jsonl', '');
+        const meta = this._cachedFileMeta(f);
+        const text = titleMap[sid] || (meta && (meta.aiTitle || meta.firstMsg));
+        if (!text || !this._matchesText(text)) continue;
+        // noRead: a saved-title match on an uncached file must not read it
+        // here — this runs on every keystroke of the search box.
+        const item = this._buildClaudeSessionItem(f, titleMap, { noRead: true });
+        if (!item) continue;
+        if (unified) this._markUnifiedClaude(item);
+        mtimeMap.set(sid, item._mtime || 0);
+        recentItems.push(item);
+      }
+      olderRecent = [];
+    }
+    if (recentItems.length > 0 || olderRecent.length > 0) {
       recentItems.sort(cmp);
-      const recentGroup = new vscode.TreeItem(`${rsName} (${recentItems.length})`, stateOf(rsName));
+      const children = byPeriod
+        ? this._periodNodes(recentItems, olderRecent, { cmp, mtimeMap, stateOf, unified, titleMap })
+        : recentItems;
+      const total = byPeriod ? children.reduce((s, n) => s + (n._totalCount || 0), 0) : recentItems.length;
+      const recentGroup = new vscode.TreeItem(`${rsName} (${total})`, stateOf(rsName));
       recentGroup.iconPath = new vscode.ThemeIcon('history');
-      recentGroup._children = recentItems;
+      recentGroup._children = children;
       recentGroup.contextValue = 'recentGroup';
       recentGroup._unified = unified;
       groups.push(recentGroup);
@@ -1177,7 +1239,9 @@ class SessionTreeDataProvider {
       const recentGroup = new vscode.TreeItem(`${rsName} (${ungrouped.length})`, stateOf(rsName));
       recentGroup.iconPath = new vscode.ThemeIcon('history');
       recentGroup.contextValue = 'recentGroup';
-      recentGroup._children = ungrouped;
+      recentGroup._children = this._groupRecentByPeriod()
+        ? this._periodNodes(ungrouped, [], { cmp, mtimeMap, stateOf, unified: false, titleMap: null })
+        : ungrouped;
       out.push(recentGroup);
     }
 
@@ -1241,14 +1305,22 @@ class SessionTreeDataProvider {
   //     the heavy calls (whole-file read + parse) so skipping them is what
   //     makes archive groups cheap at scale. Labels fall back to the saved
   //     title or `<8-char prefix>…`.
-  _loadSessions(protectedIds = new Set(), archivedIds = new Set()) {
+  //
+  // v3.27.0: `olderOut`, when given, receives the stat entries of every other
+  // session — ungrouped and past the top 30 — which used to be dropped. They
+  // cost a stat each (already paid above); titles are read only when their
+  // Recent Sessions period is expanded.
+  _loadSessions(protectedIds = new Set(), archivedIds = new Set(), olderOut = null) {
     const projDir = this._getProjectDir();
     if (!projDir) return [];
 
     let allFiles;
     try {
       allFiles = fs.readdirSync(projDir)
-        .filter(f => f.endsWith('.jsonl'))
+        // `agent-<id>.jsonl`: subagent transcripts that older Claude Code
+        // versions kept beside the sessions. Not resumable — `claude --resume
+        // agent-…` fails — and their first message is always "Warmup".
+        .filter(f => f.endsWith('.jsonl') && !f.startsWith('agent-'))
         .map(f => {
           const fullPath = path.join(projDir, f);
           const st = fs.statSync(fullPath);
@@ -1267,6 +1339,11 @@ class SessionTreeDataProvider {
     // Protected (regular groups + Resume Later) not already in top-30, capped
     // at PROTECTED_CAP by mtime DESC. Archive membership wins over protected
     // when a session is in both — archived path is cheaper, so prefer it.
+    // v3.27.0: a session nested under another (either side of the pair) is
+    // loaded like a protected one. Sub-sessions attach only to built items, so
+    // a stat-only parent or child would make a freshly nested session vanish.
+    const parentMap = sessionStoreGet('claudeSessionParent', {});
+    const nestedIds = new Set([...Object.keys(parentMap), ...Object.values(parentMap)]);
     const protectedExtras = [];
     for (const f of allFiles) {
       const sid = f.name.replace('.jsonl', '');
@@ -1275,6 +1352,18 @@ class SessionTreeDataProvider {
       if (!protectedIds.has(sid)) continue;
       protectedExtras.push(f);
       if (protectedExtras.length >= PROTECTED_CAP) break;
+    }
+    // Their own cap, so nesting pairs never push grouped sessions out of
+    // PROTECTED_CAP (a grouped session past the cap vanishes from its group).
+    const NESTED_CAP = 100;
+    const protectedNames = new Set(protectedExtras.map(f => f.name));
+    let nestedLoaded = 0;
+    for (const f of allFiles) {
+      if (nestedLoaded >= NESTED_CAP) break;
+      const sid = f.name.replace('.jsonl', '');
+      if (!nestedIds.has(sid) || top30Names.has(sid) || archivedIds.has(sid) || protectedNames.has(f.name)) continue;
+      protectedExtras.push(f);
+      nestedLoaded++;
     }
 
     // Archived: every member outside top-30. No cap. Title/firstMsg skipped.
@@ -1286,64 +1375,23 @@ class SessionTreeDataProvider {
       archivedExtras.push(f);
     }
 
+    if (olderOut) {
+      const loaded = new Set(protectedExtras.map(f => f.name));
+      for (const f of allFiles) {
+        const sid = f.name.replace('.jsonl', '');
+        if (top30Names.has(sid) || loaded.has(f.name) || protectedIds.has(sid) || archivedIds.has(sid)) continue;
+        olderOut.push(f);
+      }
+    }
+
     const titleMap = sessionStoreGet('claudeSessionTitles', {});
     const items = [];
 
     // Full-extract path: top 30 + protected extras. Title / firstMsg parsing
     // gates a session out of the tree if all three are missing.
     for (const file of [...top30, ...protectedExtras]) {
-      const sessionId = file.name.replace('.jsonl', '');
-      const savedTitle = titleMap[sessionId];
-      // v3.5.9: cached extract. With ~30 top files and several multi-MB
-      // sessions in iloom's recent list, this used to re-read + re-parse the
-      // same file every refresh (12+ per minute on a live workspace). The
-      // {mtime, size}-keyed cache makes repeat refreshes hit local memory.
-      const meta = this._getFileMeta(file.path, file.mtime, file.size) || { aiTitle: null, firstMsg: null };
-      const aiTitle = meta.aiTitle;
-      const firstMsg = meta.firstMsg;
-      if (!savedTitle && !aiTitle && !firstMsg) continue;
-
-      const date = new Date(file.mtime);
-      const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-
-      const displayText = savedTitle || aiTitle || firstMsg;
-      const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
-
-      // Forced Collapsed reserves a caret column on every sibling row;
-      // without it, leaf-only sub-group children render flush with their header.
-      const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
-      item.description = dateStr;
-      // v3.5.8: resourceUri carries size into the FileDecorationProvider so
-      // the label gets a yellow/red tint at 5/10 MB. The query also encodes
-      // trashed=0 so the recommendation tooltip differentiates from trash.
-      item.resourceUri = buildSessionDecorationUri(sessionId, file.size, false);
-      const tooltipHead = savedTitle || aiTitle;
-      const tooltipBody = firstMsg && firstMsg !== tooltipHead ? firstMsg : '';
-      item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}${tooltipBody ? tooltipBody + '\n\n' : ''}Session: ${sessionId}\n${date.toLocaleString()}${_sizeWarningSuffix(file.size, false)}`;
-      // v2.6.0: conversation-style icons. Titled sessions get a "discussion"
-      // (two overlapping speech bubbles) icon; untitled get "comment-draft"
-      // (dashed-border bubble) so the two are visually distinguishable.
-      // Both saved titles and ai-generated titles count as "titled".
-      item.iconPath = new vscode.ThemeIcon((savedTitle || aiTitle) ? 'comment-discussion' : 'comment-draft');
-      item.command = {
-        command: 'claudeCodeLauncher.resumeSession',
-        title: t('resumeSession'),
-        arguments: [sessionId]
-      };
-      item.contextValue = 'session';
-      item._sessionId = sessionId;
-      item._mtime = file.mtime;
-      // v3.5.9: stash the path + size on the item so getChildren can build
-      // the metadata row lazily on expand. extractMessageCount is the most
-      // expensive call in this loop on huge sessions — deferring it cuts the
-      // per-refresh fan-out from O(30 × file size) to O(30 × stat) on first
-      // render, with extractMessageCount only ever running on items the user
-      // has actively expanded.
-      item._jsonlPath = file.path;
-      item._fileSize = file.size;
-      item._searchText = displayText;
-
-      items.push(item);
+      const item = this._buildClaudeSessionItem(file, titleMap);
+      if (item) items.push(item);
     }
 
     // v3.6.9: archived path. No title/firstMsg parse — stat-only labels keep
@@ -1382,6 +1430,170 @@ class SessionTreeDataProvider {
       items.push(item);
     }
     return items;
+  }
+
+  // One Claude session leaf from its stat entry, or null when it has no saved
+  // title, no AI title and no user message (nothing to show). `opts.noRead`
+  // uses only the title cache and the saved title — never the file.
+  _buildClaudeSessionItem(file, titleMap, opts) {
+    const sessionId = file.name.replace('.jsonl', '');
+    const savedTitle = titleMap[sessionId];
+    // v3.5.9: cached extract. With ~30 top files and several multi-MB
+    // sessions in iloom's recent list, this used to re-read + re-parse the
+    // same file every refresh (12+ per minute on a live workspace). The
+    // {mtime, size}-keyed cache makes repeat refreshes hit local memory.
+    const meta = (opts && opts.noRead
+      ? this._cachedFileMeta(file)
+      : this._getFileMeta(file.path, file.mtime, file.size)) || { aiTitle: null, firstMsg: null };
+    const aiTitle = meta.aiTitle;
+    const firstMsg = meta.firstMsg;
+    if (!savedTitle && !aiTitle && !firstMsg) return null;
+
+    const date = new Date(file.mtime);
+    const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+
+    const displayText = savedTitle || aiTitle || firstMsg;
+    const label = displayText.length > 40 ? displayText.substring(0, 40) + '...' : displayText;
+
+    // Forced Collapsed reserves a caret column on every sibling row;
+    // without it, leaf-only sub-group children render flush with their header.
+    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
+    item.description = dateStr;
+    // v3.5.8: resourceUri carries size into the FileDecorationProvider so
+    // the label gets a yellow/red tint at 5/10 MB. The query also encodes
+    // trashed=0 so the recommendation tooltip differentiates from trash.
+    item.resourceUri = buildSessionDecorationUri(sessionId, file.size, false);
+    const tooltipHead = savedTitle || aiTitle;
+    const tooltipBody = firstMsg && firstMsg !== tooltipHead ? firstMsg : '';
+    item.tooltip = `${tooltipHead ? tooltipHead + '\n\n' : ''}${tooltipBody ? tooltipBody + '\n\n' : ''}Session: ${sessionId}\n${date.toLocaleString()}${_sizeWarningSuffix(file.size, false)}`;
+    // v2.6.0: conversation-style icons. Titled sessions get a "discussion"
+    // (two overlapping speech bubbles) icon; untitled get "comment-draft"
+    // (dashed-border bubble) so the two are visually distinguishable.
+    // Both saved titles and ai-generated titles count as "titled".
+    item.iconPath = new vscode.ThemeIcon((savedTitle || aiTitle) ? 'comment-discussion' : 'comment-draft');
+    item.command = {
+      command: 'claudeCodeLauncher.resumeSession',
+      title: t('resumeSession'),
+      arguments: [sessionId]
+    };
+    item.contextValue = 'session';
+    item._sessionId = sessionId;
+    item._mtime = file.mtime;
+    // v3.5.9: stash the path + size on the item so getChildren can build
+    // the metadata row lazily on expand. extractMessageCount is the most
+    // expensive call in this loop on huge sessions — deferring it cuts the
+    // per-refresh fan-out from O(30 × file size) to O(30 × stat) on first
+    // render, with extractMessageCount only ever running on items the user
+    // has actively expanded.
+    item._jsonlPath = file.path;
+    item._fileSize = file.size;
+    item._searchText = displayText;
+
+    return item;
+  }
+
+  // ─── Recent Sessions by period (v3.27.0) ────────────────────────────────
+
+  _groupRecentByPeriod() {
+    return vscode.workspace.getConfiguration('claudeCodeLauncher').get('recentSessions.groupByPeriod', true);
+  }
+
+  // The title cache entry for a stat entry, if it is current — never reads.
+  _cachedFileMeta(file) {
+    const cached = this._fileMetaCache.get(file.path);
+    return cached && cached.mtime === file.mtime && cached.size === file.size ? cached : null;
+  }
+
+  // A session already known (from the title cache) to have nothing to show —
+  // left out of a period's count so the count matches what expanding shows.
+  _isKnownUntitled(file, titleMap) {
+    const sid = file.name.replace('.jsonl', '');
+    if (titleMap && titleMap[sid]) return false;
+    const cached = this._cachedFileMeta(file);
+    return !!(cached && !cached.aiTitle && !cached.firstMsg);
+  }
+
+  _markUnifiedClaude(item) {
+    item._agent = 'claude';
+    item._unified = true;
+    item.iconPath = this._agentIcon('claude');
+  }
+
+  // Recent Sessions children: one node per period (Today, Yesterday, Previous
+  // 7 days, Previous 30 days, then months and years). `eagerItems` are built
+  // leaves; `lazyFiles` are Claude stat entries whose leaves are built when
+  // their period is expanded (getChildren → _expandLazyPeriod).
+  _periodNodes(eagerItems, lazyFiles, ctx) {
+    const entries = [
+      ...eagerItems.map((item) => ({ item, mtime: item._mtime || 0 })),
+      ...lazyFiles.map((file) => ({ file, mtime: file.mtime || 0 })),
+    ];
+    const names = {
+      today: t('periodToday'),
+      yesterday: t('periodYesterday'),
+      last7: t('periodLast7Days'),
+      last30: t('periodLast30Days'),
+      unknown: t('periodNoDate'),
+    };
+    const locale = getLocale() === 'ko' ? 'ko-KR' : 'en-US';
+    return bucketByPeriod(entries, (e) => e.mtime, Date.now()).map((bucket) => {
+      const name = periodLabel(bucket, names, locale);
+      const eager = bucket.entries.filter((e) => e.item).map((e) => e.item);
+      const lazy = bucket.entries.filter((e) => e.file).map((e) => e.file);
+      const count = eager.length + lazy.filter((f) => !this._isKnownUntitled(f, ctx.titleMap)).length;
+      // Expand state is keyed apart from group names: a custom group called
+      // "Today" or "2025" must not open and close with the period.
+      const expandKey = `period:${bucket.key}`;
+      const node = new vscode.TreeItem(`${name} (${count})`, ctx.stateOf(expandKey));
+      node.iconPath = new vscode.ThemeIcon('calendar');
+      // Same drop behaviour as the Recent Sessions header: drop = ungroup.
+      node.contextValue = 'recentGroup';
+      node._expandKey = expandKey;
+      node._periodKey = bucket.key;
+      node._totalCount = count;
+      node._unified = ctx.unified;
+      node._agentMode = this._agentMode;
+      if (lazy.length > 0) {
+        node._lazyFiles = lazy;
+        node._eagerItems = eager;
+        node._lazyCtx = ctx;
+      } else {
+        eager.sort(ctx.cmp);
+        node._children = eager;
+      }
+      return node;
+    });
+  }
+
+  // Builds a lazy period's leaves. Reading titles is synchronous file I/O on
+  // the extension host — the thread that also pumps every terminal — so it
+  // yields every few files instead of holding the thread for the whole period
+  // (a 170-session month took ~0.4 s in one go).
+  async _expandLazyPeriod(node) {
+    const ctx = node._lazyCtx;
+    const built = [];
+    let sinceYield = 0;
+    try {
+      for (const file of node._lazyFiles) {
+        if (!this._cachedFileMeta(file) && ++sinceYield >= LAZY_PERIOD_BATCH) {
+          sinceYield = 0;
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        const item = this._buildClaudeSessionItem(file, ctx.titleMap || {});
+        if (!item) continue;
+        if (ctx.unified) this._markUnifiedClaude(item);
+        // The comparator falls back to mtime from this map.
+        ctx.mtimeMap.set(item._sessionId, item._mtime || 0);
+        built.push(item);
+      }
+    } catch (e) {
+      // Show what was built rather than leave the period failed until the
+      // next refresh.
+      console.error('[session-tree] period expand failed (showing partial):', (e && e.message) || e);
+    }
+    const children = [...node._eagerItems, ...built];
+    children.sort(ctx.cmp);
+    return children;
   }
 
   // ─── Sort + Nest helpers (v2.6.0) ───────────────────────────────────────
@@ -1453,18 +1665,30 @@ class SessionTreeDataProvider {
       }));
     }
     if (this._agentMode === 'unified') {
-      // claude leaves (top-recent set) + every other agent's sessions, so the
-      // sibling/sort math spans all agents the unified view shows.
-      const claude = this._loadSessions().map(i => ({ _sessionId: i._sessionId, _mtime: i._mtime || 0 }));
+      // claude leaves + every other agent's sessions, so the sibling/sort math
+      // spans all agents the unified view shows.
       const others = this._loadOtherAgentItems().map(i => ({ _sessionId: i._sessionId, _mtime: i._mtime || 0 }));
-      return [...claude, ...others];
+      return [...this._claudeSessionIds(), ...others];
     }
-    return this._loadSessions();
+    return this._claudeSessionIds();
+  }
+
+  // Every Claude session id + mtime: the built top 30 and (v3.27.0) the older
+  // ones listed by period, so Move Up/Down works on those too. Older files
+  // cost a stat, not a title read.
+  _claudeSessionIds() {
+    const older = [];
+    const items = this._loadSessions(new Set(), new Set(), older)
+      .map(i => ({ _sessionId: i._sessionId, _mtime: i._mtime || 0 }));
+    return [...items, ...older.map(f => ({ _sessionId: f.name.replace('.jsonl', ''), _mtime: f.mtime || 0 }))];
   }
 
   // Get ordered sibling list for a given scope. All sessionIds that share the
   // same scope, sorted by current effective order (sortOrder ? mtime).
-  _getSiblings(scope) {
+  // v3.27.0: `forId` in Recent Sessions (no group, no parent) narrows the
+  // siblings to its period — that is the list the user sees, so moving the
+  // first of a period up must not swap with the previous period's last.
+  _getSiblings(scope, forId) {
     const allItems = this._loadSessionIds();
     const idSet = new Set(allItems.map(i => i._sessionId));
     const parents = sessionStoreGet(this._storeKey('parent'), {});
@@ -1484,6 +1708,11 @@ class SessionTreeDataProvider {
       siblings = allItems
         .filter(i => !grouped.has(i._sessionId) && !parents[i._sessionId])
         .map(i => i._sessionId);
+      if (forId && this._groupRecentByPeriod()) {
+        const now = Date.now();
+        const period = periodOf(mtimeMap.get(forId) || 0, now).key;
+        siblings = siblings.filter(id => id === forId || periodOf(mtimeMap.get(id) || 0, now).key === period);
+      }
     }
     siblings.sort((a, b) => {
       const oa = sortOrder[a], ob = sortOrder[b];
@@ -1510,7 +1739,7 @@ class SessionTreeDataProvider {
   // Move a session up/down among its siblings.
   moveSessionUp(sessionId) {
     const scope = this._getScope(sessionId);
-    const siblings = this._getSiblings(scope);
+    const siblings = this._getSiblings(scope, sessionId);
     const idx = siblings.indexOf(sessionId);
     if (idx <= 0) return;
     [siblings[idx - 1], siblings[idx]] = [siblings[idx], siblings[idx - 1]];
@@ -1520,7 +1749,7 @@ class SessionTreeDataProvider {
 
   moveSessionDown(sessionId) {
     const scope = this._getScope(sessionId);
-    const siblings = this._getSiblings(scope);
+    const siblings = this._getSiblings(scope, sessionId);
     const idx = siblings.indexOf(sessionId);
     if (idx < 0 || idx >= siblings.length - 1) return;
     [siblings[idx], siblings[idx + 1]] = [siblings[idx + 1], siblings[idx]];
@@ -1785,7 +2014,7 @@ class SessionTreeDataProvider {
 
     // Rewrite sortOrder among siblings (scope of target, now includes filtered)
     const scope = targetParent ? { parent: targetParent } : (targetGroup ? { group: targetGroup } : {});
-    let siblings = this._getSiblings(scope);
+    let siblings = this._getSiblings(scope, targetSessionId);
     // Remove dragged ids from siblings list, then insert before target
     const draggedSet = new Set(filtered);
     siblings = siblings.filter(sid => !draggedSet.has(sid));

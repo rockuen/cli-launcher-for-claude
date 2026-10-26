@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.26.0",
+  "version": "3.27.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -689,7 +689,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "view == claudeCodeLauncher.antigravitySessions && viewItem == antigravitySession",
+          "when": "view == claudeCodeLauncher.antigravitySessions && (viewItem == antigravitySession || viewItem == subSession)",
           "group": "inline@2"
         },
         {
@@ -749,7 +749,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "view == claudeCodeLauncher.codexSessions && viewItem == codexSession",
+          "when": "view == claudeCodeLauncher.codexSessions && (viewItem == codexSession || viewItem == subSession)",
           "group": "inline@2"
         },
         {
@@ -869,7 +869,7 @@
         },
         {
           "command": "claudeCodeLauncher.trashAgentSession",
-          "when": "view == claudeCodeLauncher.gjcSessions && viewItem == gjcSession",
+          "when": "view == claudeCodeLauncher.gjcSessions && (viewItem == gjcSession || viewItem == subSession)",
           "group": "inline@2"
         },
         {
@@ -1472,6 +1472,11 @@
             "claude"
           ],
           "description": "Agents shown when creating a new session. Toggle agents on/off in CLI Launcher Settings → Agent. Only enabled agents that are also installed appear in the new-session picker."
+        },
+        "claudeCodeLauncher.recentSessions.groupByPeriod": {
+          "type": "boolean",
+          "default": true,
+          "description": "Split Recent Sessions by period: Today, Yesterday, Previous 7 days, Previous 30 days, then one folder per month (per year after twelve months). With it on, Recent Sessions lists every ungrouped Claude session, not only the 30 most recent; older sessions' titles are read when you open their period. Off = the flat list of the 30 most recent Claude sessions (other agents always list all their sessions)."
         },
         "claudeCodeLauncher.sessionSaveDisabledAgents": {
           "type": "array",

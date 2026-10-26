@@ -18,7 +18,7 @@ const { t } = require('./i18n');
 const state = require('./state');
 const { buildHandoffNote } = require('./lib/handoff');
 const { buildRenamePrefill } = require('./lib/renamePrefix');
-const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions, findCodexSessionPath, findGrokSessionPath, findGjcSessionPath, findChiefSessionPath } = require('./lib/sessionJsonl');
+const { getSessionJsonlPath, extractMessages, listKiroSessions, listAntigravitySessions, listCodexSessions, listGrokSessions, listGjcSessions, findCodexSessionPath, findGrokSessionPath, findGrokSessionDir, findGjcSessionPath, findChiefSessionPath } = require('./lib/sessionJsonl');
 const { getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths, getChiefPaths, getAntigravityBaseDir } = require('./lib/projectSessions');
 const { writePtyChunked } = require('./pty/write');
 const { sessionStoreGet, sessionStoreUpdate, deviceLocalSet, migrateFromWorkspaceState } = require('./store/sessionStore');
@@ -38,6 +38,7 @@ const { copySessionLinkFromTreeItem, copySessionLinkFromPanel } = require('./han
 const { registerSessionUriHandler } = require('./uri/sessionUriHandler');
 const { migrateFileAssociationsSetting } = require('./handlers/openFile');
 const { startAgentCli } = require('./handlers/agentCli');
+const { trashSession } = require('./lib/agentTrash');
 const { MAX_DEPTH, pathDepth, getParentPath, getLeafName, getDescendants, isAddAllowed } = require('./util/groupPath');
 
 function activate(context) {
@@ -403,71 +404,71 @@ function activate(context) {
 
   // Kiro view shares the claude view's expand/collapse tracking semantics.
   kiroTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.kiroTreeProvider._expandedGroups.add(key);
   });
   kiroTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.kiroTreeProvider._expandedGroups.delete(key);
   });
 
   // Antigravity view — same expand/collapse tracking.
   antigravityTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.antigravityTreeProvider._expandedGroups.add(key);
   });
   antigravityTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.antigravityTreeProvider._expandedGroups.delete(key);
   });
 
   // Codex view — same expand/collapse tracking.
   codexTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.codexTreeProvider._expandedGroups.add(key);
   });
   codexTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.codexTreeProvider._expandedGroups.delete(key);
   });
 
   // Unified view — same expand/collapse tracking.
   unifiedTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.unifiedTreeProvider._expandedGroups.add(key);
   });
   unifiedTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.unifiedTreeProvider._expandedGroups.delete(key);
   });
 
   // Grok view — same expand/collapse tracking.
   grokTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.grokTreeProvider._expandedGroups.add(key);
   });
   grokTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.grokTreeProvider._expandedGroups.delete(key);
   });
 
   // Gajae (gjc) view — same expand/collapse tracking.
   gjcTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.gjcTreeProvider._expandedGroups.add(key);
   });
   gjcTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.gjcTreeProvider._expandedGroups.delete(key);
   });
 
   // Chief view — same expand/collapse tracking.
   chiefTreeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.chiefTreeProvider._expandedGroups.add(key);
   });
   chiefTreeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.chiefTreeProvider._expandedGroups.delete(key);
   });
 
@@ -599,11 +600,11 @@ function activate(context) {
   // nested groups at the same leaf name are distinguished. Fall back to the
   // label-stripped value for built-in groups (Resume Later, Recent, Trash).
   treeView.onDidExpandElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.sessionTreeProvider._expandedGroups.add(key);
   });
   treeView.onDidCollapseElement(e => {
-    const key = e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
+    const key = e.element._expandKey || e.element._groupName || (e.element.label ? String(e.element.label).replace(/\s*\(\d+\)$/, '') : null);
     if (key) state.sessionTreeProvider._expandedGroups.delete(key);
   });
 
@@ -690,6 +691,10 @@ function activate(context) {
         refreshChiefAvailable();
         if (state.quickActionsProvider) state.quickActionsProvider.refresh();
         if (state.unifiedTreeProvider) state.unifiedTreeProvider.refresh();
+      }
+      // v3.27.0: Recent Sessions flat ↔ by period.
+      if (e.affectsConfiguration('claudeCodeLauncher.recentSessions.groupByPeriod')) {
+        state.refreshSessionTrees();
       }
       if (
         e.affectsConfiguration('claudeCodeLauncher.chief.apiKey')
@@ -1167,45 +1172,48 @@ function activate(context) {
     vscode.commands.registerCommand('claudeCodeLauncher.trashAgentSession', async (item) => {
       const sessionId = item && item._sessionId;
       if (!sessionId) return;
-      const agent = item._agent;
+      // v3.27.0: the per-agent views (Gajae/Codex/Grok/Chief/Antigravity
+      // Sessions) tag their leaves with _agentMode only — _agent is set in the
+      // unified view. Reading _agent alone made Trash a silent no-op there.
+      const agent = item._agent || item._agentMode;
       if (!agent || agent === 'claude' || agent === 'kiro') return;
       const cwd = item._cwd || vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
 
-      // Attempt to move the session file to a trash subdir
+      // Move the session (file or folder) into <sessions>/trash/ (lib/agentTrash).
       try {
-        let sessionFile = null;
+        let sessionPath = null; // the transcript file, or the session folder
+        let sidecar = null;     // gjc only: the <stem>/ folder beside it
         let sessionsDir = null;
         if (agent === 'codex') {
-          sessionFile = findCodexSessionPath(sessionId, null, cwd);
+          sessionPath = findCodexSessionPath(sessionId, null, cwd);
           sessionsDir = getCodexPaths(cwd).sessionsDir;
         } else if (agent === 'grok') {
-          sessionFile = findGrokSessionPath(sessionId, null, cwd);
+          // A Grok session is a folder (<group>/<id>/ with summary.json and
+          // updates.jsonl). Moving only updates.jsonl left summary.json behind
+          // and the session stayed listed; a summary-only folder is listed too.
+          sessionPath = findGrokSessionDir(sessionId, null, cwd);
           sessionsDir = getGrokPaths(cwd).sessionsDir;
         } else if (agent === 'gjc') {
-          sessionFile = findGjcSessionPath(sessionId, null, cwd);
+          sessionPath = findGjcSessionPath(sessionId, null, cwd);
           sessionsDir = getGjcPaths(cwd).sessionsDir;
+          // gjc keeps tool logs + resident-cache in a sibling <stem>/ folder.
+          sidecar = sessionPath ? sessionPath.replace(/\.jsonl$/, '') : null;
         } else if (agent === 'antigravity') {
           const baseDir = getAntigravityBaseDir(cwd);
           const convDir = path.join(baseDir, 'conversations');
           const dbFile = path.join(convDir, sessionId + '.db');
-          if (fs.existsSync(dbFile)) sessionFile = dbFile;
+          if (fs.existsSync(dbFile)) sessionPath = dbFile;
           sessionsDir = convDir;
         } else if (agent === 'chief') {
           // Chief sessions are directories: sessionsDir/<id>/updates.jsonl
           sessionsDir = getChiefPaths(cwd).sessionsDir;
           const sessionDir = path.join(sessionsDir, sessionId);
-          if (fs.existsSync(sessionDir)) {
-            const trashDir = path.join(sessionsDir, 'trash');
-            if (!fs.existsSync(trashDir)) fs.mkdirSync(trashDir, { recursive: true });
-            fs.renameSync(sessionDir, path.join(trashDir, sessionId));
-          }
+          if (fs.existsSync(sessionDir)) sessionPath = sessionDir;
         }
-        if (agent !== 'chief' && sessionFile && fs.existsSync(sessionFile)) {
-          const trashDir = path.join(sessionsDir || path.dirname(sessionFile), 'trash');
-          if (!fs.existsSync(trashDir)) fs.mkdirSync(trashDir, { recursive: true });
-          fs.renameSync(sessionFile, path.join(trashDir, path.basename(sessionFile)));
-        }
-      } catch (_) { /* best-effort file move */ }
+        trashSession(sessionPath, sessionsDir, sidecar);
+      } catch (e) {
+        console.error('[trash] could not move the session (store entries are still cleaned):', (e && e.message) || e);
+      }
 
       // Remove from agent's store keys (groups + saved)
       const AGENT_KEYS = {
@@ -1315,7 +1323,9 @@ function activate(context) {
         const projDir = state.sessionTreeProvider._getProjectDir();
         if (!projDir) return;
         candidateIds = fs.readdirSync(projDir)
-          .filter(f => f.endsWith('.jsonl'))
+          // agent-*.jsonl are old subagent transcripts, not sessions (the
+          // tree skips them, so nesting under one would look like a no-op).
+          .filter(f => f.endsWith('.jsonl') && !f.startsWith('agent-'))
           .map(f => ({ id: f.replace('.jsonl', ''), title: null }));
       }
       const candidates = [];
