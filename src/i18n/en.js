@@ -62,7 +62,6 @@ module.exports = {
   searchCloseTip: 'Close (Escape)',
   processExited: 'Agent has exited.',
   restartBtn: 'Restart',
-  dropFiles: 'Drop files here',
   scrollBottomTip: 'Scroll to bottom',
   themeTitle: 'Agent Theme',
   themeAuto: 'Auto (agent)', themeClaude: 'Claude Dark', themeKiro: 'Kiro Purple', themeAntigravity: 'Antigravity Spectrum', themeCodex: 'Codex Slate', themeGrok: 'Grok', themeGjc: 'Gajae Red', themeChief: 'Chief Gold',

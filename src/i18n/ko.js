@@ -61,7 +61,6 @@ module.exports = {
   searchCloseTip: '닫기 (Escape)',
   processExited: '에이전트가 종료되었습니다.',
   restartBtn: '재시작',
-  dropFiles: '파일을 여기에 놓으세요',
   scrollBottomTip: '맨 아래로',
   themeTitle: '에이전트 테마',
   themeAuto: 'Auto (에이전트 따라)', themeClaude: 'Claude Dark', themeKiro: 'Kiro Purple', themeAntigravity: 'Antigravity Spectrum', themeCodex: 'Codex Slate', themeGrok: 'Grok', themeGjc: 'Gajae Red', themeChief: 'Chief Gold',

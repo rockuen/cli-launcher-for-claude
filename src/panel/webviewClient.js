@@ -1788,44 +1788,6 @@ function getClientScript(ctx) {
       term.focus();
     });
 
-    // ── Drag and drop files ──
-    const wrapper = document.getElementById('terminal-wrapper');
-    const overlay = document.getElementById('drop-overlay');
-    let dragCounter = 0;
-
-    wrapper.addEventListener('dragenter', (e) => {
-      e.preventDefault();
-      dragCounter++;
-      overlay.style.display = 'flex';
-    });
-    wrapper.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      dragCounter--;
-      if (dragCounter <= 0) {
-        overlay.style.display = 'none';
-        dragCounter = 0;
-      }
-    });
-    wrapper.addEventListener('dragover', (e) => {
-      e.preventDefault();
-    });
-    wrapper.addEventListener('drop', (e) => {
-      e.preventDefault();
-      overlay.style.display = 'none';
-      dragCounter = 0;
-
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0) {
-        // Webview cannot read full paths from dropped files for security
-        // Use dataTransfer text as fallback
-        const text = e.dataTransfer.getData('text/plain');
-        if (text) {
-          vscode.postMessage({ type: 'drop-files', paths: [text] });
-        }
-      }
-      term.focus();
-    });
-
     // Input panel (bottom fixed)
     const inputPanel = document.getElementById('input-panel');
     const editorTextarea = document.getElementById('editor-textarea');

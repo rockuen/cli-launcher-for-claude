@@ -316,29 +316,6 @@ function getStyles(ctx) {
     #settings-modal details summary { user-select: none; }
     #settings-modal details summary:hover { color: #D97757; }
 
-    /* Drop overlay */
-    #drop-overlay {
-      display: none;
-      position: absolute;
-      inset: 0;
-      background: ${isDark ? 'rgba(76,175,80,0.15)' : 'rgba(76,175,80,0.1)'};
-      border: 2px dashed #4caf50;
-      border-radius: 10px;
-      z-index: 100;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-    }
-    #drop-overlay span {
-      font-size: 16px;
-      color: #4caf50;
-      font-family: -apple-system, "Segoe UI", sans-serif;
-      font-weight: 600;
-      background: ${isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.8)'};
-      padding: 8px 20px;
-      border-radius: 8px;
-    }
-
     /* Split layout (Phase 3): #content-split wraps #reader-area + #splitter + #terminal */
     #content-split {
       flex: 1;

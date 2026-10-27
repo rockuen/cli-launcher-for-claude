@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.28.1] - 2026-10-27
+
+The "Drop files here" overlay is gone.
+
+### Removed
+- **Dropping files onto the panel.** Any drag over the panel showed a green "Drop files here" overlay, including a link or a bit of text in the reader pulled a few pixels by accident. The drop itself did nothing: a webview cannot read the path of a file dropped from the OS, and the fallback only sent the drag's `text/plain`, which a file dragged from Explorer or Finder does not carry (and a drag from the VS Code Explorer has no files, so it was skipped as well). Removed the overlay, the drag handlers, the `drop-files` message and `handlers/dropFiles.js`. With no handler in the page, VS Code's own webview drag handling applies again, as in other webviews: a file dragged in from the OS goes to the editor area, and a link dragged inside the reader drops nowhere.
+
 ## [3.28.0] - 2026-10-26
 
 Agents tell the launcher themselves when a turn is done or they need you, instead of the launcher guessing from quiet output.

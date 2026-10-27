@@ -4,7 +4,7 @@
 //
 // Message protocol (19 webview→ext):
 //   webview-ready, input, submit-input, resize, toolbar, paste-image, check-clipboard-image,
-//   copy-text, drop-files, open-link, rename-tab, save-setting, export-settings, import-settings,
+//   copy-text, open-link, rename-tab, save-setting, export-settings, import-settings,
 //   close-resume, open-file, open-folder, open-reader, restart-session,
 //   request-edit-memo
 
@@ -22,7 +22,6 @@ const { writePtyChunked } = require('../pty/write');
 const { handleToolbar } = require('../handlers/toolbar');
 const { pickAgent } = require('../handlers/pickAgent');
 const { handlePasteImage, readClipboardImageFromSystem } = require('../handlers/pasteImage');
-const { handleDropFiles } = require('../handlers/dropFiles');
 const { handleOpenFile } = require('../handlers/openFile');
 const { handleOpenFolder } = require('../handlers/openFolder');
 const readerView = require('./readerView');
@@ -117,10 +116,6 @@ function routeWebviewMessage(msg, ctx) {
     // restriction, so the copy still lands instead of failing silently.
     case 'copy-text':
       if (typeof msg.text === 'string' && msg.text) vscode.env.clipboard.writeText(msg.text);
-      return;
-
-    case 'drop-files':
-      if (entry.pty) handleDropFiles(msg.paths, entry);
       return;
 
     case 'open-link':

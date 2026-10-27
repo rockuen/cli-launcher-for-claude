@@ -130,7 +130,6 @@ ${agent === 'chief' ? `
       <span id="restart-msg">${T.processExited}</span>
       <button id="restart-btn">&#x25B6; ${T.restartBtn}</button>
     </div>
-    <div id="drop-overlay"><span>${T.dropFiles}</span></div>
     <div id="scroll-fab" title="${T.scrollBottomTip}">&#x25BC;</div>
     <div id="theme-picker">
       <h4>${T.themeTitle}</h4>
