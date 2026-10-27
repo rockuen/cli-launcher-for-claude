@@ -476,7 +476,8 @@ function getStyles(ctx) {
       margin: 0.4em 0; padding-left: 10px;
       border-left: 3px solid ${border}; color: ${statusGray};
     }
-    #reader-area .msg-body a { color: ${isDark ? '#4fc1ff' : '#0066cc'}; }
+    /* Links don't drag (a press that moves is not a click either — setupReaderLinks). */
+    #reader-area .msg-body a { color: ${isDark ? '#4fc1ff' : '#0066cc'}; -webkit-user-drag: none; }
     #reader-area .msg-body hr { border: 0; border-top: 1px solid ${border}; margin: 0.8em 0; }
     #reader-area .msg-body ul, #reader-area .msg-body ol { padding-left: 22px; margin: 0.4em 0; }
 

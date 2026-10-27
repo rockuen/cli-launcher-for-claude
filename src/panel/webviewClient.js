@@ -2332,6 +2332,13 @@ function getClientScript(ctx) {
         if (/^(?:\\.{1,2}[\\\\/])/.test(withoutAnchor) && readerFileExtRe.test(withoutAnchor)) return true;
         return readerFileExtRe.test(withoutAnchor);
       }
+      // v3.28.2: links don't drag (CSS). Without the drag, a press that moves
+      // and is released on the same link fires click, so treat a press that
+      // moved at least the browser's 4px drag threshold as not a click — the same press
+      // that used to start a drag still opens nothing. Keyboard / assistive
+      // clicks (detail 0, clientX/Y 0) skip the check: downX/Y are stale then.
+      let downX = 0, downY = 0;
+      reader.addEventListener('mousedown', (e) => { downX = e.clientX; downY = e.clientY; }, true);
       reader.addEventListener('click', (e) => {
         const a = e.target.closest('a');
         if (!a) return;
@@ -2339,6 +2346,7 @@ function getClientScript(ctx) {
         if (!href) return;
         e.preventDefault();
         e.stopPropagation();
+        if (e.detail !== 0 && (Math.abs(e.clientX - downX) >= 4 || Math.abs(e.clientY - downY) >= 4)) return;
         if (/^https?:\\/\\//i.test(href)) {
           vscode.postMessage({ type: 'open-link', url: href });
           return;

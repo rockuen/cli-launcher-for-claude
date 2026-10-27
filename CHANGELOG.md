@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.28.2] - 2026-10-27
+
+Links in the reader no longer drag.
+
+### Fixed
+- **Reader links started a drag.** Pressing a link and moving a few pixels picked it up as a drag, with the link's `vscode-webview://` address as the drag image. Links in the reader (the split pane and the standalone reader tab) now have `-webkit-user-drag: none`.
+- **A press that moves is still not a click.** Chrome does not start a text selection from a link either, so without the drag a press that moved and was released on the same link fired a click and opened it. Both readers now ignore a click whose press moved 4 px or more (the point where Chrome on Windows started the link drag, measured), so the same press that used to start a drag opens nothing, and a click, including a wobble of up to 3 px, opens the link as before. Clicks from the keyboard (Enter on a focused link) or assistive tools carry no pointer position and are never ignored. To select a link's text, Alt+drag (Chrome's own gesture) works.
+
+### Tests
+- `readerLinkDrag.test.ts` (4): the link rule in both readers, and both guards run for real against stub elements (the panel's link handler cut out of the generated client script, the standalone reader's capture-phase guard out of readerView.js): a click and a 3 px wobble open, a 4 px move opens nothing (the panel still blocks navigation; the standalone guard stops the click before the webview host), and a keyboard click after a mouse press elsewhere opens. Also checked in Chrome with raw CDP mouse input against the generated panel code and the rendered standalone reader page: before, a press-and-move on a link started a drag; now it starts none, and clicks open file and web links.
+
 ## [3.28.1] - 2026-10-27
 
 The "Drop files here" overlay is gone.

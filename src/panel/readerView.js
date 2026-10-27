@@ -510,7 +510,8 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     margin: 0.5em 0; padding-left: 12px;
     border-left: 3px solid var(--quote-border); color: var(--quote-fg);
   }
-  .msg-body a { color: var(--user); }
+  /* Links don't drag (a press that moves is not a click either — see the blocks click guard). */
+  .msg-body a { color: var(--user); -webkit-user-drag: none; }
   .msg-body hr { border: 0; border-top: 1px solid var(--border); margin: 1em 0; }
 </style>
 </head>
@@ -599,6 +600,21 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
     if (sendBtn) sendBtn.addEventListener('click', send);
 
     if (blocksEl) {
+      // Links don't drag (CSS). Without the drag, a press that moves and is
+      // released on the same link fires click, so a press that moved at least
+      // the browser's 4px drag threshold is stopped here and the webview host
+      // does not open the link (the same press used to start a drag).
+      // Keyboard / assistive clicks (detail 0, clientX/Y 0) skip the check.
+      let downX = 0, downY = 0;
+      blocksEl.addEventListener('mousedown', function(e) { downX = e.clientX; downY = e.clientY; }, true);
+      blocksEl.addEventListener('click', function(e) {
+        if (!e.target || !e.target.closest || !e.target.closest('a')) return;
+        if (e.detail !== 0 && (Math.abs(e.clientX - downX) >= 4 || Math.abs(e.clientY - downY) >= 4)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }, true);
+
       // Delegated listener remains active when live updates replace blocksHtml.
       blocksEl.addEventListener('click', async function(e) {
         const button = e.target && e.target.closest && e.target.closest('.reader-code-copy');
