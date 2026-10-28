@@ -26,6 +26,7 @@ const { loadNodePty } = require('../pty/loadNodePty');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
+const { tabLabel, setPanelTitle } = require('./panelTitle');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, findGrokEventsPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths } = require('../lib/projectSessions');
@@ -425,7 +426,7 @@ function createPanel(context, extensionPath, session, opts) {
 
   const panel = vscode.window.createWebviewPanel(
     'claudeCode',
-    tabTitle,
+    tabLabel(tabTitle),
     { viewColumn: session?.viewColumn || vscode.ViewColumn.One, preserveFocus: !!session },
     {
       enableScripts: true,
@@ -926,13 +927,18 @@ function createPanel(context, extensionPath, session, opts) {
         return;
       }
       blinkOn = !blinkOn;
-      try { panel.title = (blinkOn ? '\u26A0 ' : '') + entry.title; } catch (_) {}
+      setPanelTitle(entry, { prefix: blinkOn ? '\u26A0 ' : '' });
     }, 800);
   }
   function stopTitleBlink() {
+    const wasBlinking = !!blinkInterval;
     if (blinkInterval) { clearInterval(blinkInterval); blinkInterval = null; }
     blinkOn = false;
-    try { panel.title = entry.title; } catch (_) {}
+    // Undo only the blink's own ⚠. A tab that exited or went stuck while
+    // blinking keeps the done / exit / ⚠ mark that state set.
+    if (wasBlinking && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'stuck') {
+      setPanelTitle(entry);
+    }
   }
   entry._stopBlink = stopTitleBlink;
 
@@ -1467,7 +1473,7 @@ function createPanel(context, extensionPath, session, opts) {
     }
     if (!alive && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'stuck') {
       entry.state = 'stuck';
-      try { panel.title = '⚠ ' + entry.title; } catch (_) {}
+      setPanelTitle(entry, { prefix: '⚠ ' });
       try { panel.webview.postMessage({ type: 'state', state: 'stuck' }); } catch (_) {}
       setTabIcon(panel, 'error', extensionPath);
       updateStatusBar();
@@ -1498,11 +1504,11 @@ function createPanel(context, extensionPath, session, opts) {
     if (!entry._disposed) {
       if (isSuccess) {
         setTabIcon(panel, 'done', extensionPath);
-        panel.title = entry.title + t('suffixDone');
+        setPanelTitle(entry, { suffix: t('suffixDone') });
         try { panel.webview.postMessage({ type: 'state', state: 'done' }); } catch (_) {}
       } else {
         setTabIcon(panel, 'error', extensionPath);
-        panel.title = entry.title + t('suffixError').replace('{0}', exitCode);
+        setPanelTitle(entry, { suffix: t('suffixError').replace('{0}', exitCode) });
         try { panel.webview.postMessage({ type: 'state', state: 'error' }); } catch (_) {}
       }
       try { panel.webview.postMessage({ type: 'process-exited', exitCode: exitCode, canResume: !!entry.sessionId }); } catch (_) {}

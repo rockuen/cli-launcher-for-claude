@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.29.0] - 2026-10-28
+
+Shorter tab titles, so you can tell many open sessions apart.
+
+### Added
+- **Hide the date in tab titles** (`claudeCodeLauncher.tabTitle.hideDatePrefix`, off by default). A tab named `261028_S&OP report` shows as `S&OP report`. The date is matched with the rename prefix format (`renamePrefix.format`, default `YYMMDD_`), or as a bare `YYMMDD`, `YYYYMMDD` or `YYYY-MM-DD` followed by `_`, `-`, `.` or a space, so names given before the prefix was on lose their date too. Months, days and times must be real ones, so a name that starts with an order number or item code (`100000 users`, `999999_x`) keeps it, and a format ending in a token never stops inside a longer number. A title that is only a date is left as it is.
+- **Max tab title length** (`claudeCodeLauncher.tabTitle.maxLength`, default `0` = no limit). Longer titles are cut to that many characters and end in `…`. Characters are counted as you see them, so an emoji sequence or a decomposed Hangul syllable (macOS file names) is never cut in half. 1–3 count as 4, so a tab never becomes a bare `…`. The length is counted after a hidden date, and the ⚠ and done / exit markers sit outside the limit, so they always show.
+- Both are in Settings › General, under the rename prefix, and apply to open tabs as soon as they change.
+- Only the editor tab changes. The session keeps its full name in the Sessions view, the title inside the panel, the rename box, notifications and session links. VS Code shows the shortened text in the tab's hover too (a webview tab has no separate tooltip).
+
+### Fixed
+- **A tab that ended or went stuck while its title was blinking lost its mark.** The next blink tick reset the title to the bare name, wiping ` (done)`, the exit code or the stuck ⚠. The blink now undoes only its own ⚠.
+
+### Notes
+- VS Code's own `workbench.editor.tabSizing: "fixed"` (with `workbench.editor.tabSizingFixedMaxWidth`) caps the width of every tab, file tabs included, and fades the cut instead of adding `…`. It cannot remove a date; `workbench.editor.customLabels.patterns` only renames file tabs, not webview tabs like the launcher's.
+
+### Tests
+- `tabLabel.test.ts` (19): the date matcher (default and custom formats with literal brackets and dots, bare dates, titles it must leave alone, numbers that are not real dates, formats ending in a token, separators after the prefix, a date-only title), the cut (no trailing space, no half emoji or Hangul syllable, the 4-character floor, limits that mean no limit), the two steps together, the panel glue against a stub `vscode` (⚠ and done outside the limit, a settings refresh keeps the done marker, a closed tab is skipped, a throwing setter does not escape), a scan of every source file for a direct session-tab title write, the mark each tab state sets and the blink guard, and the settings wiring. The settings page was also rendered against a stub `vscode` and its script checked with `node --check`.
+
 ## [3.28.2] - 2026-10-27
 
 Links in the reader no longer drag.

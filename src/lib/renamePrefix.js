@@ -58,4 +58,47 @@ function buildRenamePrefill(opts) {
   return { value, valueSelection: [prefix.length, value.length] };
 }
 
-module.exports = { formatDatePattern, buildRenamePrefill };
+// The reverse, for display (lib/tabLabel): drop a leading date from `title`.
+// The configured `format` is tried first (its date tokens as digits, the rest
+// literal), then a bare date — YYMMDD, YYYYMMDD or YYYY-MM-DD followed by `_`,
+// `-`, `.` or a space — so names typed before the prefix was on, or under
+// another format, lose their date too. Months, days and times must be real
+// ones, so a leading order number or item code (`100000 users`) stays. A
+// title that is only a date comes back unchanged rather than emptied.
+const MONTH = '(?:0[1-9]|1[0-2])';
+const DAY = '(?:0[1-9]|[12]\\d|3[01])';
+const TOKEN_DIGITS = {
+  YYYY: '\\d{4}', YY: '\\d{2}', MM: MONTH, DD: DAY, HH: '(?:[01]\\d|2[0-3])', mm: '[0-5]\\d', ss: '[0-5]\\d',
+};
+const BARE_DATE = new RegExp(`^(?:(?:\\d{4}|\\d{2})${MONTH}${DAY}|\\d{4}-${MONTH}-${DAY})[\\s_.-]+`);
+
+// `^` + the format with tokens as digit runs, or null when it has no token
+// (a format of only literals would strip that literal, not a date). A format
+// that ends in a token must not end inside a longer number (`YYMMDD` on
+// `20261028_x`), and separators after the prefix go with it.
+function datePrefixRegex(format) {
+  let hasToken = false;
+  let endsInToken = false;
+  const body = String(format == null ? '' : format)
+    .split(/(YYYY|YY|MM|DD|HH|mm|ss)/)
+    .map((part, i) => {
+      if (i % 2) { hasToken = true; endsInToken = true; return TOKEN_DIGITS[part]; }
+      if (part) endsInToken = false;
+      return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    })
+    .join('');
+  if (!hasToken) return null;
+  return new RegExp('^' + body + (endsInToken ? '(?!\\d)' : '') + '[\\s_.-]*');
+}
+
+function stripDatePrefix(title, format) {
+  const s = title == null ? '' : String(title);
+  for (const re of [datePrefixRegex(format), BARE_DATE]) {
+    if (!re) continue;
+    const rest = s.replace(re, '');
+    if (rest !== s && rest.trim()) return rest;
+  }
+  return s;
+}
+
+module.exports = { formatDatePattern, buildRenamePrefill, stripDatePrefix };

@@ -153,7 +153,8 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
 
     /* Generic global-settings controls (General/Sync/Account/Slash/Files). */
     input[type="text"].g-input,
-    input[type="password"].g-input {
+    input[type="password"].g-input,
+    input[type="number"].g-input {
       height: 30px;
       padding: 0 8px;
       border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, rgba(128,128,128,0.4)));
@@ -164,7 +165,8 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
       outline: none;
     }
     input[type="text"].g-input:focus,
-    input[type="password"].g-input:focus { border-color: var(--accent); }
+    input[type="password"].g-input:focus,
+    input[type="number"].g-input:focus { border-color: var(--accent); }
     .g-toggle {
       display: inline-flex;
       align-items: center;
@@ -291,6 +293,16 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           <div class="field-label">Rename Prefix Format</div>
           <div class="field-desc">Template applied when the prefix is enabled. Date tokens: <code>YYYY</code> <code>YY</code> <code>MM</code> <code>DD</code> <code>HH</code> <code>mm</code> <code>ss</code>. Everything else is literal. Example: <code>YYMMDD_</code> → <code>260629_</code>.</div>
           <input type="text" class="g-input" id="set-rename-prefix-format" placeholder="YYMMDD_" style="width:100%;max-width:280px;">
+        </div>
+        <div class="field">
+          <div class="field-label">Hide Date in Tab Titles</div>
+          <div class="field-desc">Drop a leading date from the editor tab title, so <code>260629_my-task</code> shows as <code>my-task</code>. Matches the rename prefix format above, or a bare <code>YYMMDD</code> / <code>YYYYMMDD</code> / <code>YYYY-MM-DD</code> followed by <code>_</code>, <code>-</code>, <code>.</code> or a space. The session keeps its full name in the Sessions view, inside the panel and in the rename box.</div>
+          <label class="g-toggle" id="set-tab-title-hide-date"><span class="track"></span><span>Enabled</span></label>
+        </div>
+        <div class="field">
+          <div class="field-label">Max Tab Title Length</div>
+          <div class="field-desc">Shorten longer tab titles to this many characters, ending in <code>…</code>, so many open tabs stay readable. Counted after a hidden date. <code>0</code> = no limit; 1–3 count as 4.</div>
+          <input type="number" class="g-input" id="set-tab-title-max-length" min="0" max="200" step="1" placeholder="0" style="width:90px;">
         </div>
       </div>
 
@@ -924,6 +936,22 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
       });
     }
 
+    // Tab titles — hide the leading date + max length (0 = no limit).
+    wireToggle('set-tab-title-hide-date', 'tabTitle.hideDatePrefix', GLOBALS.tabTitleHideDatePrefix);
+    const setTabTitleMaxLength = document.getElementById('set-tab-title-max-length');
+    if (setTabTitleMaxLength) {
+      setTabTitleMaxLength.value = String(GLOBALS.tabTitleMaxLength || 0);
+      let ttmTimer = null;
+      setTabTitleMaxLength.addEventListener('input', () => {
+        clearTimeout(ttmTimer);
+        ttmTimer = setTimeout(() => {
+          // Blank = 0 (no limit); out-of-range values are pulled into 0–200.
+          const n = Math.round(Number(setTabTitleMaxLength.value) || 0);
+          setGlobal('tabTitle.maxLength', Math.min(200, Math.max(0, n)));
+        }, 500);
+      });
+    }
+
     function wireToggle(id, key, initial) {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1081,6 +1109,8 @@ function openGlobalSettings(context) {
     multiplexerLifecycle: cfg.get('terminal.multiplexerLifecycle', 'kill-on-close'),
     renamePrefixEnabled: cfg.get('renamePrefix.enabled', false),
     renamePrefixFormat: cfg.get('renamePrefix.format', 'YYMMDD_'),
+    tabTitleHideDatePrefix: cfg.get('tabTitle.hideDatePrefix', false),
+    tabTitleMaxLength: cfg.get('tabTitle.maxLength', 0),
     claudeEffort: cfg.get('claude.effort', 'auto'),
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
@@ -1121,6 +1151,8 @@ function openGlobalSettings(context) {
     'terminal.multiplexerLifecycle',
     'renamePrefix.enabled',
     'renamePrefix.format',
+    'tabTitle.hideDatePrefix',
+    'tabTitle.maxLength',
     'claude.effort',
     'claude.bypassPermissions',
     'kiro.trustAllTools',

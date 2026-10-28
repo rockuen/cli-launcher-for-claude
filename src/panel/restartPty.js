@@ -13,6 +13,7 @@ const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
 const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
+const { setPanelTitle } = require('./panelTitle');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
 const { applyAgentCliEnv, claudeHookArgs } = require('../handlers/agentCli');
@@ -223,7 +224,7 @@ function restartPty(entry, panel, context, extensionPath) {
     entry.pty = ptyProcess;
     entry.state = 'running';
     setTabIcon(panel, 'running', extensionPath);
-    panel.title = entry.title;
+    setPanelTitle(entry);
     try { panel.webview.postMessage({ type: 'state', state: 'running' }); } catch (_) {}
     saveSessions();
     updateStatusBar();
@@ -334,11 +335,11 @@ function restartPty(entry, panel, context, extensionPath) {
       if (!entry._disposed) {
         if (isSuccess) {
           setTabIcon(panel, 'done', extensionPath);
-          panel.title = entry.title + t('suffixDone');
+          setPanelTitle(entry, { suffix: t('suffixDone') });
           try { panel.webview.postMessage({ type: 'state', state: 'done' }); } catch (_) {}
         } else {
           setTabIcon(panel, 'error', extensionPath);
-          panel.title = entry.title + t('suffixError').replace('{0}', exitCode);
+          setPanelTitle(entry, { suffix: t('suffixError').replace('{0}', exitCode) });
           try { panel.webview.postMessage({ type: 'state', state: 'error' }); } catch (_) {}
         }
         try { panel.webview.postMessage({ type: 'process-exited', exitCode, canResume: !!entry.sessionId }); } catch (_) {}

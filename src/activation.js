@@ -28,6 +28,7 @@ const { SessionTreeDataProvider } = require('./tree/SessionTreeDataProvider');
 const { QuickActionsProvider } = require('./tree/QuickActionsProvider');
 const { SessionDecorationProvider } = require('./tree/SessionDecorationProvider');
 const { setStatusBar } = require('./panel/statusIndicator');
+const { setPanelTitle, refreshPanelTitles } = require('./panel/panelTitle');
 const { createPanel } = require('./panel/createPanel');
 const { pickAgent } = require('./handlers/pickAgent');
 const { pickGjcModel, setupGjcCredentials } = require('./handlers/gjcModel');
@@ -264,7 +265,7 @@ function activate(context) {
       });
       if (newName) {
         activeEntry.title = newName;
-        activeEntry.panel.title = newName;
+        setPanelTitle(activeEntry);
         if (activeEntry.agent === 'antigravity' && !activeEntry.isAntigravityResume && activeEntry.cwd) {
           const { listAntigravitySessions } = require('./lib/sessionJsonl');
           const sessions = listAntigravitySessions(activeEntry.cwd);
@@ -696,6 +697,13 @@ function activate(context) {
       if (e.affectsConfiguration('claudeCodeLauncher.recentSessions.groupByPeriod')) {
         state.refreshSessionTrees();
       }
+      // Tab label rules (hidden date, max length) redraw the open tabs.
+      if (
+        e.affectsConfiguration('claudeCodeLauncher.tabTitle')
+        || e.affectsConfiguration('claudeCodeLauncher.renamePrefix.format')
+      ) {
+        refreshPanelTitles(state.panels);
+      }
       if (
         e.affectsConfiguration('claudeCodeLauncher.chief.apiKey')
         || e.affectsConfiguration('claudeCodeLauncher.chief.projectId')
@@ -998,7 +1006,7 @@ function activate(context) {
       for (const [, entry] of state.panels) {
         if (entry.sessionId === id && trimmed) {
           entry.title = trimmed;
-          try { entry.panel.title = trimmed; } catch (_) {}
+          setPanelTitle(entry);
           try { entry.panel.webview.postMessage({ type: 'title-updated', title: trimmed }); } catch (_) {}
         }
       }

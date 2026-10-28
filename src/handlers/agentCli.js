@@ -22,6 +22,7 @@ const { notificationText } = require('../lib/sessionLink');
 const { HOOK_COMMAND, claudeHookSettings } = require('../lib/agentNotify');
 const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore');
 const { saveSessions, isDefaultTabTitle } = require('../store/sessionManager');
+const { setPanelTitle } = require('../panel/panelTitle');
 
 const FALLBACK_EXTENSION_ID = 'rockuen.cli-launcher-for-claude';
 
@@ -55,7 +56,7 @@ function titleFor(entry, sessionId) {
 // `also.sessionId` is Claude's live id after /clear, titled as well.
 function renameEntry(entry, title, also) {
   entry.title = title;
-  try { entry.panel.title = title; } catch (_) {}
+  setPanelTitle(entry);
   try { entry.panel.webview.postMessage({ type: 'title-updated', title }); } catch (_) {}
   saveSessions();
   const liveId = also && also.sessionId;

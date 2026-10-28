@@ -18,6 +18,7 @@ const { sessionStoreGet, sessionStoreUpdate } = require('../store/sessionStore')
 const { saveSessions } = require('../store/sessionManager');
 const { listAntigravitySessions } = require('../lib/sessionJsonl');
 const { buildRenamePrefill } = require('../lib/renamePrefix');
+const { setPanelTitle } = require('./panelTitle');
 const { writePtyChunked } = require('../pty/write');
 const { handleToolbar } = require('../handlers/toolbar');
 const { pickAgent } = require('../handlers/pickAgent');
@@ -134,7 +135,7 @@ function routeWebviewMessage(msg, ctx) {
       vscode.window.showInputBox({ prompt: t('enterTabName'), value: rpPrefill.value, valueSelection: rpPrefill.valueSelection }).then(newName => {
         if (newName) {
           entry.title = newName;
-          panel.title = newName;
+          setPanelTitle(entry);
           // Antigravity fresh/--continue sessions carry a placeholder UUID that
           // never matches the real conversation id in the tree. Resolve it now
           // so the rename persists in the correct titleMap slot.
