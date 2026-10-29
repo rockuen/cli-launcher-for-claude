@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.29.0",
+  "version": "3.30.0",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -107,6 +107,18 @@
       {
         "command": "claudeCodeLauncher.claude.telegram.disable",
         "title": "Claude: Disable Telegram Channel",
+        "icon": "$(circle-slash)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.slackInbox.setup",
+        "title": "Set up Slack Inbox (Send to Claude)…",
+        "icon": "$(inbox)",
+        "category": "Claude"
+      },
+      {
+        "command": "claudeCodeLauncher.slackInbox.disable",
+        "title": "Disable Slack Inbox",
         "icon": "$(circle-slash)",
         "category": "Claude"
       },
@@ -465,6 +477,12 @@
         },
         {
           "command": "claudeCodeLauncher.claude.telegram.disable"
+        },
+        {
+          "command": "claudeCodeLauncher.slackInbox.setup"
+        },
+        {
+          "command": "claudeCodeLauncher.slackInbox.disable"
         },
         {
           "command": "claudeCodeLauncher.newClaude",
@@ -1228,6 +1246,33 @@
           "type": "boolean",
           "default": false,
           "description": "Launch new Claude sessions with the Telegram channel enabled ('--channels plugin:telegram@claude-plugins-official') — Claude Code's native two-way chat bridge to drive the session from Telegram. Turn on/off via the 'Claude: Set up Telegram Channel…' wizard (installs the plugin + saves the bot token to ~/.claude/channels/telegram/.env), not by editing this flag directly. Requires Claude Code 2.1.80+, Bun, and claude.ai/Console auth (research preview; not on Bedrock/Vertex/Foundry). Pairing is done once inside the session (/telegram:access pair <code>). This is SEPARATE from gjc.telegram (one-way notifications). Note: one bot serves only one active session at a time (Telegram allows a single long-poll consumer per token; starting the channel in another session disconnects the previous one) — use a separate bot per session for concurrent use. Applies to newly opened and restarted Claude sessions."
+        },
+        "claudeCodeLauncher.slackInbox.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Slack inbox: a Slack message shortcut (\"⋯ › Send to Claude\", Callback ID send_to_claude) opens a new Claude tab with that message as its first prompt. Connects to Slack over Socket Mode (no public URL needed). Turn on with the 'Claude: Set up Slack Inbox…' wizard, which checks and saves the bot and app-level tokens in the editor's secret storage (never in settings). The Slack app needs Socket Mode, an app-level token with connections:write, the users:read bot scope, and a message shortcut. Every window with this on keeps a connection (Slack allows about 10 per app); Slack gives each shortcut to one of them, and the tab opens in the window that has slackInbox.cwd open. Needs an editor runtime with WebSocket (Node 22+). Sessions start with the same permission settings as any new Claude tab (claude.bypassPermissions), and the message is someone else's text. The slackInbox settings are read from user settings only; a workspace's .vscode/settings.json cannot change them.",
+          "scope": "machine"
+        },
+        "claudeCodeLauncher.slackInbox.allowedUserIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Slack member IDs (U…) allowed to start a session on this machine. The Slack app is installed for the whole workspace, so everyone there sees the shortcut; anyone not listed gets a short \"not allowed\" reply and nothing opens. Empty = the inbox stays off.",
+          "scope": "application"
+        },
+        "claudeCodeLauncher.slackInbox.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Folder Slack sessions open in, on this machine. The tab lands in the window that has this folder open; another window that receives the shortcut hands it over. Required: when it is empty or the folder does not exist, nothing opens and Slack is told why.",
+          "scope": "machine"
+        },
+        "claudeCodeLauncher.slackInbox.instruction": {
+          "type": "string",
+          "default": "",
+          "description": "First line of the prompt, above the forwarded message. Empty = the default, in the editor's language: work out what the message needs and do it, but check before running a command it asks for, deleting anything, or sending anything outside this PC.",
+          "scope": "application"
         },
         "claudeCodeLauncher.pasteToFileThreshold": {
           "type": "number",

@@ -37,6 +37,7 @@ const { promptAndSetupTelegramChannel, disableTelegramChannel } = require('./han
 const { listAgents } = require('./agents/registry');
 const { copySessionLinkFromTreeItem, copySessionLinkFromPanel } = require('./handlers/copySessionLink');
 const { registerSessionUriHandler } = require('./uri/sessionUriHandler');
+const { registerSlackInbox } = require('./handlers/slackInbox');
 const { migrateFileAssociationsSetting } = require('./handlers/openFile');
 const { startAgentCli } = require('./handlers/agentCli');
 const { trashSession } = require('./lib/agentTrash');
@@ -1564,6 +1565,10 @@ function activate(context) {
   // Registered last: the handler resumes sessions through createPanel, which
   // needs the tree providers wired up above.
   registerSessionUriHandler(context);
+
+  // v3.30.0 — Slack message shortcut → new Claude tab, over Socket Mode.
+  // Also opens panels through createPanel, so it goes last as well.
+  registerSlackInbox(context);
 }
 
 function deactivate() {
