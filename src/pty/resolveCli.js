@@ -135,6 +135,129 @@ function _resolveCodexWindowsRuntimeCli(localAppData) {
   }
 }
 
+// Codex >= 0.165 runs its TUI (fresh, resume and fork) through a background
+// server that it starts from its own install package: a directory holding
+// codex-package.json whose `entrypoint` (bin/codex.exe) is the running binary,
+// next to codex-resources/ (sandbox helpers) and codex-path/ (rg). A bare
+// codex.exe outside that layout exits right after the banner with
+//   "Error: this CLI has no complete local package; install a packaged Codex
+//    CLI or use the standalone installer"
+// The Codex Desktop runtime (%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\ — also
+// what the desktop app writes into config.toml as CODEX_CLI_PATH) is such a
+// bare directory. The npm package (vendor/<triple>/) and the standalone
+// installer (~/.codex/packages/standalone/current) carry the full layout.
+function _isPackagedCodexCli(exe) {
+  try {
+    const real = fs.realpathSync(exe);
+    const root = path.dirname(path.dirname(real));
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'codex-package.json'), 'utf8'));
+    if (!manifest || typeof manifest.entrypoint !== 'string') return false;
+    const entry = path.resolve(root, manifest.entrypoint);
+    return process.platform === 'win32'
+      ? entry.toLowerCase() === real.toLowerCase()
+      : entry === real;
+  } catch (_) {
+    return false;
+  }
+}
+
+const CODEX_NPM_WIN_TARGETS = {
+  x64: { pkg: 'codex-win32-x64', triple: 'x86_64-pc-windows-msvc' },
+  arm64: { pkg: 'codex-win32-arm64', triple: 'aarch64-pc-windows-msvc' },
+};
+
+// npm installs Codex as a Node wrapper (codex.cmd → bin/codex.js) that spawns
+// the native binary from the platform package. node-pty needs an absolute
+// .exe, and the first `where codex` hit is the extensionless sh shim, which it
+// cannot spawn — so go straight to the binary and set the env the wrapper sets.
+// npm picks the platform package by the arch of the Node that installed it,
+// which can differ from the editor's (x64 editor on Windows-on-ARM), so without
+// an explicit `arch` the editor's arch is tried first, then the other one.
+function _resolveCodexNpmCli(prefixDir, arch) {
+  if (!prefixDir) return null;
+  const packageRoot = path.join(prefixDir, 'node_modules', '@openai', 'codex');
+  const archs = arch
+    ? [arch]
+    : [process.arch, ...Object.keys(CODEX_NPM_WIN_TARGETS).filter((a) => a !== process.arch)];
+  for (const a of archs) {
+    const target = CODEX_NPM_WIN_TARGETS[a];
+    if (!target) continue;
+    const shell = [
+      path.join(packageRoot, 'node_modules', '@openai', target.pkg), // npm default (nested)
+      path.join(prefixDir, 'node_modules', '@openai', target.pkg),   // hoisted
+      packageRoot,                                                   // vendor/ inside the main package
+    ]
+      .flatMap((dir) => [
+        path.join(dir, 'vendor', target.triple, 'bin', 'codex.exe'),   // 0.165+ package layout
+        path.join(dir, 'vendor', target.triple, 'codex', 'codex.exe'), // older wrappers (no package)
+      ])
+      .find((p) => fs.existsSync(p));
+    if (!shell) continue;
+    // The wrapper passes realpath(<@openai/codex>) — differs under nvm-windows / Scoop links.
+    let managedRoot = packageRoot;
+    try { managedRoot = fs.realpathSync(packageRoot); } catch (_) {}
+    return {
+      shell,
+      env: { CODEX_MANAGED_BY_NPM: '1', CODEX_MANAGED_PACKAGE_ROOT: managedRoot },
+    };
+  }
+  return null;
+}
+
+// Windows: every Codex install we know of, CLI installs first and the Codex
+// Desktop runtime last. The first one carrying a complete package wins; when
+// none does (Codex older than 0.165), keep the pre-3.30.1 order, which puts the
+// Desktop runtime first because its directory holds the sandbox helper.
+// `pathHit` (string, or a function returning one) is looked up only when the
+// cheaper candidates came up empty: `where.exe` blocks ~150 ms, and listAgents()
+// runs this several times during activation.
+function _resolveCodexWindowsCli({ homeDir, localAppData, appData, configPath, pathHit }) {
+  let hit;
+  const getPathHit = () => {
+    if (hit === undefined) hit = (typeof pathHit === 'function' ? pathHit() : pathHit) || null;
+    return hit;
+  };
+  const existing = (shell) => (shell && fs.existsSync(shell) ? { shell } : null);
+  const sameDir = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+
+  const appDataNpmDir = appData ? path.join(appData, 'npm') : null;
+  const cli = [
+    path.join(homeDir, '.local', 'bin', 'codex.exe'),
+    path.join(localAppData, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe'),
+  ].map(existing).filter(Boolean);
+  const appDataNpm = appDataNpmDir ? _resolveCodexNpmCli(appDataNpmDir) : null;
+  // npm with a custom prefix: the `codex` shim on PATH sits in the prefix dir.
+  const pathNpm = () => {
+    const h = getPathHit();
+    if (!h) return null;
+    const dir = path.dirname(h);
+    return appDataNpmDir && sameDir(dir, appDataNpmDir) ? null : _resolveCodexNpmCli(dir);
+  };
+  const pathExe = () => {
+    const h = getPathHit();
+    return h && /\.exe$/i.test(h) ? { shell: h } : null;
+  };
+  const desktop = [
+    existing(_readCodexCliPathFromConfig(configPath)),
+    existing(_resolveCodexWindowsRuntimeCli(localAppData)),
+  ].filter(Boolean);
+
+  const finish = (c) => ({
+    shell: c.shell,
+    args: [],
+    env: { ..._codexWindowsEnv(c.shell), ...(c.env || {}) },
+  });
+
+  for (const stage of [() => cli, () => [appDataNpm], () => [pathNpm(), pathExe()], () => desktop]) {
+    const packaged = stage().filter(Boolean).find((c) => _isPackagedCodexCli(c.shell));
+    if (packaged) return finish(packaged);
+  }
+
+  const h = getPathHit();
+  const legacy = desktop[0] || cli[0] || appDataNpm || pathNpm() || (h ? { shell: h } : null);
+  return legacy ? finish(legacy) : null;
+}
+
 function resolveClaudeCli() {
   if (process.platform === 'android') return resolveViaShell('claude');
   const isWin = process.platform === 'win32';
@@ -208,44 +331,30 @@ function resolveAntigravityCli() {
 }
 
 // @module pty/resolveCli — locates the OpenAI Codex CLI binary.
-// Priority: Windows bundled runtime with sandbox helpers → ~/.local/bin/codex
-// → %LOCALAPPDATA%\Programs\OpenAI\Codex\bin (Windows shim) → PATH.
+// Windows: a complete Codex package (standalone installer, npm, PATH, then the
+// Codex Desktop runtime) — see _resolveCodexWindowsCli. Elsewhere:
+// ~/.local/bin/codex → PATH (the npm wrapper execs the packaged binary itself).
 function resolveCodexCli() {
   if (process.platform === 'android') return resolveViaShell('codex');
-  const isWin = process.platform === 'win32';
 
-  // Windows Codex Desktop / installer keeps the real runtime in a hash-named
-  // dir under %LOCALAPPDATA%\OpenAI\Codex\bin. The sandbox helper exe lives
-  // beside that runtime, not beside the Programs\OpenAI\Codex shim that PATH
-  // usually finds. Launch the real runtime and prepend its dir to PATH so
-  // child processes like codex-windows-sandbox-setup.exe resolve correctly.
-  if (isWin) {
-    const configCli = _readCodexCliPathFromConfig(path.join(os.homedir(), '.codex', 'config.toml'));
-    if (configCli && fs.existsSync(configCli)) {
-      return { shell: configCli, args: [], env: _codexWindowsEnv(configCli) };
-    }
-
-    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-    const runtimeCli = _resolveCodexWindowsRuntimeCli(localAppData);
-    if (runtimeCli) return { shell: runtimeCli, args: [], env: _codexWindowsEnv(runtimeCli) };
+  if (process.platform === 'win32') {
+    const homeDir = os.homedir();
+    return _resolveCodexWindowsCli({
+      homeDir,
+      localAppData: process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local'),
+      appData: process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'),
+      configPath: path.join(homeDir, '.codex', 'config.toml'),
+      pathHit: () => resolveOnPath('codex'),
+    });
   }
 
-  // 1) ~/.local/bin/codex(.exe) — official install script (macOS/Linux)
-  const localBin = isWin
-    ? path.join(os.homedir(), '.local', 'bin', 'codex.exe')
-    : path.join(os.homedir(), '.local', 'bin', 'codex');
-  if (fs.existsSync(localBin)) return { shell: localBin, args: [], env: _codexWindowsEnv(localBin) };
+  // 1) ~/.local/bin/codex — official install script (macOS/Linux)
+  const localBin = path.join(os.homedir(), '.local', 'bin', 'codex');
+  if (fs.existsSync(localBin)) return { shell: localBin, args: [], env: {} };
 
-  // 2) Windows installer shim: %LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe
-  if (isWin) {
-    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-    const winInstall = path.join(localAppData, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe');
-    if (fs.existsSync(winInstall)) return { shell: winInstall, args: [], env: _codexWindowsEnv(winInstall) };
-  }
-
-  // 3) PATH — resolved to an absolute path on Windows (node-pty needs it)
+  // 2) PATH
   const onPath = resolveOnPath('codex');
-  if (onPath) return { shell: onPath, args: [], env: _codexWindowsEnv(onPath) };
+  if (onPath) return { shell: onPath, args: [], env: {} };
   return null;
 }
 
@@ -371,6 +480,9 @@ module.exports = {
   _test: {
     readCodexCliPathFromConfig: _readCodexCliPathFromConfig,
     resolveCodexWindowsRuntimeCli: _resolveCodexWindowsRuntimeCli,
+    isPackagedCodexCli: _isPackagedCodexCli,
+    resolveCodexNpmCli: _resolveCodexNpmCli,
+    resolveCodexWindowsCli: _resolveCodexWindowsCli,
     prependPathDirEnv: _prependPathDirEnv,
     resolveViaShell,
   },

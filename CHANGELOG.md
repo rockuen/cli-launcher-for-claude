@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.30.1] - 2026-11-02
+
+Fixes Codex tabs on Windows closing right after the banner.
+
+### Fixed
+- **"this CLI has no complete local package" on a new or resumed Codex tab (Windows).** Codex 0.165 and later run the TUI through a background server, which they start from their own install package: a folder with `codex-package.json` next to `bin/codex.exe`, `codex-resources/` and `codex-path/`. The launcher preferred the Codex Desktop runtime (`%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\codex.exe`, which the desktop app also writes into `~/.codex/config.toml` as `CODEX_CLI_PATH`). That folder has no package, so once the desktop app updated its runtime to 0.165, every Codex tab printed the banner and exited with this error. Updating Codex with npm did not help, because the launcher never ran the npm copy.
+  - The launcher now looks for a complete package first: the standalone installer, then npm, then `PATH`, and only then the Codex Desktop runtime. If none of them is packaged (Codex before 0.165), it keeps the old order, which starts with the desktop runtime because its folder holds the sandbox helper.
+  - **npm installs run the native binary directly.** `where codex` lists npm's extensionless `codex` shell script first, which node-pty cannot start. The launcher now runs `node_modules\@openai\codex-win32-x64\vendor\…\bin\codex.exe` (arm64 too, nested or hoisted) and sets the same `CODEX_MANAGED_BY_NPM` / `CODEX_MANAGED_PACKAGE_ROOT` (the real path, as the wrapper resolves it under nvm-windows or Scoop links) the npm wrapper sets, so update hints still say `npm install -g @openai/codex@latest`. The editor's architecture is tried first, then the other one, because npm installs the package for the Node that ran it (an x64 editor on Windows on ARM). Older npm installs (`vendor\…\codex\codex.exe`, no package) are found too and used only when nothing is packaged. It also checks the npm folder next to a `codex` found on `PATH`, so a custom npm prefix works too. That `PATH` lookup (`where.exe`, about 150 ms) runs only when no install was found in the usual folders.
+  - A packaged install finds `codex-windows-sandbox-setup.exe` in its own `codex-resources/`, so the sandbox helper popup fixed in 3.14.5 does not come back.
+
+### Tests
+- `codexCliResolve.test.ts` (+6): the package check (complete layout, flat desktop runtime, a manifest naming another entrypoint, a missing file); the npm resolver (nested vendor binary, wrapper env, an architecture with no binary, the other architecture when none is given, the older layout); npm chosen over a flat desktop runtime named by `CODEX_CLI_PATH`; the standalone install reached through its real junctions (`Programs\…\bin` → `standalone\current\bin` → the version folder) ahead of a packaged desktop runtime, which wins once the standalone has no package; the old desktop-first order when nothing is packaged, and `null` when nothing is installed; no `PATH` lookup when npm is found in `%APPDATA%\npm`, and npm under a custom prefix found through the `codex` on `PATH`.
+
 ## [3.30.0] - 2026-10-29
 
 Send a Slack message to a new Claude tab.
