@@ -339,6 +339,25 @@ test('a copy from a text field or of a text selection is left alone', () => {
   assert.ok(s.fireCopy(s.doc.body), 'a plain copy (Edit > Copy) carries the cells');
 });
 
+test('copyKey: Korean input mode / Caps Lock copy the cells and keep VS Code out; Shift and AltGr do not', () => {
+  for (const key of ['ㅊ', 'C']) {
+    const s = setup({ copyKey: true });
+    s.drag([1, 0], [1, 1]);
+    const e = s.ev({ key, keyCode: 67, ctrlKey: true, target: { tagName: 'DIV' } });
+    s.doc.fire('keydown', e);
+    assert.equal(e.prevented, true, key);
+    assert.equal(e.__stopImmediate, true, `${key}: VS Code's copy must not run after it`);
+    assert.ok(s.ops.includes('exec:copy'), key);
+  }
+  for (const extra of [{ shiftKey: true, key: 'C' }, { altKey: true, key: 'ć' }]) {
+    const s = setup({ copyKey: true });
+    s.drag([1, 0], [1, 1]);
+    const e = s.ev(Object.assign({ keyCode: 67, ctrlKey: true, target: { tagName: 'DIV' } }, extra));
+    s.doc.fire('keydown', e);
+    assert.equal(e.prevented, undefined, JSON.stringify(extra));
+  }
+});
+
 test('copyKey: Ctrl+C copies the cells, falls back when execCommand fails, leaves inputs alone', () => {
   const fallback: string[] = [];
   const s = setup({ copyKey: true, fallbackCopy: (t: string) => fallback.push(t) });

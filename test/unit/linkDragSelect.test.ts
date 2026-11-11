@@ -306,10 +306,13 @@ test('the generated standalone reader script parses with the link drag inlined',
   const templateBody = readerViewSrc.slice(start + '<script nonce="${nonce}">'.length, end);
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const tableSelect = require(path.join(repoRoot, 'src/lib/tableSelect'));
-  const rendered: string = new Function('nonce', 't', 'linkDragSelectClientSource', 'tableSelectClientSource', 'return `' + templateBody + '`;')(
-    'n', (k: string) => k, clientSource, tableSelect.clientSource,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const shortcutKey = require(path.join(repoRoot, 'src/lib/shortcutKey'));
+  const rendered: string = new Function('nonce', 't', 'linkDragSelectClientSource', 'tableSelectClientSource', 'shortcutKeyClientSource', 'return `' + templateBody + '`;')(
+    'n', (k: string) => k, clientSource, tableSelect.clientSource, shortcutKey.clientSource,
   );
   assert.ok(rendered.includes('function installLinkDragSelect(root)'));
   assert.ok(rendered.includes('function installTableSelect(root, opts)'));
+  assert.ok(rendered.includes('function shortcutKeyIs(e, letter)'));
   assert.doesNotThrow(() => new Function(rendered));
 });

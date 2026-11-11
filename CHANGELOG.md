@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.31.1] - 2026-11-11
+
+Ctrl+C copies what you selected in the reader, in Korean input mode and with Caps Lock too.
+
+### Fixed
+- **Ctrl+C after selecting reader text copied nothing; the menu's Copy worked.** The panel recognised Ctrl+C by `e.key === 'c'`. In Korean input mode the key reports `ㅊ`, and with Caps Lock `C`, so the launcher let the key pass. VS Code's webview host recognises copy by key code (C = 67) instead, took the key and ran its own copy, and that copy first moves focus back to the last focused element when the page itself has focus — as it does after a drag in the reader. Focus went to the terminal or the message box, the reader selection was dropped, and an empty copy ran. Shortcuts are now matched by key code as well (a new `lib/shortcutKey`), so the launcher copies the reader selection itself and VS Code's copy never runs.
+- **The reader tab had the same problem in every input mode.** It had no Ctrl+C handler, so after typing in its message box, selecting reader text and pressing Ctrl+C always went through VS Code's copy, which moved focus back to the message box. It now copies the selection itself with the browser's copy while the selection is still there, so links and formatting come along (falling back to plain text, then to the editor's clipboard); Ctrl+C inside the message box still copies the box's text. Ctrl+C on selected table cells there also keeps VS Code's copy out.
+- **Ctrl+C on a terminal selection in Korean input mode interrupted Claude.** The terminal's Ctrl+C guard had the same `e.key` check, so with text selected the key went to xterm and sent ^C. It now copies the selection; with nothing selected, ^C still reaches Claude.
+- **Ctrl+C "copied" a terminal selection that was no longer there.** The panel kept the last non-empty terminal selection and copied it whenever the terminal had none, so after a click or new output cleared the highlight, Ctrl+C meant to stop Claude copied old text instead of sending ^C. The kept selection now follows the live one.
+- Ctrl+V (pasting a clipboard image), Ctrl+F (search) and Ctrl+Shift+R (redraw) in the panel are matched the same way. With Alt held only the typed character counts, never the key position: AltGr (Ctrl+Alt) types characters on many layouts (Czech / Hungarian AltGr+F = `[`, AltGr+V = `@`, AltGr+C = `ć`), and those keep typing. Ctrl+Shift+C / F / V stay as before (not the launcher's copy, search or image paste).
+
+### Tests
+- `copyShortcut.test.ts` (12): `shortcutKeyIs` (`c`, `C`, `ㅊ`, an IME composing, a Dvorak layout, other letters, AltGr characters) and its inlined copy; the panel's selection cache and Ctrl+C handler cut out of the generated client script and run against stubs — reader text copied for `c` / `C` / `ㅊ` with VS Code kept out, a terminal selection copied in Korean mode and ^C let through with none, a selection that disappeared not copied, table cells, AltGr+C / Ctrl+Shift+C / other letters left alone, and no `e.key`-only letter check left in the script; the reader tab's handler — the browser copy in every input mode, its plain-text and extension fallbacks, the message box copying itself, no selection, Shift and AltGr, and table cells handled before it.
+- `tableSelect.test.ts` (+1): the reader tab's cell Ctrl+C in Korean mode and with Caps Lock (VS Code kept out), not with Shift or AltGr.
+- `linkDragSelect.test.ts`: the rendered reader-tab script parses with `shortcutKeyIs` inlined.
+- Also checked in headless Chrome with the real panel HTML and xterm, inside a copy of VSCodium 1.143's webview host behaviour (its keydown handler by key code 67, and its `execCommand('copy')` that re-focuses the last focused element): before, `C` and `ㅊ` copied nothing after a reader drag (focus jumped back to the terminal / message box), in the reader tab every key copied nothing, and in the terminal `ㅊ` with text selected sent ^C; after, all six panel cases and all three reader-tab cases copy the selection (the reader tab through the browser copy, with focus left where it was), the message box copies its own text, and ^C reaches Claude only when nothing is selected.
+
 ## [3.31.0] - 2026-11-11
 
 Select table cells in the reader like a spreadsheet, and paste them into Excel cell by cell.

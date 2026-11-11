@@ -37,6 +37,7 @@ const { t } = require('../i18n');
 const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
 const { clientSource: linkDragSelectClientSource } = require('../lib/linkDragSelect');
 const { clientSource: tableSelectClientSource } = require('../lib/tableSelect');
+const { clientSource: shortcutKeyClientSource } = require('../lib/shortcutKey');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
@@ -637,6 +638,32 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
       // moved press above opens nothing, so drag = select, click = open.
       ${linkDragSelectClientSource()}
       installLinkDragSelect(blocksEl);
+
+      // Ctrl+C copies the selected text here (v3.31.1). Left to VS Code, its
+      // webview copy re-focuses the last focused element (the message box)
+      // when the page body has focus — as it does after a drag — and that
+      // drops the selection, so nothing was copied. Matched by keyCode too
+      // (lib/shortcutKey): Korean input mode reports 'ㅊ', Caps Lock 'C'.
+      ${shortcutKeyClientSource()}
+      document.addEventListener('keydown', function(e) {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || !shortcutKeyIs(e, 'c')) return;
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return; // the message box copies itself
+        let text = '';
+        try { text = String(window.getSelection() || ''); } catch (_) {}
+        if (!text.trim()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        // The browser's own copy, now, while the selection is intact: it puts
+        // the HTML (links, formatting) on the clipboard too.
+        let copied = false;
+        try { copied = document.execCommand('copy'); } catch (_) {}
+        if (copied) return;
+        navigator.clipboard.writeText(text).catch(function() {
+          vscode.postMessage({ type: 'copy-text', text: text });
+        });
+      }, true);
 
       // Delegated listener remains active when live updates replace blocksHtml.
       blocksEl.addEventListener('click', async function(e) {

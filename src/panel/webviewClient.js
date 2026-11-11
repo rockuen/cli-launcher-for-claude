@@ -6,6 +6,7 @@ const { clientSource: copySelectionClientSource } = require('../lib/copySelectio
 const { clientSource: terminalScrollClientSource } = require('../lib/terminalScroll');
 const { clientSource: linkDragSelectClientSource } = require('../lib/linkDragSelect');
 const { clientSource: tableSelectClientSource } = require('../lib/tableSelect');
+const { clientSource: shortcutKeyClientSource } = require('../lib/shortcutKey');
 
 function getClientScript(ctx) {
   const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent } = ctx;
@@ -257,7 +258,7 @@ function getClientScript(ctx) {
     // the TUI only. Capture-phase listener so it beats xterm's own handler.
     document.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
-      if (e.key !== 'R' && e.key !== 'r') return;
+      if (!shortcutKeyIs(e, 'r')) return;
       if (!isAlternateScreen) return; // no TUI, let xterm/browser default win
       e.preventDefault();
       e.stopPropagation();
@@ -310,6 +311,9 @@ function getClientScript(ctx) {
     // Inlined verbatim so the Ctrl+C priority rules can't drift from the tests.
     ${copySelectionClientSource()}
 
+    // Ctrl/Cmd + letter in any input mode (src/lib/shortcutKey.js).
+    ${shortcutKeyClientSource()}
+
     // Single clipboard write path for the panel (terminal Ctrl+C, Reader code
     // blocks). navigator.clipboard is the fast path; when the webview is not
     // the focused document Chromium rejects it, so fall back to the extension
@@ -333,10 +337,13 @@ function getClientScript(ctx) {
 
     // Last terminal selection, for the panel-level Ctrl+C (v2.5.7 cache; see
     // the copy handler below). Context-menu actions do NOT use it.
+    // v3.31.1: follows the selection, cleared with it. Kept only while it was
+    // non-empty, a selection that had disappeared (a click in the terminal,
+    // new output) still made Ctrl+C "copy" old text instead of sending ^C to
+    // stop Claude.
     let lastSelectionCache = '';
     term.onSelectionChange(() => {
-      const sel = getCleanSelection().trim();
-      if (sel) lastSelectionCache = sel;
+      lastSelectionCache = getCleanSelection().trim();
     });
     // v3.30.2: the text Open File / Open Folder / Open Link / Copy act on is
     // the selection in the area that was right-clicked — nothing older and
@@ -1546,7 +1553,11 @@ function getClientScript(ctx) {
       });
     }
     document.addEventListener('keydown', (e) => {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
+      // v3.31.1: by keyCode as well (lib/shortcutKey) — Korean input mode
+      // reports 'ㅊ' and Caps Lock 'C', and a key this handler skips goes to
+      // VS Code's own copy, which re-focuses the terminal / message box first
+      // and so copies nothing from the reader.
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || !shortcutKeyIs(e, 'c')) return;
       const inTerm = termContainer && e.target && termContainer.contains(e.target);
       if (!inTerm) {
         const tag = (e.target && e.target.tagName) || '';
@@ -1648,7 +1659,7 @@ function getClientScript(ctx) {
       // When no selection exists, return true so xterm sends ^C normally —
       // that's the Claude CLI "Ctrl+C twice to exit" prep behavior the user
       // actually wants.
-      if (mod && event.key === 'c') {
+      if (mod && !event.shiftKey && shortcutKeyIs(event, 'c')) {
         // Same emptiness rules as the document capture (v3.20.8): a
         // whitespace-only drag is NOT a selection, so ^C keeps reaching the PTY.
         const guardSel = resolveCopyText({
@@ -1664,14 +1675,14 @@ function getClientScript(ctx) {
       }
 
       // Ctrl+F: toggle search bar
-      if (mod && event.key === 'f') {
+      if (mod && !event.shiftKey && shortcutKeyIs(event, 'f')) {
         event.preventDefault();
         toggleSearch(!searchVisible);
         return false;
       }
 
       // Ctrl+V: clipboard image fallback
-      if (mod && event.key === 'v') {
+      if (mod && !event.shiftKey && shortcutKeyIs(event, 'v')) {
         setTimeout(() => {
           if (Date.now() - lastWebviewPasteTime > 300) {
             vscode.postMessage({ type: 'check-clipboard-image' });

@@ -352,11 +352,17 @@ function installTableSelect(root, opts) {
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { clear(); return; }
-    if (!o.copyKey || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
-    if (e.key !== 'c' && e.key !== 'C') return;
+    if (!o.copyKey || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    // By keyCode too: Korean input mode reports 'ㅊ', Caps Lock 'C'.
+    var k = typeof e.key === 'string' ? e.key.toLowerCase() : '';
+    if (k !== 'c' && e.keyCode !== 67) return;
     if (editable(e.target)) return;
     if (!hasSelection()) return;
+    // Keep VS Code's own copy out: it re-focuses the last focused element
+    // first, and a copy from there is not the cells.
     e.preventDefault();
+    e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     if (!copy() && o.fallbackCopy) o.fallbackCopy(getText());
   }, true);
 
