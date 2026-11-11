@@ -175,7 +175,7 @@ test('both readers install it', () => {
   };
   const script = getClientScript(ctx);
   assert.ok(script.includes('function installLinkDragSelect(root)'));
-  assert.match(script, /getElementById\('reader-area'\);\s*if \(reader\) installLinkDragSelect\(reader\);/);
+  assert.match(script, /getElementById\('reader-area'\);\s*if \(!reader\) return;\s*\/\/[^\n]*\n\s*readerTableSelect = installTableSelect\(reader, \{[^\n]*\}\);\s*installLinkDragSelect\(reader\);/);
   assert.ok(readerViewSrc.includes('${linkDragSelectClientSource()}'));
   assert.ok(readerViewSrc.includes('installLinkDragSelect(blocksEl);'));
 });
@@ -214,10 +214,10 @@ function contextMenu(termSel: string, domSel: string) {
   const term = { sel: termSel };
   const dom = { sel: domSel };
   const run = new Function(
-    'document', 'window', 'getCleanSelection', 'resolveCopyText', 'termContainer', 'showContextMenu',
+    'document', 'window', 'getCleanSelection', 'resolveCopyText', 'termContainer', 'showContextMenu', 'readerTableSelect',
     code + '\nreturn readSelection;',
   );
-  const readSelection = run(doc, { getSelection: () => ({ toString: () => dom.sel }) }, () => term.sel, resolveCopyText, termContainer, () => {});
+  const readSelection = run(doc, { getSelection: () => ({ toString: () => dom.sel }) }, () => term.sel, resolveCopyText, termContainer, () => {}, null);
   return {
     term,
     dom,
@@ -289,7 +289,7 @@ test('menu actions never read the old terminal cache', () => {
   const script = panelScript();
   const fn = slice(script, 'function readSelection() {', '\n    }');
   assert.ok(!fn.includes('lastSelectionCache'));
-  const copy = slice(script, "case 'copy': {", 'break;');
+  const copy = slice(script, "case 'copy': {", "case 'open-file':");
   assert.ok(copy.includes('readSelection()'));
   assert.ok(!copy.includes('lastSelectionCache ||'));
   // A press outside the menu closes it (a link drag swallows the click that would).
@@ -304,9 +304,12 @@ test('the generated standalone reader script parses with the link drag inlined',
   const end = readerViewSrc.indexOf('</script>', start);
   assert.ok(start > 0 && end > start);
   const templateBody = readerViewSrc.slice(start + '<script nonce="${nonce}">'.length, end);
-  const rendered: string = new Function('nonce', 't', 'linkDragSelectClientSource', 'return `' + templateBody + '`;')(
-    'n', (k: string) => k, clientSource,
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const tableSelect = require(path.join(repoRoot, 'src/lib/tableSelect'));
+  const rendered: string = new Function('nonce', 't', 'linkDragSelectClientSource', 'tableSelectClientSource', 'return `' + templateBody + '`;')(
+    'n', (k: string) => k, clientSource, tableSelect.clientSource,
   );
   assert.ok(rendered.includes('function installLinkDragSelect(root)'));
+  assert.ok(rendered.includes('function installTableSelect(root, opts)'));
   assert.doesNotThrow(() => new Function(rendered));
 });

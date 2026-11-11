@@ -156,6 +156,25 @@ test('a folder path with a row of prose after it opens the folder (last resort)'
   assert.deepEqual(calls, [expectedSpawn(path.join(vault, '4. Projects'), false)]);
 });
 
+test('a name selected a few characters short opens the file, but only after the exact searches', async () => {
+  const dir = path.join(vault, '50-resources', '261109 임직원판매');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, '26년 11월 LIST_배송지.xlsx'), 'x');
+  calls.length = 0;
+  assoc = { '.xlsx': 'editor' };
+  await handleOpenFile('50-resources\\261109 임직원판매\\26년 11월 LIST_배송지.xls', 0, entry);
+  assert.deepEqual(calls, [['showTextDocument', path.join(dir, '26년 11월 LIST_배송지.xlsx'), null]]);
+  // An exact name found by the walk under cwd beats a longer name next to the text.
+  fs.mkdirSync(path.join(vault, 'config'), { recursive: true });
+  fs.writeFileSync(path.join(vault, 'config', 'app.yml.bak'), 'x');
+  fs.mkdirSync(path.join(vault, 'services', 'x', 'config'), { recursive: true });
+  fs.writeFileSync(path.join(vault, 'services', 'x', 'config', 'app.yml'), 'x');
+  calls.length = 0;
+  assoc = { '.yml': 'editor', '.bak': 'editor' };
+  await handleOpenFile('config/app.yml', 0, entry);
+  assert.deepEqual(calls, [['showTextDocument', path.join(vault, 'services', 'x', 'config', 'app.yml'), null]]);
+});
+
 test('brace selections still open every expansion', async () => {
   fs.mkdirSync(path.join(vault, 'worker-1'), { recursive: true });
   fs.mkdirSync(path.join(vault, 'worker-2'), { recursive: true });

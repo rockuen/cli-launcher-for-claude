@@ -120,12 +120,18 @@ async function handleOpenFile(filePath, line, entry) {
       const located = await tryLocateOnDisk(query.path);
       if (located) absPath = located;
     }
-    // Last resort: a folder named by one row (a folder path with prose after it).
+    // Last resorts: a name selected a few characters short ("…배송지.xls"),
+    // then a folder named by one row (a folder path with prose after it).
     if (!absPath) {
-      const dirHit = resolveSelection(raw, cwd, { partialDirs: true });
-      if (dirHit) {
-        openInFileManager(dirHit.path, false);
+      const lastHit = resolveSelection(raw, cwd, { completeShort: true })
+        || resolveSelection(raw, cwd, { partialDirs: true });
+      if (lastHit && lastHit.isDir) {
+        openInFileManager(lastHit.path, false);
         return;
+      }
+      if (lastHit) {
+        absPath = lastHit.path;
+        if (!line && lastHit.line) line = lastHit.line;
       }
     }
   }

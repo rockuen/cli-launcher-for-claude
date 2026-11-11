@@ -187,6 +187,34 @@ test('resolveSelection: the first reading that exists wins, with line and kind',
   }
 });
 
+test('resolveSelection: a name selected a few characters short completes to the one file it starts', () => {
+  const root = makeTree();
+  try {
+    const dir = path.join(root, '50-resources', '261109 임직원판매');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, '26년 11월 LIST_배송지.xlsx'), 'x');
+    fs.writeFileSync(path.join(dir, 'a.md'), 'x');
+    fs.writeFileSync(path.join(dir, 'a.mdx'), 'x');
+    const short = { completeShort: true };
+    // Only on request: the plain pass never guesses.
+    assert.equal(sel.resolveSelection('50-resources\\261109 임직원판매\\26년 11월 LIST_배송지.xls', root), null);
+    // The drag stopped before the last "x" (the case from the screenshot).
+    let hit = sel.resolveSelection('50-resources\\261109 임직원판매\\26년 11월 LIST_배송지.xls', root, short);
+    assert.equal(hit && hit.path, path.join(dir, '26년 11월 LIST_배송지.xlsx'));
+    hit = sel.resolveSelection('`50-resources/261109 임직원판매/26년 11월 LIST_배송지.xl`', root, short);
+    assert.equal(hit && hit.path, path.join(dir, '26년 11월 LIST_배송지.xlsx'));
+    // An exact name is found by the plain pass first.
+    assert.equal(sel.resolveSelection('50-resources/261109 임직원판매/a.md', root).path, path.join(dir, 'a.md'));
+    // Two candidates: no guess.
+    assert.equal(sel.resolveSelection('50-resources/261109 임직원판매/a.m', root, short), null);
+    // The name has not reached an extension, or too much is missing: no guess.
+    assert.equal(sel.resolveSelection('50-resources/261109 임직원판매/26년 11월 LIST', root, short), null);
+    assert.equal(sel.resolveSelection('50-resources/261109 임직원판매/26년 11월 LIST_배.x', root, short), null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('resolveSelection: one row of a multi-row selection never resolves to a folder', () => {
   const root = makeTree();
   try {

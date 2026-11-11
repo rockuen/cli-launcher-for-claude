@@ -238,8 +238,22 @@ function resolvePathFragment(frag, cwd) {
 // walk and OS-index search first and ask for it only as a last resort (it is
 // also a folder path followed by a row of prose).
 function resolveSelection(raw, cwd, opts) {
-  const partialDirs = !!(opts && opts.partialDirs);
   const candidates = pathCandidates(raw, opts);
+  // Last resort (opts.completeShort): nothing exists as written — maybe the
+  // drag stopped a character short. The callers try this only after their
+  // basename walk and OS-index search, so an exact name anywhere wins.
+  if (opts && opts.completeShort) {
+    for (const c of candidates) {
+      if (c.partial) continue;
+      const abs = completeShortName(c.path, cwd);
+      if (!abs) continue;
+      let isDir = false;
+      try { isDir = fs.statSync(abs).isDirectory(); } catch (_) { continue; }
+      return { path: abs, line: c.line, isDir };
+    }
+    return null;
+  }
+  const partialDirs = !!(opts && opts.partialDirs);
   for (const c of candidates) {
     if (partialDirs && !c.partial) continue; // already tried without the flag
     const abs = resolvePathFragment(expandHome(c.path), cwd);
@@ -250,6 +264,29 @@ function resolveSelection(raw, cwd, opts) {
     return { path: abs, line: c.line, isDir };
   }
   return null;
+}
+
+// A selection that stopped a few characters before the end of a name — the
+// drag released over the left half of the last letter ("…배송지.xls" for
+// "…배송지.xlsx"). In the folder the text names, the one entry that starts
+// with it. Only when the name already reaches an extension (".xls", not
+// "4. Proj"), at most 4 characters are missing, and exactly one entry fits.
+const SHORT_NAME_MAX_MISSING = 4;
+function completeShortName(candidate, cwd) {
+  const p = expandHome(String(candidate || ''));
+  const base = path.basename(p.replace(/\\/g, '/'));
+  if (!base || !/\.[^.\s\\/]+$/.test(base)) return null;
+  const dirPart = p.slice(0, p.length - base.length);
+  const dir = dirPart ? resolvePathFragment(dirPart, cwd) : cwd;
+  if (!dir) return null;
+  let names;
+  try { names = fs.readdirSync(dir); } catch (_) { return null; }
+  const fold = process.platform === 'linux' ? (s) => s : (s) => s.toLowerCase();
+  const want = fold(base);
+  const hits = names.filter((n) => n.length > base.length
+    && n.length - base.length <= SHORT_NAME_MAX_MISSING
+    && fold(n).startsWith(want));
+  return hits.length === 1 ? path.join(dir, hits[0]) : null;
 }
 
 // Basename walk under cwd (depth 6, skipping node_modules / .git) for a

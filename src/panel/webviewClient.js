@@ -5,6 +5,7 @@
 const { clientSource: copySelectionClientSource } = require('../lib/copySelection');
 const { clientSource: terminalScrollClientSource } = require('../lib/terminalScroll');
 const { clientSource: linkDragSelectClientSource } = require('../lib/linkDragSelect');
+const { clientSource: tableSelectClientSource } = require('../lib/tableSelect');
 
 function getClientScript(ctx) {
   const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent } = ctx;
@@ -356,6 +357,10 @@ function getClientScript(ctx) {
     let ctxDomSelection = '';
     let ctxTermSelection = '';
     function readSelection() {
+      // v3.31.0: selected reader table cells, tab-separated (lib/tableSelect).
+      if (ctxOrigin === 'reader' && readerTableSelect && readerTableSelect.hasSelection()) {
+        return readerTableSelect.getText();
+      }
       const live = getCleanSelection();
       const termSelection = ctxOrigin === 'reader' ? '' : (live && live.trim() ? live : ctxTermSelection);
       const domSelection = ctxOrigin === 'terminal' ? '' : ctxDomSelection;
@@ -1531,12 +1536,30 @@ function getClientScript(ctx) {
     // whitespace-only terminal selection no longer counts as a selection —
     // both used to hand the clipboard stale or blank text.
     const termContainer = document.getElementById('terminal');
+    // v3.31.0: reader table cell selection (lib/tableSelect), set up with the
+    // reader links further down.
+    let readerTableSelect = null;
+    function copyReaderTable() {
+      if (readerTableSelect.copy()) { showToast(T.copied); return; }
+      copyTextToClipboard(readerTableSelect.getText()).then((ok) => {
+        showToast(ok ? T.copied : T.readerCopyFailed);
+      });
+    }
     document.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
       const inTerm = termContainer && e.target && termContainer.contains(e.target);
       if (!inTerm) {
         const tag = (e.target && e.target.tagName) || '';
         if (tag === 'INPUT' || tag === 'TEXTAREA') return; // real user input
+      }
+      // Selected reader table cells copy as cells (tab-separated text + an
+      // HTML table), so they paste into Excel cell by cell.
+      if (!inTerm && readerTableSelect && readerTableSelect.hasSelection()) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        copyReaderTable();
+        return;
       }
       let domSelection = '';
       try {
@@ -1737,6 +1760,11 @@ function getClientScript(ctx) {
 
       switch (action) {
         case 'copy': {
+          // Table cells: with the HTML table too, for Excel (copyReaderTable).
+          if (ctxOrigin === 'reader' && readerTableSelect && readerTableSelect.hasSelection()) {
+            copyReaderTable();
+            break;
+          }
           const sel = readSelection();
           if (sel) {
             lastSelectionCache = '';
@@ -2391,10 +2419,17 @@ function getClientScript(ctx) {
     // v3.30.2: a drag that starts on a reader link selects text, so an
     // auto-linked path can be selected for Open File / Open Folder (Chrome
     // never starts a selection from a link). See lib/linkDragSelect.
+    // v3.31.0: a drag from one table cell into another selects a block of
+    // cells, like a spreadsheet (lib/tableSelect). Installed first: its
+    // document mousemove listener must run before the link drag's.
+    ${tableSelectClientSource()}
     ${linkDragSelectClientSource()}
     (function setupReaderLinkDragSelect() {
       const reader = document.getElementById('reader-area');
-      if (reader) installLinkDragSelect(reader);
+      if (!reader) return;
+      // A press on the context menu (Copy, Open File…) keeps the cells.
+      readerTableSelect = installTableSelect(reader, { keep: (t) => !!(ctxMenu && ctxMenu.contains(t)) });
+      installLinkDragSelect(reader);
     })();
 
     // Phase 3 splitter: drag handle between reader and terminal. Saves the

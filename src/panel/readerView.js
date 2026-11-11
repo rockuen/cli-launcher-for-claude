@@ -36,6 +36,7 @@ const { listAgents } = require('../agents/registry');
 const { t } = require('../i18n');
 const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
 const { clientSource: linkDragSelectClientSource } = require('../lib/linkDragSelect');
+const { clientSource: tableSelectClientSource } = require('../lib/tableSelect');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
@@ -506,6 +507,9 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
   .msg-body pre code { background: transparent; color: var(--fg); padding: 0; font-size: 0.88em; }
   .msg-body table { border-collapse: collapse; margin: 0.8em 0; font-size: 0.95em; }
   .msg-body th, .msg-body td { border: 1px solid var(--border); padding: 4px 10px; }
+  /* Cells selected by dragging across a table (lib/tableSelect). */
+  .msg-body th.rv-cell-sel, .msg-body td.rv-cell-sel { background: color-mix(in srgb, var(--user) 22%, transparent); }
+  .rv-cell-selecting, .rv-cell-selecting * { user-select: none; cursor: cell; }
   .msg-body th { background: var(--code-bg); }
   .msg-body blockquote {
     margin: 0.5em 0; padding-left: 12px;
@@ -615,6 +619,19 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
           e.stopPropagation();
         }
       }, true);
+
+      // A drag from one table cell into another selects a block of cells
+      // (lib/tableSelect); Ctrl+C copies them so Excel pastes cell by cell.
+      // Installed before the link drag: its mousemove listener runs first.
+      ${tableSelectClientSource()}
+      installTableSelect(blocksEl, {
+        copyKey: true,
+        fallbackCopy: function(text) {
+          navigator.clipboard.writeText(text).catch(function() {
+            vscode.postMessage({ type: 'copy-text', text: text });
+          });
+        },
+      });
 
       // A drag that starts on a link selects text (lib/linkDragSelect) — the
       // moved press above opens nothing, so drag = select, click = open.

@@ -471,6 +471,9 @@ function getStyles(ctx) {
     #reader-area .msg-body pre code { background: transparent; color: ${fg}; padding: 0; font-size: 0.85em; }
     #reader-area .msg-body table { border-collapse: collapse; margin: 0.6em 0; font-size: 0.92em; }
     #reader-area .msg-body th, #reader-area .msg-body td { border: 1px solid ${border}; padding: 4px 8px; }
+    /* v3.31.0: cells selected by dragging across a table (lib/tableSelect). */
+    #reader-area .msg-body th.rv-cell-sel, #reader-area .msg-body td.rv-cell-sel { background: ${isDark ? 'rgba(79,193,255,0.22)' : 'rgba(0,102,204,0.14)'}; }
+    #reader-area .rv-cell-selecting, #reader-area .rv-cell-selecting * { user-select: none; cursor: cell; }
     #reader-area .msg-body th { background: ${isDark ? '#2a2a2a' : '#f3f3f3'}; }
     #reader-area .msg-body blockquote {
       margin: 0.4em 0; padding-left: 10px;

@@ -48,7 +48,9 @@ function handleOpenFolder(filePath, entry) {
     const found = findUnderCwd(cwd, fallbackQuery(raw).path, { dirs: true });
     if (found) hit = found;
   }
-  // Last resort: a folder named by one row (a folder path with prose after it).
+  // Last resorts: a name selected a few characters short, then a folder
+  // named by one row (a folder path with prose after it).
+  if (!hit) hit = resolveSelection(raw, cwd, { completeShort: true });
   if (!hit) hit = resolveSelection(raw, cwd, { partialDirs: true });
 
   if (!hit) {
