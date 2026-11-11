@@ -297,6 +297,9 @@ function routeWebviewMessage(msg, ctx) {
       } else {
         try { p = decodeURIComponent(p); } catch (_) { /* keep raw href */ }
       }
+      // file:///C:/x leaves /C:/x once the scheme is gone; that leading slash
+      // is not part of a Windows path (statSync('/C:/x') always failed).
+      if (process.platform === 'win32' && /^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1);
       // Markdown links like [section](report.md#summary) should open the file;
       // the in-file anchor is not meaningful to the OS/default app open path.
       p = p.replace(/[?#].*$/, '');

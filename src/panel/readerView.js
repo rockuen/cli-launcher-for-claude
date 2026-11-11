@@ -35,6 +35,7 @@ const {
 const { listAgents } = require('../agents/registry');
 const { t } = require('../i18n');
 const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
+const { clientSource: linkDragSelectClientSource } = require('../lib/linkDragSelect');
 
 const THEME_KEY = 'claudeCodeLauncher.readerTheme';
 const DEFAULT_THEME = 'dark';
@@ -614,6 +615,11 @@ function renderHtml({ title, entry, aiTitle, messages, theme }) {
           e.stopPropagation();
         }
       }, true);
+
+      // A drag that starts on a link selects text (lib/linkDragSelect) — the
+      // moved press above opens nothing, so drag = select, click = open.
+      ${linkDragSelectClientSource()}
+      installLinkDragSelect(blocksEl);
 
       // Delegated listener remains active when live updates replace blocksHtml.
       blocksEl.addEventListener('click', async function(e) {

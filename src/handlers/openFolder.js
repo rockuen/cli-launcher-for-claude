@@ -1,16 +1,31 @@
-// @module handlers/openFolder — opens containing folder in OS file explorer.
-// Reuses resolvePathFragment from openFile.
+// @module handlers/openFolder — opens a folder (or reveals a file) in the OS
+// file manager. Path reading lives in lib/pathSelection: the selection is
+// cleaned up (wrapped rows, quotes, particles, file:// and Git Bash shapes)
+// and the first reading that exists wins.
 
 const vscode = require('vscode');
-const path = require('path');
-const os = require('os');
-const fs = require('fs');
 const { t } = require('../i18n');
-const { resolvePathFragment } = require('./openFile');
 const { expandBraces } = require('../util/braceExpand');
+const { resolveSelection, fallbackQuery, findUnderCwd, openFolderCommand, previewText } = require('../lib/pathSelection');
+
+// Open `target` in Explorer / Finder / the desktop's file manager. reveal=true
+// opens the containing folder with the file selected.
+function openInFileManager(target, reveal) {
+  const { spawn } = require('child_process');
+  try {
+    const cmd = openFolderCommand(target, { reveal: !!reveal });
+    const child = spawn(cmd.command, cmd.args, cmd.options);
+    child.on('error', (err) => {
+      vscode.window.showWarningMessage(t('invalidFolderPath') + target + ' (' + (err && err.message ? err.message : String(err)) + ')');
+    });
+    child.unref();
+  } catch (e) {
+    vscode.window.showWarningMessage(t('invalidFolderPath') + target + ' (' + (e && e.message ? e.message : String(e)) + ')');
+  }
+}
 
 function handleOpenFolder(filePath, entry) {
-  let raw = (filePath || '').trim();
+  const raw = String(filePath || '').trim();
   if (!raw) {
     vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
     return;
@@ -23,64 +38,25 @@ function handleOpenFolder(filePath, entry) {
     return;
   }
 
-  if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) {
-    raw = path.join(os.homedir(), raw.slice(1));
+  const cwd = entry && entry.cwd;
+  let hit = resolveSelection(raw, cwd);
+
+  // v2.6.2: partial paths like "slack-manifests/01-demand-forecast.yaml"
+  // still find their folder when cwd isn't a direct ancestor (basename walk
+  // under cwd, full-suffix match preferred).
+  if (!hit) {
+    const found = findUnderCwd(cwd, fallbackQuery(raw).path, { dirs: true });
+    if (found) hit = found;
   }
+  // Last resort: a folder named by one row (a folder path with prose after it).
+  if (!hit) hit = resolveSelection(raw, cwd, { partialDirs: true });
 
-  let resolved = resolvePathFragment(raw, entry.cwd);
-
-  // v2.6.2: mirror openFile.js basename-search fallback so partial paths
-  // like "slack-manifests/01-demand-forecast.yaml" resolve to the containing
-  // folder even when cwd isn't a direct ancestor. Walks up to depth 6,
-  // matches by basename, then prefers a full-suffix match.
-  if (!resolved) {
-    const suffix = raw.replace(/\\/g, '/');
-    const basename = path.basename(raw);
-    const found = [];
-    function searchDir(dir, depth) {
-      if (depth > 6 || found.length >= 5) return;
-      try {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const e of entries) {
-          if (e.name === 'node_modules' || e.name === '.git') continue;
-          const full = path.join(dir, e.name);
-          if ((e.isFile() || e.isDirectory()) && e.name === basename) found.push(full);
-          else if (e.isDirectory()) searchDir(full, depth + 1);
-        }
-      } catch (_) {}
-    }
-    if (entry.cwd) searchDir(entry.cwd, 0);
-    const match = found.find(f => f.replace(/\\/g, '/').endsWith(suffix)) || found[0];
-    if (match) resolved = match;
-  }
-
-  if (!resolved) {
-    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
+  if (!hit) {
+    vscode.window.showWarningMessage(t('invalidFolderPath') + previewText(raw));
     return;
   }
 
-  let folderPath;
-  try {
-    const stat = fs.statSync(resolved);
-    folderPath = stat.isDirectory() ? resolved : path.dirname(resolved);
-  } catch (_) {
-    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
-    return;
-  }
-
-  if (!fs.existsSync(folderPath)) {
-    vscode.window.showWarningMessage(t('invalidFolderPath') + filePath);
-    return;
-  }
-
-  const { spawn } = require('child_process');
-  if (process.platform === 'darwin') {
-    spawn('open', [folderPath], { detached: true, stdio: 'ignore' }).unref();
-  } else if (process.platform === 'win32') {
-    spawn('explorer', [folderPath.replace(/\//g, '\\')], { detached: true, stdio: 'ignore' }).unref();
-  } else {
-    spawn('xdg-open', [folderPath], { detached: true, stdio: 'ignore' }).unref();
-  }
+  openInFileManager(hit.path, !hit.isDir);
 }
 
-module.exports = { handleOpenFolder };
+module.exports = { handleOpenFolder, openInFileManager };

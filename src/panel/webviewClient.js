@@ -4,6 +4,7 @@
 
 const { clientSource: copySelectionClientSource } = require('../lib/copySelection');
 const { clientSource: terminalScrollClientSource } = require('../lib/terminalScroll');
+const { clientSource: linkDragSelectClientSource } = require('../lib/linkDragSelect');
 
 function getClientScript(ctx) {
   const { T, settings, fontSize, bg, fg, cursor, border, outerBg, statusGray, isDark, memo, customButtons, customSlashCommands, splitRatio, splitLayoutOn, extraSlashes, agent } = ctx;
@@ -329,45 +330,60 @@ function getClientScript(ctx) {
       }
     }
 
-    // v2.5.7: Persistent selection cache. In fullscreen/mouse-reporting mode,
-    // xterm.js clears the selection on mousedown BEFORE contextmenu fires.
-    // We cache every non-empty selection as it happens via onSelectionChange,
-    // so right-click → Open File / Copy still works even after the selection
-    // is cleared by the mouse event.
-    let ctxSelectionCache = '';
+    // Last terminal selection, for the panel-level Ctrl+C (v2.5.7 cache; see
+    // the copy handler below). Context-menu actions do NOT use it.
     let lastSelectionCache = '';
     term.onSelectionChange(() => {
       const sel = getCleanSelection().trim();
       if (sel) lastSelectionCache = sel;
     });
+    // v3.30.2: the text Open File / Open Folder / Open Link / Copy act on is
+    // the selection in the area that was right-clicked — nothing older and
+    // nothing from the other area. readSelection() used to fall back to
+    // lastSelectionCache, the last terminal selection ever made, so a
+    // right-click with nothing selected (or with the selection in the reader
+    // while an old terminal selection lingered — xterm keeps its selection
+    // when you click elsewhere) opened whatever path was selected minutes ago.
+    //   terminal: xterm's selection, read when the item is clicked — on macOS
+    //     xterm's own contextmenu handler (rightClickSelectsWord) selects the
+    //     word under the pointer after our capture listener has run, and
+    //     xterm 5 keeps its selection through the menu click. If output
+    //     cleared it in between, the snapshot from that same right-click.
+    //   reader: the DOM selection, snapshotted when the menu opened (the
+    //     menu click would collapse it).
+    //   elsewhere (toolbar, input bar): the DOM selection, else the terminal's.
+    let ctxOrigin = 'other';
+    let ctxDomSelection = '';
+    let ctxTermSelection = '';
     function readSelection() {
-      const live = getCleanSelection().trim();
-      if (live) return live;
-      if (ctxSelectionCache) return ctxSelectionCache;
-      if (lastSelectionCache) return lastSelectionCache;
-      // Phase 4 reader: fall back to DOM selection so right-clicking after
-      // selecting text inside #reader-area also feeds Open File/Folder.
-      try {
-        const docSel = (window.getSelection && window.getSelection().toString()) || '';
-        if (docSel.trim()) return docSel.trim();
-      } catch (_) {}
-      return '';
+      const live = getCleanSelection();
+      const termSelection = ctxOrigin === 'reader' ? '' : (live && live.trim() ? live : ctxTermSelection);
+      const domSelection = ctxOrigin === 'terminal' ? '' : ctxDomSelection;
+      return resolveCopyText({
+        termSelection: termSelection,
+        cachedTermSelection: '',
+        domSelection: domSelection,
+        fromTerminal: ctxOrigin === 'terminal',
+      });
     }
 
-    // Open selected text as file path
+    // One line for the toast: a wrapped selection arrives with its rows.
+    function selectionPreview(sel) {
+      const flat = String(sel).replace(/\\s*[\\r\\n]+\\s*/g, ' ').trim();
+      return flat.length > 80 ? flat.slice(0, 80) + '…' : flat;
+    }
+
+    // Open File / Open Folder send the selection as it is: the extension reads
+    // it (wrapped rows, quotes, particles, :LINE, file://, /c/… — see
+    // lib/pathSelection) and opens the first reading that exists.
     function openSelectedAsFile() {
       const sel = readSelection();
       if (!sel) {
         showToast(T.selectTextFirst);
         return;
       }
-      // Clean up: remove quotes, backticks, trailing punctuation
-      const cleaned = sel.replace(/^['"\`]+|['"\`]+$/g, '').replace(/[,;)]+$/, '');
-      const lineMatch = cleaned.match(/:([0-9]+)$/);
-      const lineNum = lineMatch ? parseInt(lineMatch[1]) : 0;
-      const filePath = lineNum ? cleaned.replace(/:([0-9]+)$/, '') : cleaned;
-      vscode.postMessage({ type: 'open-file', filePath: filePath, line: lineNum });
-      showToast(T.openFileToast + filePath);
+      vscode.postMessage({ type: 'open-file', filePath: sel, line: 0 });
+      showToast(T.openFileToast + selectionPreview(sel));
     }
 
     function openSelectedAsFolder() {
@@ -376,14 +392,8 @@ function getClientScript(ctx) {
         showToast(T.selectTextFirst);
         return;
       }
-      // Collapse newlines from multi-line drags; strip quotes/backticks and trailing punctuation
-      const cleaned = sel.replace(/[\\r\\n]+/g, '').replace(/^['"\\\`]+|['"\\\`]+$/g, '').replace(/[,;)]+$/, '');
-      if (!cleaned) {
-        showToast(T.selectTextFirst);
-        return;
-      }
-      vscode.postMessage({ type: 'open-folder', filePath: cleaned });
-      showToast(T.openFolderToast + cleaned);
+      vscode.postMessage({ type: 'open-folder', filePath: sel });
+      showToast(T.openFolderToast + selectionPreview(sel));
     }
 
     // v3.3: drag-selected text → open in external browser. Accepts:
@@ -1689,23 +1699,29 @@ function getClientScript(ctx) {
     // reporting intercepts and stopPropagation's the event in bubble phase.
     document.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      // Snapshot selection before the menu click (mousedown/click may clear xterm selection)
-      ctxSelectionCache = getCleanSelection().trim();
-      // Phase 4 reader: if no xterm selection, take whatever the DOM has
-      // selected (reader-area markdown text). This routes the same selection
-      // into the existing Open File/Open Folder handlers.
-      if (!ctxSelectionCache) {
-        try {
-          const docSel = (window.getSelection && window.getSelection().toString()) || '';
-          if (docSel.trim()) ctxSelectionCache = docSel.trim();
-        } catch (_) {}
-      }
+      // v3.30.2: remember which area was right-clicked and snapshot the DOM
+      // selection before the menu click collapses it (see readSelection).
+      const readerEl = document.getElementById('reader-area');
+      ctxOrigin = termContainer && e.target && termContainer.contains(e.target) ? 'terminal'
+        : readerEl && e.target && readerEl.contains(e.target) ? 'reader'
+        : 'other';
+      ctxDomSelection = '';
+      try {
+        ctxDomSelection = (window.getSelection && window.getSelection().toString()) || '';
+      } catch (_) {}
+      ctxTermSelection = getCleanSelection();
       showContextMenu(e.clientX, e.clientY);
     }, true);
 
     document.addEventListener('click', (e) => {
       if (!ctxMenu.contains(e.target)) hideContextMenu();
     });
+    // Also close on a press outside the menu: a link drag in the reader
+    // swallows the click that ends it (lib/linkDragSelect), so the click
+    // listener above never sees it.
+    document.addEventListener('mousedown', (e) => {
+      if (ctxMenu.style.display === 'block' && !ctxMenu.contains(e.target)) hideContextMenu();
+    }, true);
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && ctxMenu.style.display === 'block') {
@@ -1720,10 +1736,16 @@ function getClientScript(ctx) {
       const action = item.dataset.action;
 
       switch (action) {
-        case 'copy':
-          const sel = getCleanSelection() || ctxSelectionCache || lastSelectionCache;
-          if (sel) { navigator.clipboard.writeText(sel); lastSelectionCache = ''; }
+        case 'copy': {
+          const sel = readSelection();
+          if (sel) {
+            lastSelectionCache = '';
+            copyTextToClipboard(sel).then((ok) => {
+              showToast(ok ? T.copied : T.readerCopyFailed);
+            });
+          }
           break;
+        }
         case 'open-file':
           openSelectedAsFile();
           break;
@@ -2364,6 +2386,15 @@ function getClientScript(ctx) {
         // mailto:, anchors, relative refs — let the webview default decide
         // (most are no-ops here, which matches the previous behavior).
       });
+    })();
+
+    // v3.30.2: a drag that starts on a reader link selects text, so an
+    // auto-linked path can be selected for Open File / Open Folder (Chrome
+    // never starts a selection from a link). See lib/linkDragSelect.
+    ${linkDragSelectClientSource()}
+    (function setupReaderLinkDragSelect() {
+      const reader = document.getElementById('reader-area');
+      if (reader) installLinkDragSelect(reader);
     })();
 
     // Phase 3 splitter: drag handle between reader and terminal. Saves the

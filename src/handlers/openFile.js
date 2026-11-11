@@ -22,42 +22,10 @@ const { t } = require('../i18n');
 const { expandBraces } = require('../util/braceExpand');
 const fileLocator = require('../lib/fileLocator');
 const { resolveOpenMethod, migrateFrozenFileAssociations, NOTEWISE_EXTENSION_ID, NOTEWISE_VIEW_TYPE } = require('../lib/openMethod');
-
-// Resolve a possibly-partial path to an existing absolute path.
-// Tries (in order): absolute, cwd+frag, walk up cwd ancestors, homedir, platform roots.
-// Returns first existing candidate, or null. Verifies every candidate with fs.existsSync.
-function resolvePathFragment(frag, cwd) {
-  if (!frag) return null;
-
-  const normalize = (p) => p.replace(/\\/g, '/').replace(/\//g, path.sep);
-
-  if (path.isAbsolute(frag)) {
-    const abs = normalize(frag);
-    if (fs.existsSync(abs)) return abs;
-    frag = frag.replace(/^[\\/]+/, '');
-  }
-
-  const candidates = [];
-  if (cwd) candidates.push(path.join(cwd, frag));
-
-  let current = cwd;
-  while (current) {
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    candidates.push(path.join(parent, frag));
-    current = parent;
-  }
-
-  candidates.push(path.join(os.homedir(), frag));
-  if (process.platform === 'darwin') candidates.push(path.join('/Users', frag));
-  else if (process.platform === 'linux') candidates.push(path.join('/home', frag));
-
-  for (const c of candidates) {
-    const n = normalize(c);
-    if (fs.existsSync(n)) return n;
-  }
-  return null;
-}
+// Path reading (wrapped rows, quotes, particles, file:// / Git Bash shapes,
+// :LINE suffixes) is shared with Open Folder — see lib/pathSelection.
+const { resolvePathFragment, resolveSelection, fallbackQuery, findUnderCwd, previewText } = require('../lib/pathSelection');
+const { openInFileManager } = require('./openFolder');
 
 // v3.9: OS file-index fallback. Returns an absolute file path to open, or null
 // (nothing found, locator disabled/unavailable, or the user dismissed the
@@ -114,7 +82,7 @@ async function tryLocateOnDisk(raw) {
 }
 
 async function handleOpenFile(filePath, line, entry) {
-  let raw = (filePath || '').trim();
+  const raw = String(filePath || '').trim();
   if (!raw) {
     vscode.window.showWarningMessage(t('fileNotFound') + filePath);
     return;
@@ -128,50 +96,48 @@ async function handleOpenFile(filePath, line, entry) {
     return;
   }
 
-  if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) {
-    raw = path.join(os.homedir(), raw.slice(1));
-  }
-
-  let absPath = resolvePathFragment(raw, entry.cwd);
-
-  // Fallback: basename search within cwd (legacy behavior for deeply nested project files)
-  if (!absPath) {
-    const suffix = raw.replace(/\\/g, '/');
-    const basename = path.basename(raw);
-    const found = [];
-    function searchDir(dir, depth) {
-      if (depth > 6 || found.length >= 5) return;
-      try {
-        const entries = fs.readdirSync(dir, { withFileTypes: true });
-        for (const e of entries) {
-          if (e.name === 'node_modules' || e.name === '.git') continue;
-          const full = path.join(dir, e.name);
-          if (e.isFile() && e.name === basename) found.push(full);
-          else if (e.isDirectory()) searchDir(full, depth + 1);
-        }
-      } catch (_) {}
+  const cwd = entry && entry.cwd;
+  let absPath = null;
+  const hit = resolveSelection(raw, cwd);
+  if (hit) {
+    // "Open File" on a folder opens the folder instead of "File not found".
+    if (hit.isDir) {
+      openInFileManager(hit.path, false);
+      return;
     }
-    if (entry.cwd) searchDir(entry.cwd, 0);
-    const match = found.find(f => f.replace(/\\/g, '/').endsWith(suffix)) || found[0];
-    if (match) absPath = match;
-  }
-
-  // v3.9: last resort — query the OS file index (Everything / mdfind / locate)
-  // for the bare filename anywhere on disk. See lib/fileLocator. Disabled or
-  // unavailable → returns null and we fall through to the not-found message.
-  if (!absPath) {
-    const located = await tryLocateOnDisk(raw);
-    if (located) absPath = located;
+    absPath = hit.path;
+    if (!line && hit.line) line = hit.line;
+  } else {
+    const query = fallbackQuery(raw);
+    if (!line && query.line) line = query.line;
+    // Basename search within cwd (legacy behavior for deeply nested project files).
+    const found = findUnderCwd(cwd, query.path, { dirs: false });
+    if (found) absPath = found.path;
+    // v3.9: last resort — query the OS file index (Everything / mdfind / locate)
+    // for the bare filename anywhere on disk. See lib/fileLocator. Disabled or
+    // unavailable → returns null and we fall through to the not-found message.
+    if (!absPath && query.path) {
+      const located = await tryLocateOnDisk(query.path);
+      if (located) absPath = located;
+    }
+    // Last resort: a folder named by one row (a folder path with prose after it).
+    if (!absPath) {
+      const dirHit = resolveSelection(raw, cwd, { partialDirs: true });
+      if (dirHit) {
+        openInFileManager(dirHit.path, false);
+        return;
+      }
+    }
   }
 
   if (!absPath || !fs.existsSync(absPath)) {
-    vscode.window.showWarningMessage(t('fileNotFound') + filePath);
+    vscode.window.showWarningMessage(t('fileNotFound') + previewText(raw));
     return;
   }
 
   try {
     if (fs.statSync(absPath).isDirectory()) {
-      vscode.window.showWarningMessage(t('fileNotFound') + filePath);
+      openInFileManager(absPath, false);
       return;
     }
   } catch (_) {}
