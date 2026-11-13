@@ -1,9 +1,9 @@
 // @module panel/panelTitle — sets a launcher tab's editor-tab title.
 //
 // Every tab title goes through here so the claudeCodeLauncher.tabTitle.* rules
-// (lib/tabLabel) apply in one place. What surrounds the name — the ⚠ while
-// blinking or stuck, the done / error suffix after exit — is kept on the entry,
-// so a settings change can redraw each open tab as it is now.
+// (lib/tabLabel) apply in one place. What surrounds the name — the ⚠ of a
+// stuck tab, the done / error suffix after exit — is kept on the entry, so a
+// settings change can redraw each open tab as it is now.
 
 const vscode = require('vscode');
 const { formatTabLabel } = require('../lib/tabLabel');

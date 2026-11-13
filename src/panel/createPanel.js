@@ -25,7 +25,7 @@ const { createBackend } = require('../pty/backend');
 const { loadNodePty } = require('../pty/loadNodePty');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
-const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon } = require('./statusIndicator');
+const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon, startAttentionBlink, stopAttentionBlink } = require('./statusIndicator');
 const { tabLabel, setPanelTitle } = require('./panelTitle');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, findGrokEventsPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
@@ -914,34 +914,6 @@ function createPanel(context, extensionPath, session, opts) {
     entry._stopReaderWatch = null;
   }
 
-  // v2.6.6: title blink while needs-attention AND tab not focused.
-  // Self-stops via state polling, so external state changes don't need
-  // explicit stopBlink() calls. Restored on focus or state transition.
-  let blinkInterval = null;
-  let blinkOn = false;
-  function startTitleBlink() {
-    if (blinkInterval) return;
-    blinkInterval = setInterval(() => {
-      if (entry._disposed || entry.state !== 'needs-attention' || panel.active) {
-        stopTitleBlink();
-        return;
-      }
-      blinkOn = !blinkOn;
-      setPanelTitle(entry, { prefix: blinkOn ? '\u26A0 ' : '' });
-    }, 800);
-  }
-  function stopTitleBlink() {
-    const wasBlinking = !!blinkInterval;
-    if (blinkInterval) { clearInterval(blinkInterval); blinkInterval = null; }
-    blinkOn = false;
-    // Undo only the blink's own ⚠. A tab that exited or went stuck while
-    // blinking keeps the done / exit / ⚠ mark that state set.
-    if (wasBlinking && entry.state !== 'done' && entry.state !== 'error' && entry.state !== 'stuck') {
-      setPanelTitle(entry);
-    }
-  }
-  entry._stopBlink = stopTitleBlink;
-
   // PTY → Webview + activity detection
   let runningDelayTimer = null;
   let dataCount = 0;
@@ -1148,7 +1120,7 @@ function createPanel(context, extensionPath, session, opts) {
           }
           if (!panel.active) {
             try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
-            startTitleBlink();
+            startAttentionBlink(panel, entry, extensionPath);
           }
           // Reader/split view: auto-grow the bottom terminal pane so the menu is
           // visible and answerable without dragging the splitter. The webview
@@ -1212,7 +1184,7 @@ function createPanel(context, extensionPath, session, opts) {
         entry._lastGuessToastAt = Date.now();
         if (!panel.active) {
           try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
-          startTitleBlink();
+          startAttentionBlink(panel, entry, extensionPath);
         }
       } else {
         entry.state = 'waiting';
@@ -1279,7 +1251,7 @@ function createPanel(context, extensionPath, session, opts) {
       state.refreshSessionTrees();
       if (!panel.active) {
         try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
-        startTitleBlink();
+        startAttentionBlink(panel, entry, extensionPath);
       }
     } else if (ev.event === 'done' && alive() && (entry.state === 'running' || entry.state === 'needs-attention')) {
       // Done while the user watches the tab: settle the icon (including a flag
@@ -1553,7 +1525,7 @@ function createPanel(context, extensionPath, session, opts) {
       try { entry._stopReaderWatch(); } catch (_) {}
       entry._stopReaderWatch = null;
     }
-    stopTitleBlink();
+    stopAttentionBlink(panel, entry, extensionPath);
     killPtyProcess(entry.pty);
     // Phase 12: optional multiplexer session cleanup. Killing the pty above
     // only detaches the tmux/psmux client — the server-side session keeps

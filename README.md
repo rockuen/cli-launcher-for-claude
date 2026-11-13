@@ -97,7 +97,7 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 - **Per-agent session views** — a sidebar tree for each of Claude / Codex / Grok / Kiro / Antigravity. Groups, folders (nested up to 3 levels), drag-and-drop, rename, trash. Recent Sessions is split by period (Today, Yesterday, Previous 7 / 30 days, then by month), so every ungrouped session stays reachable.
 - **Reader-Live** — the running conversation as markdown, split-pane or standalone, with a branded welcome screen for empty sessions. (Antigravity excepted.)
 - **Customizable reader sender names** — set the name shown for "you" (global) and a per-agent AI name in Settings.
-- **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a desktop notification immediately.
+- **Status-aware tabs** — idle / running / done / error / needs-attention. Interactive prompts (`[Y/n]`, menus) skip the 7-second threshold and fire needs-attention + a desktop notification immediately. A tab that needs you while you are on another one blinks its icon green ↔ gray; the title stays as it is, so the other tabs do not move.
 - **Agent themes** — the input area's tone follows the agent (Auto); pin one tone if you prefer.
 - **Hand-off** — pass conversation context to any other enabled agent.
 - **Session links** — right-click a session (or hit 🔗 in the toolbar) to copy a link that reopens it. Paste it into a task tracker, a note, or a chat; clicking it opens the editor and resumes that exact session, in the window that owns its folder.

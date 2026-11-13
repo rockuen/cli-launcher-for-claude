@@ -1,4 +1,4 @@
-// @module panel/statusIndicator — tab icon + status bar updates.
+// @module panel/statusIndicator — tab icon (and its attention blink) + status bar updates.
 
 const vscode = require('vscode');
 const path = require('path');
@@ -62,14 +62,55 @@ function setIdleIcon(panel, entry, extensionPath) {
   if (!fresh) return;
   const remaining = BG_SHELL_TTL_MS - (Date.now() - entry._bgShellsAt) + 100;
   if (remaining <= 0) return;
+  const paintedFor = entry.state;
   entry._bgShellsTimer = setTimeout(() => {
     entry._bgShellsTimer = null;
-    if (entry._disposed) return;
+    // The tab moved on since (running, flagged and maybe blinking, exited):
+    // that state painted its own icon, and the next settle comes back here.
+    if (entry._disposed || entry.state !== paintedFor) return;
     // Re-paint based on the freshness check at fire time. If a newer chunk
     // bumped _bgShellsAt while we slept this stays blue and reschedules; if
     // not it falls back to gray idle.
     setIdleIcon(panel, entry, extensionPath);
   }, remaining);
+}
+
+// A tab that needs attention while you are on another tab blinks its icon:
+// green ('done') ↔ gray ('idle'). Until v3.31.1 a ⚠ blinked in the title
+// instead; each tick changed the tab's width, so the tabs after it kept moving
+// under the pointer. The icon has a fixed size, so the tab strip stays still.
+//
+// The caller has already painted the green icon. The blink stops by itself once
+// the tab is focused, closed, or in another state — whoever set that state
+// painted its icon, so stopping only repaints when the flag is still up.
+const ATTENTION_BLINK_MS = 800;
+
+function isPanelActive(panel) {
+  try { return !!panel.active; } catch (_) { return true; } // a disposed panel throws
+}
+
+function startAttentionBlink(panel, entry, extensionPath) {
+  if (!panel || !entry || entry._attentionBlink) return;
+  entry._attentionDim = false;
+  entry._attentionBlink = setInterval(() => {
+    if (entry._disposed || entry.state !== 'needs-attention' || isPanelActive(panel)) {
+      stopAttentionBlink(panel, entry, extensionPath);
+      return;
+    }
+    entry._attentionDim = !entry._attentionDim;
+    setTabIcon(panel, entry._attentionDim ? 'idle' : 'done', extensionPath);
+  }, ATTENTION_BLINK_MS);
+}
+
+function stopAttentionBlink(panel, entry, extensionPath) {
+  if (!entry || !entry._attentionBlink) return;
+  clearInterval(entry._attentionBlink);
+  entry._attentionBlink = null;
+  const wasDim = !!entry._attentionDim;
+  entry._attentionDim = false;
+  if (wasDim && !entry._disposed && entry.state === 'needs-attention') {
+    setTabIcon(panel, 'done', extensionPath);
+  }
 }
 
 function updateStatusBar() {
@@ -113,5 +154,8 @@ module.exports = {
   updateStatusBar,
   setIdleIcon,
   hasFreshBackgroundShell,
-  BG_SHELL_TTL_MS
+  startAttentionBlink,
+  stopAttentionBlink,
+  BG_SHELL_TTL_MS,
+  ATTENTION_BLINK_MS
 };

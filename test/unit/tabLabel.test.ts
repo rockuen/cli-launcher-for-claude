@@ -200,7 +200,7 @@ test('every tab-title write goes through panelTitle', () => {
   assert.match(create, /createWebviewPanel\(\s*'claudeCode',\s*tabLabel\(tabTitle\),/);
 });
 
-test('each tab state keeps its mark: stuck ⚠, done / exit suffix, blink undoes only its own ⚠', () => {
+test('each tab state keeps its mark: stuck ⚠, done / exit suffix; a waiting tab keeps its title', () => {
   const create = fs.readFileSync(path.join(ROOT, 'src/panel/createPanel.js'), 'utf8');
   const restart = fs.readFileSync(path.join(ROOT, 'src/panel/restartPty.js'), 'utf8');
   assert.match(create, /entry\.state = 'stuck';\s*setPanelTitle\(entry, \{ prefix: '⚠ ' \}\);/);
@@ -208,12 +208,16 @@ test('each tab state keeps its mark: stuck ⚠, done / exit suffix, blink undoes
     assert.match(src, /setPanelTitle\(entry, \{ suffix: t\('suffixDone'\) \}\);/);
     assert.match(src, /setPanelTitle\(entry, \{ suffix: t\('suffixError'\)\.replace\('\{0\}', exitCode\) \}\);/);
   }
-  assert.match(create, /setPanelTitle\(entry, \{ prefix: blinkOn \? '\\u26A0 ' : '' \}\);/);
-  // A tab that exits or goes stuck mid-blink must not lose that mark on the next tick.
-  assert.match(
-    create,
-    /if \(wasBlinking && entry\.state !== 'done' && entry\.state !== 'error' && entry\.state !== 'stuck'\) \{\s*setPanelTitle\(entry\);/,
-  );
+  // v3.31.2: a tab waiting for you no longer blinks a ⚠ in its title. Every tick
+  // changed the tab's width, so the tabs after it moved under the pointer. Its
+  // icon blinks instead (attentionBlink.test.ts), so the only prefix left is
+  // the stuck tab's.
+  for (const src of [create, restart]) {
+    assert.doesNotMatch(src, /TitleBlink|blinkOn|blinkInterval|_stopBlink/);
+  }
+  const prefixWrites = (src: string) => (src.match(/setPanelTitle\(entry, \{ prefix:/g) || []).length;
+  assert.equal(prefixWrites(create), 1, 'only the stuck tab prefixes its title');
+  assert.equal(prefixWrites(restart), 0);
 });
 
 test('settings: declared, surfaced in the settings panel, allowlisted, and redraw on change', () => {

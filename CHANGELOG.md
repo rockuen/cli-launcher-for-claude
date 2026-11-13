@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.31.2] - 2026-11-13
+
+A tab waiting for you blinks its icon instead of its title, so the other tabs stay where they are.
+
+### Changed
+- **The ⚠ no longer blinks in the tab title.** A tab that needed attention while you were on another tab added a ⚠ to its title and removed it again every 0.8 s. Each change made the tab wider or narrower, so every tab after it moved back and forth — with many tabs open, the one you were about to click moved away from the pointer. The title now stays as it is and the tab's icon blinks instead, green ↔ gray, at the same pace. The icon has a fixed size, so the tabs do not move. As before, the blink stops when you open the tab, and the icon then shows the tab's state.
+- A tab whose session was restarted in place (the panel's restart) blinks too. It used to turn green without blinking.
+- Unchanged: the ⚠ in front of a stuck tab (its process is gone), the done / exit suffix, the sound, the desktop notification and the status bar.
+
+### Fixed
+- **A tab's icon could turn gray or blue while the tab was running, waiting for you, or finished.** An idle tab with a background shell is blue, and a timer turns it gray 30 s after the last "shells still running" line. The timer painted without looking at what the tab had become since, so it could replace the yellow, green or red icon — and would have painted over the new blink. It now only repaints a tab that is still idle.
+
+### Tests
+- `attentionBlink.test.ts` (8): with stubbed timers and a stub panel — the icon alternates green / gray and the title is never written; a second flag does not add a second timer; every agent uses its own icon set; focus, and each other state (running, waiting, done, error, stuck), stop the blink without painting over the icon that state set, also when it stops on the gray half; a tab still flagged when the blink stops goes back to green; closing the tab clears the timer and a disposed panel is never touched; the background-shell timer still fades an idle tab to gray and leaves a blinking, flagged, running or exited tab alone; and both PTY paths (`createPanel`, `restartPty`) flag a background tab with the green icon, the state message and the blink, never the title.
+- `tabLabel.test.ts`: the title-blink code is gone and the stuck tab's ⚠ is the only title prefix left.
+
 ## [3.31.1] - 2026-11-11
 
 Ctrl+C copies what you selected in the reader, in Korean input mode and with Caps Lock too.

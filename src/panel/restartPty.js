@@ -12,7 +12,7 @@ const { loadNodePty } = require('../pty/loadNodePty');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
 const { saveSessions } = require('../store/sessionManager');
-const { setTabIcon, updateStatusBar, setIdleIcon } = require('./statusIndicator');
+const { setTabIcon, updateStatusBar, setIdleIcon, startAttentionBlink } = require('./statusIndicator');
 const { setPanelTitle } = require('./panelTitle');
 const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
@@ -291,6 +291,7 @@ function restartPty(entry, panel, context, extensionPath) {
               setTabIcon(panel, 'done', extensionPath);
               try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
               try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+              startAttentionBlink(panel, entry, extensionPath);
             }
             updateStatusBar();
             state.refreshSessionTrees();
@@ -316,6 +317,7 @@ function restartPty(entry, panel, context, extensionPath) {
             setTabIcon(panel, 'done', extensionPath);
             try { panel.webview.postMessage({ type: 'state', state: 'needs-attention' }); } catch (_) {}
             try { panel.webview.postMessage({ type: 'notify' }); } catch (_) {}
+            startAttentionBlink(panel, entry, extensionPath);
           }
           updateStatusBar();
           state.refreshSessionTrees();
