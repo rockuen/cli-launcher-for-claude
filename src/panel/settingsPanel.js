@@ -304,6 +304,16 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
           <div class="field-desc">Shorten longer tab titles to this many characters, ending in <code>…</code>, so many open tabs stay readable. Counted after a hidden date. <code>0</code> = no limit; 1–3 count as 4.</div>
           <input type="number" class="g-input" id="set-tab-title-max-length" min="0" max="200" step="1" placeholder="0" style="width:90px;">
         </div>
+        <div class="field">
+          <div class="field-label">Compact Tab Titles From</div>
+          <div class="field-desc">Once this many launcher tabs are open in the window, every tab title is cut to the compact length below, so the tabs get small enough to fit. A leading date is dropped too, whether <em>Hide Date in Tab Titles</em> is on or not. With fewer tabs the titles go back to the rules above. <code>0</code> = off.</div>
+          <input type="number" class="g-input" id="set-tab-title-compact-tab-count" min="0" max="100" step="1" placeholder="0" style="width:90px;">
+        </div>
+        <div class="field">
+          <div class="field-label">Compact Tab Title Length</div>
+          <div class="field-desc">Characters a tab title keeps while compact, the last one <code>…</code>. The default <code>5</code> shows four characters and <code>…</code>. A smaller <em>Max Tab Title Length</em> still wins. 4–200.</div>
+          <input type="number" class="g-input" id="set-tab-title-compact-length" min="4" max="200" step="1" placeholder="5" style="width:90px;">
+        </div>
       </div>
 
       <div class="panel" data-cat="sync">
@@ -936,19 +946,29 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
       });
     }
 
-    // Tab titles — hide the leading date + max length (0 = no limit).
+    // Tab titles — hide the leading date, max length (0 = no limit), and the
+    // compact rule: from N open tabs (0 = off), cut to M characters.
     wireToggle('set-tab-title-hide-date', 'tabTitle.hideDatePrefix', GLOBALS.tabTitleHideDatePrefix);
-    const setTabTitleMaxLength = document.getElementById('set-tab-title-max-length');
-    if (setTabTitleMaxLength) {
-      setTabTitleMaxLength.value = String(GLOBALS.tabTitleMaxLength || 0);
-      let ttmTimer = null;
-      setTabTitleMaxLength.addEventListener('input', () => {
-        clearTimeout(ttmTimer);
-        ttmTimer = setTimeout(() => {
-          // Blank = 0 (no limit); out-of-range values are pulled into 0–200.
-          const n = Math.round(Number(setTabTitleMaxLength.value) || 0);
-          setGlobal('tabTitle.maxLength', Math.min(200, Math.max(0, n)));
-        }, 500);
+    wireNumber('set-tab-title-max-length', 'tabTitle.maxLength', GLOBALS.tabTitleMaxLength, 0, 200, 0);
+    wireNumber('set-tab-title-compact-tab-count', 'tabTitle.compactTabCount', GLOBALS.tabTitleCompactTabCount, 0, 100, 0);
+    wireNumber('set-tab-title-compact-length', 'tabTitle.compactLength', GLOBALS.tabTitleCompactLength, 4, 200, 5);
+
+    // A number box saved 500 ms after the last keystroke. Blank or not a number
+    // saves the blank argument; out-of-range values are pulled into min–max.
+    // The box shows the saved value as it is (a hand-edited settings.json may
+    // hold one outside the range), so it never shows a number the tabs do not use.
+    function wireNumber(id, key, initial, min, max, blank) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const clamp = (v) => {
+        const n = Math.round(Number(v));
+        return Math.min(max, Math.max(min, String(v).trim() === '' || !isFinite(n) ? blank : n));
+      };
+      el.value = String(initial == null || initial === '' ? blank : initial);
+      let timer = null;
+      el.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => setGlobal(key, clamp(el.value)), 500);
       });
     }
 
@@ -1111,6 +1131,8 @@ function openGlobalSettings(context) {
     renamePrefixFormat: cfg.get('renamePrefix.format', 'YYMMDD_'),
     tabTitleHideDatePrefix: cfg.get('tabTitle.hideDatePrefix', false),
     tabTitleMaxLength: cfg.get('tabTitle.maxLength', 0),
+    tabTitleCompactTabCount: cfg.get('tabTitle.compactTabCount', 0),
+    tabTitleCompactLength: cfg.get('tabTitle.compactLength', 5),
     claudeEffort: cfg.get('claude.effort', 'auto'),
     claudeBypassPermissions: cfg.get('claude.bypassPermissions', false),
     kiroTrustAllTools: cfg.get('kiro.trustAllTools', false),
@@ -1153,6 +1175,8 @@ function openGlobalSettings(context) {
     'renamePrefix.format',
     'tabTitle.hideDatePrefix',
     'tabTitle.maxLength',
+    'tabTitle.compactTabCount',
+    'tabTitle.compactLength',
     'claude.effort',
     'claude.bypassPermissions',
     'kiro.trustAllTools',

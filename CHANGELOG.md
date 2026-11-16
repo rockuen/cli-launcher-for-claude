@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.32.0] - 2026-11-16
+
+Tab titles can shrink to four characters when many tabs are open (opt-in, off by default).
+
+### Added
+- **Compact tab titles from N tabs** (`claudeCodeLauncher.tabTitle.compactTabCount`, default `0` = off). Once that many launcher tabs are open in the window, every tab title is cut to `claudeCodeLauncher.tabTitle.compactLength` characters — `5` by default, which is four characters and `…` — so the tabs get small enough to fit side by side. `261116_S&OP report` shows as `S&OP…`. When a tab closes and fewer are left, the titles go back to what they were (`tabTitle.maxLength`, `tabTitle.hideDatePrefix`); opening one more makes them compact again.
+- While compact, a leading date is dropped whether `tabTitle.hideDatePrefix` is on or not. Four characters of `261116_…` would make every tab read `2611…`.
+- Compact never makes a tab longer: a smaller `tabTitle.maxLength` still wins, and a title that already fits is shown whole. The ⚠ of a stuck tab and the done / exit markers stay outside the limit, as before.
+- Both settings are in Settings › General, under Max Tab Title Length, and apply to open tabs as soon as they change.
+- Only the editor tab changes. The session keeps its full name in the Sessions view, the title inside the panel, the rename box, notifications and session links.
+
+### Notes
+- Every launcher tab the window has open is counted, in whichever editor group it sits; file tabs, the settings page and the reader tab are not counted. A count per editor group was tried first and dropped: after a tab is moved to an earlier group, the editor keeps reporting that tab's old group to the extension until the next tab switch, so the titles in both groups stayed wrong for a few seconds. A split editor also shares one window width among its tab bars, so the window's count says how crowded they are.
+- Tabs that still have their default name read alike while compact (`Claude Code (3)` and `Claude Code (7)` both show `Clau…`). Name the sessions to tell them apart; each tab's icon still shows its state. The editor shows the shortened text in the tab's hover too (a webview tab has no separate tooltip).
+
+### Changed
+- The three tab title number boxes in the settings page share one helper. A blank box saves the setting's default (`0`, or `5` for the compact length), and a typed value outside the range is pulled into it. A box shows the saved value as it is.
+
+### Tests
+- `tabLabel.test.ts` (+7, now 26): when compact starts (at the count, never for `0` or a blank); the cut to four characters and `…`, with shorter names and fewer tabs untouched; the date dropped with `hideDatePrefix` off, and a date-only title kept; the smaller of the two limits winning, a blank compact length counting as 5 and 1–3 as 4; the panel glue against a stub `vscode` and the shared tab list — three tabs going compact together, one of them in another editor group, the marks outside the limit, a rename cut at once, a move between groups changing nothing, a closing tab neither counted nor rewritten, a count handed in by the refresh used as it is, the setting turned off, and the label of a tab still being created left uncounted; `createPanel` redrawing every title when a tab opens or closes (not while the window shuts down), with no `viewColumn` in the count; the settings declared, shown, allowlisted and read; and the settings page's number box helper cut out of the page script and run against a stub input (blank, text, below and above the range, a fraction, and a saved value outside the range shown as it is).
+- The settings page was rendered against a stub `vscode`: its script passes `node --check` and runs to the end against a stub DOM, the three boxes show the saved values (the default `5` for an unset compact length), and a keystroke saves the clamped value.
+- Also checked in a separate VSCodium 1.143 window (its own user data, extensions and home folder, and a stand-in for the `claude` CLI), reading the real tab labels through the editor's tab API with the count set to 3: two tabs keep `Claude Code` / `Claude Code (2)`; the third makes all three `Clau…`, the fourth too, background tabs included; moving tabs to a second group and back leaves all four compact; a compact length of 8 gives `Claude…`; the count set to 0 brings the full titles back at once; closing down to two tabs brings them back, and opening a third makes them compact again.
+
 ## [3.31.2] - 2026-11-13
 
 A tab waiting for you blinks its icon instead of its title, so the other tabs stay where they are.

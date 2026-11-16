@@ -26,7 +26,7 @@ const { loadNodePty } = require('../pty/loadNodePty');
 const { getWebviewContent } = require('./webviewContent');
 const { showDesktopNotification } = require('../handlers/desktopNotification');
 const { setTabIcon, setStatusBar, updateStatusBar, setIdleIcon, startAttentionBlink, stopAttentionBlink } = require('./statusIndicator');
-const { tabLabel, setPanelTitle } = require('./panelTitle');
+const { tabLabel, setPanelTitle, refreshPanelTitles } = require('./panelTitle');
 const { routeWebviewMessage } = require('./messageRouter');
 const { getSessionJsonlPath, extractAiTitle, extractMessages, listKiroSessions, listCodexSessions, findCodexSessionPath, listGrokSessions, findGrokSessionPath, findGrokEventsPath, listGjcSessions, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { prepareProjectSessionEnvironment, getKiroSessionsDir, getCodexPaths, getGrokPaths, getGjcPaths } = require('../lib/projectSessions');
@@ -899,6 +899,9 @@ function createPanel(context, extensionPath, session, opts) {
     muxSessionName: muxSessionName
   };
   state.panels.set(tabId, entry);
+  // One more tab open: the compact rule (tabTitle.compactTabCount) may now
+  // apply to every tab, this one included.
+  refreshPanelTitles(state.panels);
   // Defensive: a throw in saveSessions / startReaderWatch must NOT abort panel
   // setup — the PTY data/exit handlers are wired up further down, so an
   // exception here would leave the terminal spawned but with no output piped to
@@ -1548,6 +1551,9 @@ function createPanel(context, extensionPath, session, opts) {
       }
     }
     state.panels.delete(tabId);
+    // One tab fewer: the others may leave compact titles (tabTitle.compactTabCount).
+    // Not while the window shuts down — every tab is going away.
+    if (!state.isDeactivating) refreshPanelTitles(state.panels);
     // If the closed tab was the focused one, drop the pointer.
     if (state.activeTabId === tabId) {
       state.activeTabId = null;
