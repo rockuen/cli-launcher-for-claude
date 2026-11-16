@@ -5,8 +5,10 @@
 // panel/panelTitle, which keeps the ⚠ / done decoration outside the limit and
 // redraws open tabs when the settings change.
 // v3.32.0 — tabTitle.compactTabCount / compactLength: once that many launcher
-// tabs are open, each is cut to four characters and '…' (date dropped), and a
-// tab opening or closing redraws the others.
+// tabs are open, each is cut short (date dropped), and a tab opening or closing
+// redraws the others.
+// v3.32.1 — the compact cut shows five characters and '..', and counts a
+// narrow character (Latin letters, digits, spaces) as half.
 
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
@@ -14,7 +16,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const { stripDatePrefix } = require('../../src/lib/renamePrefix');
-const { MIN_LENGTH, DEFAULT_COMPACT_LENGTH, truncateLabel, isCompact, formatTabLabel } = require('../../src/lib/tabLabel');
+const {
+  MIN_LENGTH, DEFAULT_COMPACT_LENGTH, MIN_COMPACT_LENGTH, truncateLabel, compactLabel, isCompact, formatTabLabel,
+} = require('../../src/lib/tabLabel');
 
 const ROOT = process.cwd();
 
@@ -138,35 +142,124 @@ test('compact starts at the tab count, not before; 0 or blank means never', () =
   assert.equal(isCompact(undefined as any, 1), false);
 });
 
-test('crowded tabs keep four characters and …; shorter names and fewer tabs are untouched', () => {
+test('crowded tabs show five characters and two dots; shorter names and fewer tabs are untouched', () => {
   assert.equal(DEFAULT_COMPACT_LENGTH, 5);
   const opts = { compactTabCount: 8, compactLength: 5, tabCount: 8 };
-  assert.equal(formatTabLabel('뉴트S&OP 보충 발표', opts), '뉴트S&…');
-  assert.equal(formatTabLabel('Claude Code (16)', opts), 'Clau…');
+  assert.equal(formatTabLabel('매출전망발표자료', opts), '매출전망발..');
+  assert.equal(formatTabLabel('일곱글자짜리임', opts), '일곱글자짜..');
   assert.equal(formatTabLabel('짧은이름', opts), '짧은이름');
   assert.equal(formatTabLabel('다섯글자임', opts), '다섯글자임');
   assert.equal(formatTabLabel('뉴트S&OP 보충 발표', { ...opts, tabCount: 7 }), '뉴트S&OP 보충 발표');
   assert.equal(formatTabLabel('뉴트S&OP 보충 발표', { ...opts, tabCount: undefined }), '뉴트S&OP 보충 발표');
 });
 
-test('compact drops the date even when hideDatePrefix is off', () => {
-  const opts = { datePrefixFormat: 'YYMMDD_', compactTabCount: 3, compactLength: 5, tabCount: 3 };
-  assert.equal(formatTabLabel('261116_탭 이름 줄이기', opts), '탭 이름…');
-  assert.equal(formatTabLabel('261116_탭 이름 줄이기', { ...opts, tabCount: 2 }), '261116_탭 이름 줄이기');
-  // A title that is only a date keeps it, and is cut like any other.
-  assert.equal(formatTabLabel('261116_', opts), '2611…');
+test('narrow characters count as half, so a Latin title shows twice as many', () => {
+  const opts = { compactTabCount: 8, compactLength: 5, tabCount: 8 };
+  assert.equal(formatTabLabel('Claude Code (16)', opts), 'Claude Cod..');
+  assert.equal(formatTabLabel('abcdefghijklmnop', opts), 'abcdefghij..');
+  assert.equal(compactLabel('1234567890123', 5), '1234567890..');
+  // Mixed: 뉴트 (2) with S&OP and the space (2.5) leaves no room for 보.
+  assert.equal(formatTabLabel('뉴트S&OP 보충 발표', opts), '뉴트S&OP..');
+  assert.equal(formatTabLabel('런처 탭 줄이기', opts), '런처 탭 줄..');
+  // Wide: kana, CJK, full-width forms, emoji, a decomposed Hangul syllable.
+  assert.equal(compactLabel('カタカナひらがな', 5), 'カタカナひ..');
+  assert.equal(compactLabel('漢字漢字漢字漢字', 5), '漢字漢字漢..');
+  assert.equal(compactLabel('ＡＢＣＤＥＦＧ', 5), 'ＡＢＣＤＥ..');
+  assert.equal(compactLabel('😀😀😀😀😀😀😀', 5), '😀😀😀😀😀..');
+  const nfd = '한글이름입니다'.normalize('NFD');
+  assert.equal(compactLabel(nfd, 5).normalize('NFC'), '한글이름입..');
+  assert.equal(compactLabel('가나다라마바사', 3), '가나다..');
+  assert.equal(compactLabel('abcdefghijklmnop', 8), 'abcdefghijklmnop');
 });
 
-test('compact never makes a tab longer, and a blank compact length is 5', () => {
+test('a title over by no more than the room of the dots is shown whole', () => {
+  // Cutting it would not make the tab smaller: two narrow characters or one
+  // wide one take the room of the two dots.
+  assert.equal(compactLabel('Claude Code', 5), 'Claude Code');
+  assert.equal(compactLabel('Claude Codes', 5), 'Claude Codes');
+  assert.equal(compactLabel('Claude Codes!', 5), 'Claude Cod..');
+  assert.equal(compactLabel('여섯글자이름', 5), '여섯글자이름');
+  assert.equal(compactLabel('여섯글자이름!', 5), '여섯글자이..');
+  assert.equal(compactLabel('다섯글자임!!', 5), '다섯글자임!!');
+  assert.equal(compactLabel('다섯글자임!!!', 5), '다섯글자임..');
+  assert.equal(compactLabel('', 5), '');
+  assert.equal(compactLabel(null as any, 5), '');
+});
+
+test('the compact cut leaves no space and no third dot before the dots', () => {
+  assert.equal(compactLabel('abcdefghi jklmn', 5), 'abcdefghi..');
+  assert.equal(compactLabel('새로 바꾼 이름', 5), '새로 바꾼..');
+  assert.equal(compactLabel('a.b.c.d.e.f.g.h', 5), 'a.b.c.d.e..');
+  // A title of dots only keeps them.
+  assert.equal(compactLabel('.'.repeat(13) + 'x', 5), '.'.repeat(12));
+});
+
+test('compact drops the date even when hideDatePrefix is off', () => {
+  const opts = { datePrefixFormat: 'YYMMDD_', compactTabCount: 3, compactLength: 5, tabCount: 3 };
+  assert.equal(formatTabLabel('261116_탭 이름 줄이기', opts), '탭 이름 줄..');
+  assert.equal(formatTabLabel('261116_탭 이름 줄이기', { ...opts, tabCount: 2 }), '261116_탭 이름 줄이기');
+  // A title that is only a date keeps it.
+  assert.equal(formatTabLabel('261116_', opts), '261116_');
+});
+
+test('compact never makes a tab longer; a blank compact length is 5 and 1 counts as 2', () => {
+  assert.equal(MIN_COMPACT_LENGTH, 2);
   const t = 'abcdefghijklmnop';
   const on = { compactTabCount: 2, tabCount: 2 };
+  // A maxLength the compact title would go over still applies, with its own '…'.
   assert.equal(formatTabLabel(t, { ...on, maxLength: 4, compactLength: 10 }), 'abc…');
-  assert.equal(formatTabLabel(t, { ...on, maxLength: 12, compactLength: 6 }), 'abcde…');
-  assert.equal(formatTabLabel(t, { ...on, maxLength: 12, compactLength: 6, tabCount: 1 }), 'abcdefghijk…');
+  assert.equal(formatTabLabel(t, { ...on, maxLength: 12, compactLength: 6 }), 'abcdefghijk…');
+  assert.equal(formatTabLabel('가나다라마바사아자차', { ...on, maxLength: 4, compactLength: 5 }), '가나다…');
+  assert.equal(formatTabLabel(t, { ...on, maxLength: 12, compactLength: 4 }), 'abcdefgh..');
+  assert.equal(formatTabLabel(t, { ...on, maxLength: 12, compactLength: 4, tabCount: 1 }), 'abcdefghijk…');
   for (const len of [0, -3, undefined, null, NaN, 'x']) {
-    assert.equal(formatTabLabel(t, { ...on, compactLength: len as any }), 'abcd…');
+    assert.equal(formatTabLabel(t, { ...on, compactLength: len as any }), 'abcdefghij..');
   }
-  assert.equal(formatTabLabel(t, { ...on, compactLength: 2 }), 'abc…'); // 1–3 count as 4
+  assert.equal(formatTabLabel(t, { ...on, compactLength: 1 }), 'abcd..');
+  assert.equal(formatTabLabel(t, { ...on, compactLength: 2 }), 'abcd..');
+});
+
+test('emoji outside the main blocks and keycaps count as wide', () => {
+  const star = String.fromCodePoint(0x2B50);
+  const watch = String.fromCodePoint(0x231A);
+  const keycap = '1' + String.fromCodePoint(0xFE0F, 0x20E3);
+  for (const ch of [star, watch, keycap]) {
+    assert.equal(compactLabel(ch.repeat(7), 5), ch.repeat(5) + '..');
+  }
+});
+
+test('maxLength still applies while compact when the compact title has more characters', () => {
+  const on = { compactTabCount: 1, tabCount: 1, compactLength: 5 };
+  // Ten Latin letters and the dots are 12 characters: a maxLength below that keeps its own cut.
+  assert.equal(formatTabLabel('abcdefghijklmnop', { ...on, maxLength: 8 }), 'abcdefg…');
+  assert.equal(formatTabLabel('abcdefghijklmnop', { ...on, maxLength: 11 }), 'abcdefghij…');
+  assert.equal(formatTabLabel('abcdefghijklmnop', { ...on, maxLength: 12 }), 'abcdefghij..');
+  // Five Hangul syllables and the dots are 7.
+  assert.equal(formatTabLabel('가나다라마바사', { ...on, maxLength: 7 }), '가나다라마..');
+  assert.equal(formatTabLabel('가나다라마바사', { ...on, maxLength: 6 }), '가나다라마…');
+
+  // A compact title never has more characters than the title (date hidden),
+  // nor than maxLength allows.
+  const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+  const count = (s: string) => Array.from(seg.segment(s)).length;
+  const titles = [
+    '261116_매출전망발표자료', '261028_뉴트S&OP 보충', 'Claude Code (16)', 'ab          cdefghijkl',
+    '261116_', 'a.b.c.d.e.f.g.h', '짧은', '😀😀😀😀😀😀😀😀', '',
+  ];
+  for (const title of titles) {
+    for (const maxLength of [0, 3, 4, 6, 8, 11, 12, 20]) {
+      for (const compactLength of [1, 2, 3, 5, 8, 20]) {
+        for (const hideDatePrefix of [false, true]) {
+          const base = { datePrefixFormat: 'YYMMDD_', hideDatePrefix, maxLength, compactLength };
+          const full = formatTabLabel(title, { datePrefixFormat: 'YYMMDD_', hideDatePrefix: true });
+          const compact = formatTabLabel(title, { ...base, compactTabCount: 1, tabCount: 1 });
+          const at = `${JSON.stringify(title)} max=${maxLength} len=${compactLength}: ${compact}`;
+          assert.ok(count(compact) <= count(full), at);
+          if (maxLength) assert.ok(count(compact) <= Math.max(maxLength, MIN_LENGTH), at);
+        }
+      }
+    }
+  }
 });
 
 // ---- panel glue ----
@@ -253,25 +346,25 @@ test('open tabs go compact together at the count, and back below it', () => {
     state.panels.set(3, c);
     refreshPanelTitles(state.panels);
     assert.equal(openTabCount(), 3);
-    assert.equal(a.panel.title, 'S&OP…');
-    assert.equal(b.panel.title, '런처 탭…');
-    assert.equal(c.panel.title, '세 번째…');
+    assert.equal(a.panel.title, 'S&OP 매출..');
+    assert.equal(b.panel.title, '런처 탭 줄..');
+    assert.equal(c.panel.title, '세 번째 탭..');
     assert.equal(a.title, '261116_S&OP 매출 전망 발표', 'the session keeps its full name');
 
     // The marks stay outside the compact limit, and a rename is cut right away.
     setPanelTitle(a, { suffix: ' (done)' });
-    assert.equal(a.panel.title, 'S&OP… (done)');
+    assert.equal(a.panel.title, 'S&OP 매출.. (done)');
     setPanelTitle(b, { prefix: '⚠ ' });
-    assert.equal(b.panel.title, '⚠ 런처 탭…');
+    assert.equal(b.panel.title, '⚠ 런처 탭 줄..');
     c.title = '새로 바꾼 이름';
     setPanelTitle(c);
-    assert.equal(c.panel.title, '새로 바…');
+    assert.equal(c.panel.title, '새로 바꾼..');
 
     // Moving a tab between editor groups changes nothing: the count is the window's.
     c.panel.viewColumn = 1;
     refreshPanelTitles(state.panels);
-    assert.equal(a.panel.title, 'S&OP… (done)');
-    assert.equal(c.panel.title, '새로 바…');
+    assert.equal(a.panel.title, 'S&OP 매출.. (done)');
+    assert.equal(c.panel.title, '새로 바꾼..');
 
     // One closes: the two left show their full titles again, marks kept. A
     // closing tab is still in the map while it is being disposed, and is not
@@ -281,12 +374,12 @@ test('open tabs go compact together at the count, and back below it', () => {
     assert.equal(openTabCount(), 2);
     assert.equal(a.panel.title, 'S&OP 매출 전망 발표 (done)');
     assert.equal(c.panel.title, '새로 바꾼 이름');
-    assert.equal(b.panel.title, '⚠ 런처 탭…', 'a closed tab is not rewritten');
+    assert.equal(b.panel.title, '⚠ 런처 탭 줄..', 'a closed tab is not rewritten');
 
     // A refresh counts the tabs once and hands the count to each title; a
     // count passed in is used as it is.
     setPanelTitle(a, a._titleDecor, 3);
-    assert.equal(a.panel.title, 'S&OP… (done)');
+    assert.equal(a.panel.title, 'S&OP 매출.. (done)');
     setPanelTitle(a, a._titleDecor);
     assert.equal(a.panel.title, 'S&OP 매출 전망 발표 (done)');
 
@@ -294,7 +387,7 @@ test('open tabs go compact together at the count, and back below it', () => {
     state.panels.delete(2);
     state.panels.set(4, mk('261116_네 번째 탭 이름', 1));
     refreshPanelTitles(state.panels);
-    assert.equal(a.panel.title, 'S&OP… (done)');
+    assert.equal(a.panel.title, 'S&OP 매출.. (done)');
     settings['tabTitle.compactTabCount'] = 0;
     refreshPanelTitles(state.panels);
     assert.equal(a.panel.title, 'S&OP 매출 전망 발표 (done)');
@@ -303,7 +396,7 @@ test('open tabs go compact together at the count, and back below it', () => {
     // once the tab is in state.panels).
     settings['tabTitle.compactTabCount'] = 1;
     assert.equal(tabLabel('261116_새로 만드는 탭'), '새로 만드는 탭');
-    assert.equal(tabLabel('261116_새로 만드는 탭', 1), '새로 만…');
+    assert.equal(tabLabel('261116_새로 만드는 탭', 1), '새로 만드..');
   } finally {
     state.panels.clear();
     for (const [k, v] of saved) state.panels.set(k, v);
@@ -367,13 +460,13 @@ test('settings: declared, surfaced in the settings panel, allowlisted, and redra
   assert.equal(props['claudeCodeLauncher.tabTitle.maxLength'].default, 0);
   assert.equal(props['claudeCodeLauncher.tabTitle.compactTabCount'].default, 0, 'compact is off by default');
   assert.equal(props['claudeCodeLauncher.tabTitle.compactLength'].default, 5);
-  assert.equal(props['claudeCodeLauncher.tabTitle.compactLength'].minimum, 4);
+  assert.equal(props['claudeCodeLauncher.tabTitle.compactLength'].minimum, 2);
 
   const settingsPanel = fs.readFileSync(path.join(ROOT, 'src/panel/settingsPanel.js'), 'utf8');
   assert.match(settingsPanel, /wireToggle\('set-tab-title-hide-date', 'tabTitle\.hideDatePrefix'/);
   assert.match(settingsPanel, /wireNumber\('set-tab-title-max-length', 'tabTitle\.maxLength', GLOBALS\.tabTitleMaxLength, 0, 200, 0\)/);
   assert.match(settingsPanel, /wireNumber\('set-tab-title-compact-tab-count', 'tabTitle\.compactTabCount', GLOBALS\.tabTitleCompactTabCount, 0, 100, 0\)/);
-  assert.match(settingsPanel, /wireNumber\('set-tab-title-compact-length', 'tabTitle\.compactLength', GLOBALS\.tabTitleCompactLength, 4, 200, 5\)/);
+  assert.match(settingsPanel, /wireNumber\('set-tab-title-compact-length', 'tabTitle\.compactLength', GLOBALS\.tabTitleCompactLength, 2, 200, 5\)/);
   for (const id of ['set-tab-title-max-length', 'set-tab-title-compact-tab-count', 'set-tab-title-compact-length']) {
     assert.ok(settingsPanel.includes(`id="${id}"`), `${id} is on the settings page`);
   }
@@ -417,12 +510,13 @@ test('the settings page number boxes: blank is the default, out-of-range values 
   };
 
   wireNumber('missing', 'x', 1, 0, 9, 0); // no such box: nothing happens
-  wireNumber('set-tab-title-compact-length', 'tabTitle.compactLength', 5, 4, 200, 5);
+  wireNumber('set-tab-title-compact-length', 'tabTitle.compactLength', 5, 2, 200, 5);
   assert.equal(el.value, '5');
   assert.deepEqual(type('8'), ['tabTitle.compactLength', 8]);
   assert.deepEqual(type(''), ['tabTitle.compactLength', 5]);
   assert.deepEqual(type('abc'), ['tabTitle.compactLength', 5]);
-  assert.deepEqual(type('2'), ['tabTitle.compactLength', 4]);
+  assert.deepEqual(type('3'), ['tabTitle.compactLength', 3]);
+  assert.deepEqual(type('1'), ['tabTitle.compactLength', 2]);
   assert.deepEqual(type('999'), ['tabTitle.compactLength', 200]);
   assert.deepEqual(type('6.6'), ['tabTitle.compactLength', 7]);
 

@@ -2,7 +2,7 @@
   "name": "cli-launcher-for-claude",
   "displayName": "CLI Launcher for Claude, Codex, Gajae, Grok, Kiro, Antigravity & Chief",
   "description": "Run Claude Code, Codex, Gajae (gjc), Grok, Kiro, Antigravity, and Chief agents in a webview tab with status icons, session management, per-agent reader panes, and rich terminal features.",
-  "version": "3.32.0",
+  "version": "3.32.1",
   "publisher": "rockuen",
   "license": "MIT",
   "repository": {
@@ -1201,14 +1201,14 @@
           "default": 0,
           "minimum": 0,
           "maximum": 100,
-          "description": "Compact tab titles when tabs get crowded: once this many launcher tabs are open in the window, every tab title is cut to 'tabTitle.compactLength' characters (default: four characters and '…'), so the tabs get small enough to fit. A leading date is dropped too, whether 'tabTitle.hideDatePrefix' is on or not. With fewer tabs the titles go back to 'tabTitle.maxLength'. Launcher tabs are counted across all editor groups; file tabs are not counted. 0 = off."
+          "description": "Compact tab titles when tabs get crowded: once this many launcher tabs are open in the window, every tab title is cut to 'tabTitle.compactLength' characters and '..' (default: five characters), so the tabs get small enough to fit. A leading date is dropped too, whether 'tabTitle.hideDatePrefix' is on or not. With fewer tabs the titles go back to 'tabTitle.maxLength'. Launcher tabs are counted across all editor groups; file tabs are not counted. 0 = off."
         },
         "claudeCodeLauncher.tabTitle.compactLength": {
           "type": "integer",
           "default": 5,
-          "minimum": 4,
+          "minimum": 2,
           "maximum": 200,
-          "description": "Characters a tab title keeps while compact ('tabTitle.compactTabCount'), the last one '…'. The default 5 shows four characters and '…'. A smaller 'tabTitle.maxLength' still wins. The ⚠ and done / exit markers are added outside the limit."
+          "description": "Characters a tab title shows while compact ('tabTitle.compactTabCount'), followed by '..'. Full-width characters such as Hangul count as one; Latin letters, digits and spaces are about half as wide and count as half, so the default 5 shows five Hangul syllables or ten Latin letters. When the compact title would have more characters than 'tabTitle.maxLength', that limit applies instead, with its '…'. The ⚠ and done / exit markers are added outside the limit."
         },
         "claudeCodeLauncher.defaultFontFamily": {
           "type": "string",

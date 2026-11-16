@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.32.1] - 2026-11-16
+
+Compact tab titles show five characters and two dots, and Latin titles show twice as many letters.
+
+### Changed
+- **Compact tab titles keep five characters and end in `..`** They kept four and ended in `…`. `261116_매출전망발표자료` shows as `매출전망발..` (it was `매출전망…`).
+- **Latin letters, digits and spaces count as half a character**, because they take about half the room of a Hangul syllable in a tab. `claudeCodeLauncher.tabTitle.compactLength` (default `5`) is now the number of full-width characters shown — Hangul, kana, CJK, emoji — and the `..` comes after them. The default shows five Hangul syllables or ten Latin letters: `Claude Code (16)` shows as `Claude Cod..` (it was `Clau…`), and `뉴트S&OP 보충 발표` as `뉴트S&OP..`.
+- A title that is over by no more than the room the `..` takes — two narrow characters or one wide one — is shown whole, since cutting it would not make the tab smaller: `Claude Code` and a six-syllable Hangul title stay as they are. The cut leaves no space and no third `.` before the dots.
+- `tabTitle.compactLength` can go down to `2` (it was `4`, which showed three characters under the old rule).
+- Unchanged: `tabTitle.maxLength` still ends its titles in `…`, and still applies while compact when the compact title would have more characters than it. Compact tab titles stay off by default (`tabTitle.compactTabCount` `0`).
+
+### Tests
+- `tabLabel.test.ts` (+5, now 31): five characters and `..`, with shorter names and fewer tabs untouched; narrow characters counted as half (Latin, digits, a mixed Hangul / Latin title) and kana, CJK, full-width forms, emoji and a decomposed Hangul syllable counted as one, as are emoji outside the main blocks (star, watch) and keycaps; a title over by no more than the room of the dots shown whole; no space or third `.` before the dots; `maxLength` still applied when the compact title has more characters than it (`maxLength` 8 keeps a Latin title at seven letters and `…`), and over a grid of titles, limits and compact lengths the compact title never has more characters than the title, nor than `maxLength` allows; a blank compact length counting as 5 and 1 as 2; and the panel glue, the declared minimum and the settings page number box with the new values.
+- Checked again in a separate VSCodium window (its own user data, extensions and home folder, and a stand-in for the `claude` CLI), reading the real tab labels through the editor's tab API.
+
 ## [3.32.0] - 2026-11-16
 
 Tab titles can shrink to four characters when many tabs are open (opt-in, off by default).

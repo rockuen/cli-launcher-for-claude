@@ -311,8 +311,8 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
         </div>
         <div class="field">
           <div class="field-label">Compact Tab Title Length</div>
-          <div class="field-desc">Characters a tab title keeps while compact, the last one <code>…</code>. The default <code>5</code> shows four characters and <code>…</code>. A smaller <em>Max Tab Title Length</em> still wins. 4–200.</div>
-          <input type="number" class="g-input" id="set-tab-title-compact-length" min="4" max="200" step="1" placeholder="5" style="width:90px;">
+          <div class="field-desc">Characters a tab title shows while compact, followed by <code>..</code>. Full-width characters such as Hangul count as one; Latin letters, digits and spaces are about half as wide and count as half, so the default <code>5</code> shows five Hangul syllables or ten Latin letters. When the compact title would have more characters than <em>Max Tab Title Length</em>, that limit applies instead, with its <code>…</code>. 2–200.</div>
+          <input type="number" class="g-input" id="set-tab-title-compact-length" min="2" max="200" step="1" placeholder="5" style="width:90px;">
         </div>
       </div>
 
@@ -947,11 +947,11 @@ function getHtml(currentAgent, agents, enabledAgents, globals) {
     }
 
     // Tab titles — hide the leading date, max length (0 = no limit), and the
-    // compact rule: from N open tabs (0 = off), cut to M characters.
+    // compact rule: from N open tabs (0 = off), show M characters and two dots.
     wireToggle('set-tab-title-hide-date', 'tabTitle.hideDatePrefix', GLOBALS.tabTitleHideDatePrefix);
     wireNumber('set-tab-title-max-length', 'tabTitle.maxLength', GLOBALS.tabTitleMaxLength, 0, 200, 0);
     wireNumber('set-tab-title-compact-tab-count', 'tabTitle.compactTabCount', GLOBALS.tabTitleCompactTabCount, 0, 100, 0);
-    wireNumber('set-tab-title-compact-length', 'tabTitle.compactLength', GLOBALS.tabTitleCompactLength, 4, 200, 5);
+    wireNumber('set-tab-title-compact-length', 'tabTitle.compactLength', GLOBALS.tabTitleCompactLength, 2, 200, 5);
 
     // A number box saved 500 ms after the last keystroke. Blank or not a number
     // saves the blank argument; out-of-range values are pulled into min–max.
