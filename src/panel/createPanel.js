@@ -44,6 +44,7 @@ const { claudeEffortArgs } = require('../lib/claudeEffort');
 const { applyAgentCliEnv, claudeHookArgs } = require('../handlers/agentCli');
 const { claudeChannelsArgs } = require('../lib/claudeChannels');
 const { attachRawSizeChangeFallback } = require('../lib/readerWatch');
+const { isNoBypassSession, rememberNoBypassSession } = require('../store/noBypassSessions');
 
 const IDLE_DELAY_MS = 3000;
 
@@ -131,6 +132,7 @@ function startReaderWatch(entry, panel) {
       _claimedKiroIds.add(fresh.sessionId);
       try { saveSessions(); } catch (_) {}
       try { state.refreshSessionTrees(); } catch (_) {}
+      if (entry.noPermissionBypass) rememberNoBypassSession(state.context, fresh.sessionId);
       console.log('[panel-reader] kiro session pinned:', fresh.sessionId);
     }
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'kiro');
@@ -166,6 +168,7 @@ function startReaderWatch(entry, panel) {
       _claimedCodexIds.add(fresh.sessionId);
       try { saveSessions(); } catch (_) {}
       try { state.refreshSessionTrees(); } catch (_) {}
+      if (entry.noPermissionBypass) rememberNoBypassSession(state.context, fresh.sessionId);
       console.log('[panel-reader] codex session pinned:', fresh.sessionId);
     }
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'codex');
@@ -194,6 +197,7 @@ function startReaderWatch(entry, panel) {
       _claimedGrokIds.add(fresh.sessionId);
       try { saveSessions(); } catch (_) {}
       try { state.refreshSessionTrees(); } catch (_) {}
+      if (entry.noPermissionBypass) rememberNoBypassSession(state.context, fresh.sessionId);
       console.log('[panel-reader] grok session pinned:', fresh.sessionId);
     }
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'grok');
@@ -222,6 +226,7 @@ function startReaderWatch(entry, panel) {
       _claimedGjcIds.add(fresh.sessionId);
       try { saveSessions(); } catch (_) {}
       try { state.refreshSessionTrees(); } catch (_) {}
+      if (entry.noPermissionBypass) rememberNoBypassSession(state.context, fresh.sessionId);
       console.log('[panel-reader] gjc session pinned:', fresh.sessionId);
     }
     return getSessionJsonlPath(entry.sessionId, entry.cwd, 'gjc');
@@ -451,7 +456,12 @@ function createPanel(context, extensionPath, session, opts) {
   const soundEnabled = config.get('soundEnabled', true);
   const particlesEnabled = config.get('particlesEnabled', true);
   const autoEffortMax = config.get('autoEffortMax', false);
-  const bypassPermissions = config.get('claude.bypassPermissions', false);
+  // A tab opened for outside text (browser bridge) can be held to normal
+  // permission prompts whatever the agent's trust settings say. It sticks to
+  // the tab: restartPty and the saved session carry it.
+  const noPermissionBypass = !!((opts && opts.noPermissionBypass) || (session && session.noPermissionBypass)
+    || (session && isNoBypassSession(context, session.sessionId)));
+  const bypassPermissions = !noPermissionBypass && config.get('claude.bypassPermissions', false);
   const repoSyncEnabled = config.get('repoSync.enabled', false);
   const repoSyncPath = config.get('repoSync.path', '');
   // antigravity has no reader yet (transcripts are protobuf-in-SQLite), so the
@@ -575,7 +585,7 @@ function createPanel(context, extensionPath, session, opts) {
     // --trust-all-tools (opt-in via claudeCodeLauncher.kiro.trustAllTools): let
     // Kiro use any tool without per-call confirmation. Appended after the chat
     // subcommand/resume flags (flag order is not significant to kiro-cli).
-    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
+    if (!noPermissionBypass && vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
       kiroArgs.push('--trust-all-tools');
     }
     args = [...resolvedKiro.args, ...kiroArgs];
@@ -606,7 +616,7 @@ function createPanel(context, extensionPath, session, opts) {
       : (session?.sessionId ? ['--continue'] : []);
     // --dangerously-skip-permissions (opt-in via antigravity.trustAllTools):
     // auto-approve all tool permission requests without prompting.
-    if (config.get('antigravity.trustAllTools', false)) {
+    if (!noPermissionBypass && config.get('antigravity.trustAllTools', false)) {
       agyArgs.push('--dangerously-skip-permissions');
     }
     args = [...resolvedAgy.args, ...agyArgs];
@@ -647,9 +657,13 @@ function createPanel(context, extensionPath, session, opts) {
     // permissions. Accepted as a global flag after the `resume` subcommand too
     // (verified in `codex resume --help`), so a single push covers fresh +
     // resume. EXTREMELY DANGEROUS — off by default.
-    if (config.get('codex.trustAllTools', false)) {
+    if (!noPermissionBypass && config.get('codex.trustAllTools', false)) {
       codexArgs.push('--dangerously-bypass-approvals-and-sandbox');
     }
+    // Held to prompts: also over Codex's config.toml. `on-request` alone
+    // would never ask under `danger-full-access`, so the sandbox is set too
+    // (Codex 0.169 accepts only on-request / never for -a; `untrusted` is gone).
+    if (noPermissionBypass) codexArgs.push('--sandbox', 'workspace-write', '--ask-for-approval', 'on-request');
     args = [...resolvedCodex.args, ...codexArgs];
   } else if (agent === 'grok') {
     const resolvedGrok = resolveGrokCli();
@@ -676,7 +690,7 @@ function createPanel(context, extensionPath, session, opts) {
       : (session?.sessionId ? ['--resume'] : []);
     // --always-approve (opt-in via grok.trustAllTools): approve tool calls
     // without prompting. Off by default, same risk posture as other agents.
-    if (config.get('grok.trustAllTools', false)) {
+    if (!noPermissionBypass && config.get('grok.trustAllTools', false)) {
       grokArgs.push('--always-approve');
     }
     args = [...resolvedGrok.args, ...grokArgs];
@@ -788,6 +802,9 @@ function createPanel(context, extensionPath, session, opts) {
       ? ['--resume', session.sessionId]
       : ['--session-id', sessionId];
     args = [...resolved.args, ...claudeArgs, ...claudeEffortArgs(config), ...claudeChannelsArgs(config), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : []),
+      // Held to prompts: also over a permissions.defaultMode in Claude's own
+      // settings (`default` is accepted by old and new Claude Code alike).
+      ...(noPermissionBypass ? ['--permission-mode', 'default'] : []),
       // v3.28.0: Stop / Notification hooks → `cli-launcher notify` (not in
       // tmux/psmux tabs, which get no cli-launcher).
       ...claudeHookArgs({ enabled: backend !== 'multiplexer' })];
@@ -893,6 +910,7 @@ function createPanel(context, extensionPath, session, opts) {
     // chief-repl uses launcher-owned ids, so every saved Chief tab can resume
     // the exact transcript/chat with --resume <sessionId>.
     isChiefResume: !!(session && session.isChiefResume),
+    noPermissionBypass,
     _kiroPreIds: kiroPreSessionIds,
     _codexPreIds: codexPreSessionIds,
     _grokPreIds: grokPreSessionIds,
@@ -903,6 +921,7 @@ function createPanel(context, extensionPath, session, opts) {
     muxSessionName: muxSessionName
   };
   state.panels.set(tabId, entry);
+  if (noPermissionBypass) rememberNoBypassSession(context, sessionId);
   // One more tab open: the compact rule (tabTitle.compactTabCount) may now
   // apply to every tab, this one included.
   refreshPanelTitles(state.panels);
@@ -1513,6 +1532,8 @@ function createPanel(context, extensionPath, session, opts) {
   // Panel closed
   panel.onDidDispose(() => {
     entry._disposed = true;
+    // By now a Codex / Kiro / Grok / gjc tab has its real session id.
+    if (entry.noPermissionBypass) rememberNoBypassSession(context, entry.sessionId);
     // Detach the PTY data listener BEFORE the kill below: killing a ConPTY
     // flushes its remaining buffered output, and on a disposed panel the
     // `panel.active` getter in onData throws on every late chunk.

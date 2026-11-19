@@ -30,9 +30,7 @@ const lib = require('../lib/slackInbox');
 const { isSafeLinkCwd, notificationText } = require('../lib/sessionLink');
 const { isCwdInWorkspace, shouldClaimPending, PENDING_TTL_MS } = require('../lib/windowRoute');
 const { openFolderWindow } = require('../lib/editorCli');
-const { writePtyChunked } = require('../pty/write');
-const { writeSubmitInput } = require('../pty/submitInput');
-const { detectPromptAffordance } = require('../lib/promptAffordance');
+const { injectWhenReady } = require('../pty/injectWhenReady');
 
 const BOT_TOKEN_KEY = 'claudeCodeLauncher.slackInbox.botToken';
 const APP_TOKEN_KEY = 'claudeCodeLauncher.slackInbox.appToken';
@@ -64,12 +62,6 @@ const REFRESH_MAX_SECONDS = 30 * 60;
 const CONNECTION_GRACE_MS = 60_000;
 const HELLO_TIMEOUT_MS = 30_000;
 const RESTART_DEBOUNCE_MS = 500;
-
-// The new tab is typed into once Claude's start-up screen has settled.
-const READY_POLL_MS = 250;
-const READY_MIN_MS = 2000;
-const READY_QUIET_MS = 1500;
-const READY_GIVE_UP_MS = 5 * 60_000;
 
 let socket = null; // { stop() } while connected or retrying
 let restartTimer = null;
@@ -205,34 +197,20 @@ function resolveTargetCwd() {
   return isUsableFolder(dir) ? dir : null;
 }
 
-// Type the prompt once the start-up screen has gone quiet, unless Claude is
-// asking something first (folder trust, a menu) — then wait for the user to
-// answer it. If the tab never gets there, offer the prompt for copying.
-function injectWhenReady(entry, prompt, title) {
-  const startedAt = Date.now();
-  const tick = () => {
-    if (entry._disposed) return;
-    const now = Date.now();
-    const quiet = !!entry._lastOutputAt && now - entry._lastOutputAt >= READY_QUIET_MS;
-    const asking = quiet && !!detectPromptAffordance(entry._recentTail || '');
-    if (entry.pty && quiet && !asking && now - startedAt >= READY_MIN_MS) {
-      writeSubmitInput(entry, prompt, writePtyChunked);
-      entry._recentTail = ''; // as a launcher submit does (panel/messageRouter)
-      return;
-    }
-    if (now - startedAt >= READY_GIVE_UP_MS) {
-      // A button, not a silent clipboard write: the text is someone else's and
-      // the clipboard may hold something the user still needs.
+// Typed once the start-up screen has settled (pty/injectWhenReady). If the tab
+// never gets there, offer the prompt for copying — a button, not a silent
+// clipboard write: the text is someone else's and the clipboard may hold
+// something the user still needs.
+function typePromptWhenReady(entry, prompt, title) {
+  injectWhenReady(entry, prompt, {
+    onGiveUp: () => {
       vscode.window
         .showWarningMessage(t('slackInjectGaveUp').replace('{0}', notificationText(title, 80)), t('slackCopyPrompt'))
         .then((c) => {
           if (c) vscode.env.clipboard.writeText(prompt);
         });
-      return;
-    }
-    setTimeout(tick, READY_POLL_MS);
-  };
-  setTimeout(tick, READY_POLL_MS);
+    },
+  });
 }
 
 function openHere(context, record) {
@@ -248,7 +226,7 @@ function openHere(context, record) {
   // (it has already told the user why, e.g. Claude Code not installed).
   const entry = state.tabCounter !== before ? state.panels.get(state.tabCounter) : null;
   if (!entry) return false;
-  injectWhenReady(entry, prompt, title);
+  typePromptWhenReady(entry, prompt, title);
   return true;
 }
 

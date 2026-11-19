@@ -48,6 +48,8 @@ function saveSessions() {
         // Same for chief: keep exact `--resume <id>` into the launcher-owned
         // chief-repl transcript directory.
         ...(entry.isChiefResume ? { isChiefResume: true } : {}),
+        // A tab held to normal permission prompts (browser bridge) stays so.
+        ...(entry.noPermissionBypass ? { noPermissionBypass: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });

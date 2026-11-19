@@ -60,7 +60,7 @@ function restartPty(entry, panel, context, extensionPath) {
       : (entry.sessionId ? ['chat', '--resume'] : ['chat']);
     // --trust-all-tools (opt-in): let Kiro use any tool without per-call
     // confirmation. Flag order after the chat subcommand is not significant.
-    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
+    if (!entry.noPermissionBypass && vscode.workspace.getConfiguration('claudeCodeLauncher').get('kiro.trustAllTools', false)) {
       kiroArgs.push('--trust-all-tools');
     }
     args = [...resolvedKiro.args, ...kiroArgs];
@@ -78,7 +78,7 @@ function restartPty(entry, panel, context, extensionPath) {
     const agyArgs = entry.isAntigravityResume
       ? ['--conversation', entry.sessionId]
       : (entry.sessionId ? ['--continue'] : []);
-    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('antigravity.trustAllTools', false)) {
+    if (!entry.noPermissionBypass && vscode.workspace.getConfiguration('claudeCodeLauncher').get('antigravity.trustAllTools', false)) {
       agyArgs.push('--dangerously-skip-permissions');
     }
     args = [...resolvedAgy.args, ...agyArgs];
@@ -100,9 +100,10 @@ function restartPty(entry, panel, context, extensionPath) {
     // --dangerously-bypass-approvals-and-sandbox (opt-in via codex.trustAllTools),
     // same as createPanel: skip all approval prompts + sandbox. Global flag, so
     // it works after the resume subcommand too.
-    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('codex.trustAllTools', false)) {
+    if (!entry.noPermissionBypass && vscode.workspace.getConfiguration('claudeCodeLauncher').get('codex.trustAllTools', false)) {
       codexArgs.push('--dangerously-bypass-approvals-and-sandbox');
     }
+    if (entry.noPermissionBypass) codexArgs.push('--sandbox', 'workspace-write', '--ask-for-approval', 'on-request');
     args = [...resolvedCodex.args, ...codexArgs];
   } else if (agent === 'grok') {
     const resolvedGrok = resolveGrokCli();
@@ -118,7 +119,7 @@ function restartPty(entry, panel, context, extensionPath) {
     const grokArgs = (entry.isGrokResume || (entry.sessionId && findGrokSessionPath(entry.sessionId, null, entry.cwd)))
       ? ['--resume', entry.sessionId]
       : (entry.sessionId ? ['--resume'] : []);
-    if (vscode.workspace.getConfiguration('claudeCodeLauncher').get('grok.trustAllTools', false)) {
+    if (!entry.noPermissionBypass && vscode.workspace.getConfiguration('claudeCodeLauncher').get('grok.trustAllTools', false)) {
       grokArgs.push('--always-approve');
     }
     args = [...resolvedGrok.args, ...grokArgs];
@@ -183,8 +184,8 @@ function restartPty(entry, panel, context, extensionPath) {
     }
     shell = resolved.shell;
     const claudeCfg = vscode.workspace.getConfiguration('claudeCodeLauncher');
-    const bypassPermissions = claudeCfg.get('claude.bypassPermissions', false);
-    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...claudeEffortArgs(claudeCfg), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : []), ...claudeHookArgs()];
+    const bypassPermissions = !entry.noPermissionBypass && claudeCfg.get('claude.bypassPermissions', false);
+    args = [...resolved.args, ...(entry.sessionId ? ['--resume', entry.sessionId] : []), ...claudeEffortArgs(claudeCfg), ...(bypassPermissions ? ['--dangerously-skip-permissions'] : []), ...(entry.noPermissionBypass ? ['--permission-mode', 'default'] : []), ...claudeHookArgs()];
   }
 
   // Kill old PTY before spawning new one to prevent orphaned processes.

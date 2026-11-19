@@ -38,6 +38,7 @@ const { listAgents } = require('./agents/registry');
 const { copySessionLinkFromTreeItem, copySessionLinkFromPanel } = require('./handlers/copySessionLink');
 const { registerSessionUriHandler } = require('./uri/sessionUriHandler');
 const { registerSlackInbox } = require('./handlers/slackInbox');
+const { registerBrowserBridge } = require('./handlers/browserBridge');
 const { migrateFileAssociationsSetting } = require('./handlers/openFile');
 const { startAgentCli } = require('./handlers/agentCli');
 const { trashSession } = require('./lib/agentTrash');
@@ -205,7 +206,7 @@ function activate(context) {
             placeHolder: `Hand off from ${activeEntry.agent} — pick the target agent`,
           });
       if (!targetAgent) return; // user cancelled the picker
-      createPanel(context, extensionPath, { cwd: activeEntry.cwd }, { agent: targetAgent });
+      createPanel(context, extensionPath, { cwd: activeEntry.cwd }, { agent: targetAgent, noPermissionBypass: !!activeEntry.noPermissionBypass });
 
       // (e) Inject note once the new entry's PTY is ready.
       // Strategy: poll state.panels for the highest tabId (the one just created),
@@ -1569,6 +1570,10 @@ function activate(context) {
   // v3.30.0 — Slack message shortcut → new Claude tab, over Socket Mode.
   // Also opens panels through createPanel, so it goes last as well.
   registerSlackInbox(context);
+
+  // v3.33.0 — browser extension "ask about this page" → new agent tab, over a
+  // 127.0.0.1 HTTP bridge. Opens panels through createPanel too.
+  registerBrowserBridge(context);
 }
 
 function deactivate() {
@@ -1592,6 +1597,7 @@ function deactivate() {
         ...(entry.isGrokResume ? { isGrokResume: true } : {}),
         ...(entry.isGjcResume ? { isGjcResume: true } : {}),
         ...(entry.isChiefResume ? { isChiefResume: true } : {}),
+        ...(entry.noPermissionBypass ? { noPermissionBypass: true } : {}),
         order: order++,
         viewColumn: entry.panel.viewColumn || 1
       });
