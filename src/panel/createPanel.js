@@ -38,6 +38,7 @@ const { detectShellRunning } = require('../lib/shellRunningDetect');
 const { sendPtyChunkPaced } = require('../lib/ptyChunk');
 const { detectPromptAffordance } = require('../lib/promptAffordance');
 const { readAgentTurnState } = require('../lib/agentTurnState');
+const { clearCodexDaemonPidsFor } = require('../lib/codexDaemonPid');
 const { planAgentNotify, notifyMessage, pendingAfterOutput, outputRunStart, isSustainedRun, isDuplicate, endsTurn, isStaleBusy, PROMPT_KINDS } = require('../lib/agentNotify');
 const { claudeEffortArgs } = require('../lib/claudeEffort');
 const { applyAgentCliEnv, claudeHookArgs } = require('../handlers/agentCli');
@@ -816,6 +817,9 @@ function createPanel(context, extensionPath, session, opts) {
   console.log('[Claude Launcher] Spawning:', spawnBin, spawnArgs.join(' '), '| cwd:', cwd, '| backend:', backend);
   console.log('[Claude Launcher] resolved shell:', shell, '| agent:', agent, '| args:', args);
   const sessionEnv = { ...prepareProjectSessionEnvironment(agent, cwd, process.env), ...extraEnv };
+  // A daemon.pid left from before a reboot can make Codex quit with "failed to
+  // open daemon process" (lib/codexDaemonPid).
+  if (agent === 'codex') clearCodexDaemonPidsFor(sessionEnv, cwd);
   // v3.26.0: `cli-launcher` on PATH + this tab's IPC coordinates (handlers/agentCli).
   // Not for tmux/psmux tabs: a session takes the multiplexer server's
   // environment, so a second tab would answer as the first.

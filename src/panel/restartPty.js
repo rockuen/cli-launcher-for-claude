@@ -8,6 +8,7 @@ const { resolveClaudeCli, resolveKiroCli, resolveAntigravityCli, resolveCodexCli
 const { findCodexSessionPath, findGrokSessionPath, findGrokEventsPath, findGjcSessionPath } = require('../lib/sessionJsonl');
 const { readAgentTurnState } = require('../lib/agentTurnState');
 const { prepareProjectSessionEnvironment } = require('../lib/projectSessions');
+const { clearCodexDaemonPidsFor } = require('../lib/codexDaemonPid');
 const { loadNodePty } = require('../pty/loadNodePty');
 const { killPtyProcess } = require('../pty/kill');
 const { createContextParser } = require('../pty/contextParser');
@@ -212,6 +213,8 @@ function restartPty(entry, panel, context, extensionPath) {
 
   try {
     const sessionEnv = { ...prepareProjectSessionEnvironment(agent, entry.cwd, process.env), ...extraEnv };
+    // A daemon.pid left from before a reboot (lib/codexDaemonPid).
+    if (agent === 'codex') clearCodexDaemonPidsFor(sessionEnv, entry.cwd);
     applyAgentCliEnv(sessionEnv, { tabId: entry.tabId, agent, cwd: entry.cwd });
     const ptyProcess = pty.spawn(shell, args, {
       name: 'xterm-256color',

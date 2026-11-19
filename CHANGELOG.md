@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.32.2] - 2026-11-19
+
+Codex tabs open again after a reboot instead of stopping at "failed to open daemon process".
+
+### Fixed
+- **Codex quit right away with `Error: failed to open daemon process: Access is denied. (os error 5)`** (on Korean Windows `액세스가 거부되었습니다`), followed by `To work without the background server, rerun the same command with --no-daemon`. Codex 0.165 and later run the TUI through a background app-server daemon kept per `CODEX_HOME` and remember it in `app-server-daemon/daemon.pid`. On the next start Codex opens that PID to see whether its daemon still runs. After a reboot the PID often belongs to another process: Codex copes when it is gone or is a process the user may open, but when it is a Windows service (here `svchost.exe`) opening it is refused and Codex stops. It hit one workspace and not another only because of which process happened to get the old number. Seen with Codex 0.169.1 and 0.170.0, the latest.
+- Before a Codex tab starts or restarts, the launcher now checks the `daemon.pid` and `daemon-updater.pid` of the `CODEX_HOME` that tab uses (the project's `.agent-sessions/.home/codex`, a `CODEX_HOME` set in the editor's environment, or `~/.codex`). A file whose PID this user may not signal is removed when it cannot be the daemon: on Windows when the start time it records is from before this boot (no lookup needed — the usual case after a reboot), otherwise when the process now holding the PID is not `codex`. A running daemon, a PID that is gone, a `codex` process the user cannot signal (a daemon started from an elevated window) and anything the check cannot tell are left to Codex. The check takes a few milliseconds; only a file from this boot whose PID refuses the signal costs a process lookup (about half a second on Windows), once per file content.
+- macOS / Linux get the same check through `ps`; that Codex fails the same way there is not verified.
+
+### Tests
+- `codexDaemonPid.test.ts` (19): a PID held by a process the user may not open is removed (daemon and updater, locks kept); a record from before this boot is removed without a lookup, with a two-minute margin and only for a Windows start time; a `codex` one is kept and not looked up again until the file changes; live / gone / unknown PIDs are not looked up; a lookup that cannot tell keeps the file; a file Codex rewrote meanwhile is kept; files that are not a PID record are left alone; missing folders; each PID looked up once; `tasklist` output (other PIDs, the English and Korean "no tasks" lines) and `ps` output (full paths, `(name)`, blank); `tasklist` run by its System32 path with its error output dropped; `CODEX_HOME` (relative to the tab's folder) / `~/.codex`; the spawn wrapper logging and never throwing; the real probes on this process, a free PID and PID 4 (`System`; PID 1 elsewhere, skipped where PID 1 runs as the test user); and both spawn paths clearing after the session environment is built and before the spawn.
+- Checked against Codex 0.169.1 itself: with the old `daemon.pid` copied into a scratch `CODEX_HOME`, `codex app-server daemon start` fails with the same error; after the launcher's check (6 ms) it starts, and with the daemon running the check leaves its files alone.
+
 ## [3.32.1] - 2026-11-16
 
 Compact tab titles show five characters and two dots, and Latin titles show twice as many letters.
