@@ -18,6 +18,13 @@
   <a href="./README.md">English README</a>
 </p>
 
+<p align="center">
+  <a href="https://open-vsx.org/extension/rockuen/cli-launcher-for-claude"><img alt="Open VSX" src="https://img.shields.io/open-vsx/v/rockuen/cli-launcher-for-claude?label=Open%20VSX"></a>
+  <a href="https://open-vsx.org/extension/rockuen/cli-launcher-for-claude"><img alt="Open VSX 다운로드" src="https://img.shields.io/open-vsx/dt/rockuen/cli-launcher-for-claude?label=downloads"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=rockuen.cli-launcher-for-claude"><img alt="VS Marketplace" src="https://vsmarketplacebadges.dev/version-short/rockuen.cli-launcher-for-claude.svg"></a>
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+</p>
+
 ---
 
 Claude Code가 좋아서 매일 쓴다. 그러다 Codex도, Grok도, Kiro도, Antigravity도 하나씩 손에 익었다. AI 코딩 CLI는 터미널에서 그냥 쓸 때도 좋지만, 손에 쥔 게 늘어날수록 터미널 하나로는 부족하다는 게 또렷해졌다.
@@ -113,14 +120,16 @@ cli-launcher는 다섯 개의 AI 코딩 CLI를 같은 방식으로 감싼다. �
 
 ## 어떻게 쓰나
 
-**설치** — 세 가지 방법:
+**설치** — 네 가지 방법:
 
-1. **Open VSX**: Antigravity 또는 (Open VSX 갤러리가 등록된) VSCode 의 Extensions 뷰에서
-   *CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity* 검색 — [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
-2. **VSIX**: [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases)
-   에서 최신 `cli-launcher-for-claude-<platform>-<version>.vsix` 다운로드 →
+1. **VSCode Marketplace**: Extensions 뷰에서
+   *CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity* 검색 — [Marketplace 페이지](https://marketplace.visualstudio.com/items?itemName=rockuen.cli-launcher-for-claude).
+2. **Open VSX**: Antigravity 또는 VSCodium 의 Extensions 뷰에서 같은 이름 검색 —
+   [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
+3. **VSIX**: [Open VSX 페이지](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude)에서
+   플랫폼에 맞는 `.vsix` 다운로드(게시된 모든 버전이 있다) →
    *Extensions: Install from VSIX...* 로 설치.
-3. **소스 빌드**:
+4. **소스 빌드**:
    ```bash
    git clone https://github.com/rockuen/cli-launcher-for-claude.git
    cd cli-launcher-for-claude

@@ -19,6 +19,13 @@
   <a href="./README.ko.md">한국어 README</a>
 </p>
 
+<p align="center">
+  <a href="https://open-vsx.org/extension/rockuen/cli-launcher-for-claude"><img alt="Open VSX" src="https://img.shields.io/open-vsx/v/rockuen/cli-launcher-for-claude?label=Open%20VSX"></a>
+  <a href="https://open-vsx.org/extension/rockuen/cli-launcher-for-claude"><img alt="Open VSX downloads" src="https://img.shields.io/open-vsx/dt/rockuen/cli-launcher-for-claude?label=downloads"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=rockuen.cli-launcher-for-claude"><img alt="VS Marketplace" src="https://vsmarketplacebadges.dev/version-short/rockuen.cli-launcher-for-claude.svg"></a>
+  <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+</p>
+
 ---
 
 I use Claude Code every day because I like it. Then Codex, Grok, Kiro, and Antigravity each found their way into my workflow too. AI coding CLIs are great in a plain terminal — but the more of them I kept open, the clearer it got that one terminal isn't enough.
@@ -116,14 +123,17 @@ Reaching into a reply to grab a file path by hand got old, so file/URL/folder me
 
 ## Getting started
 
-**Install** — three ways:
+**Install** — four ways:
 
-1. **Open VSX**: search for *CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity* in the Extensions view of
-   Antigravity, or VSCode with the [Open VSX gallery](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
-2. **VSIX**: download the latest `cli-launcher-for-claude-<platform>-<version>.vsix` from
-   [GitHub Releases](https://github.com/rockuen/cli-launcher-for-claude/releases) and
-   install via *Extensions: Install from VSIX...*.
-3. **Build from source**:
+1. **VSCode Marketplace**: search for *CLI Launcher for Claude, Codex, Grok, Kiro & Antigravity* in the
+   Extensions view, or open the
+   [Marketplace listing](https://marketplace.visualstudio.com/items?itemName=rockuen.cli-launcher-for-claude).
+2. **Open VSX**: for Antigravity and VSCodium, search for the same name in the Extensions view, or use the
+   [Open VSX gallery](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude).
+3. **VSIX**: download the `.vsix` for your platform from the extension's
+   [Open VSX page](https://open-vsx.org/extension/rockuen/cli-launcher-for-claude) (every published version is
+   there), then install via *Extensions: Install from VSIX...*.
+4. **Build from source**:
    ```bash
    git clone https://github.com/rockuen/cli-launcher-for-claude.git
    cd cli-launcher-for-claude
